@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.3.3 on 2026-10-09, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: for 0.3.3 item 0.2's Generate, Build, Test and Pester (55 passed) were run, Smoke was not (0.3.3 changed only the lifted id registry, the graph-node skill, versions and tests); item 0.2 was run in full for 0.3.2; 0.3 was not run by hand (an agent's shell cannot quote the denied commands) but Pester feeds the hook six commands and checks the exit codes; 1.1, 1.4, 2.1 were run for 0.3.1 and 0.1, 1.2, 1.3, 1.5, 1.6, 3.1, 3.2, 3.3 for 0.3.0, not re-run (0.3.2 changed no code they exercise). Item 2.1 was checked by a headless capture (Invoke-Build Screenshot), not by a person at a browser. Items 2.2, 2.3 and 2.4 were not run: they need a person at a browser. 2.4's seeded look is pinned by Pester's headless `--dump-dom` check, but no one clicked a section toggle.
+Verified for: 0.3.4 on 2026-10-09, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: for 0.3.4 item 3.4 was run, and item 0.2's Generate, Build, Test and Pester (60 passed) were run, Smoke was not (0.3.4 changed only Up, its private helpers, versions and tests; Up on 8200 was run twice by hand, the second printing `replaced <stamp> with <stamp>`); for 0.3.3 the same parts of 0.2 were run (55 passed); item 0.2 was run in full for 0.3.2; 0.3 was not run by hand (an agent's shell cannot quote the denied commands) but Pester feeds the hook six commands and checks the exit codes; 1.1, 1.4, 2.1 were run for 0.3.1 and 0.1, 1.2, 1.3, 1.5, 1.6, 3.1, 3.2, 3.3 for 0.3.0, not re-run (0.3.2 changed no code they exercise). Item 2.1 was checked by a headless capture (Invoke-Build Screenshot), not by a person at a browser. Items 2.2, 2.3 and 2.4 were not run: they need a person at a browser. 2.4's seeded look is pinned by Pester's headless `--dump-dom` check, but no one clicked a section toggle.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -18,7 +18,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `internal/server` and `internal/store` (30 tests); Smoke prints `smoke: seed 18 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"ratio":<r>}` with `<g>` above half of `<p>` (662 of 903 here), and `artifacts/smoke-report.json` has `checks.menu.restart.topBar` `ui:menu:graph`, `ui:menu:smoke`; Pester ends `Tests Passed: 55, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
+Expect: go test ends `ok` for `internal/server` and `internal/store` (30 tests); Smoke prints `smoke: seed 18 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"ratio":<r>}` with `<g>` above half of `<p>` (662 of 903 here), and `artifacts/smoke-report.json` has `checks.menu.restart.topBar` `ui:menu:graph`, `ui:menu:smoke`; Pester ends `Tests Passed: 60, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -272,3 +272,21 @@ try { $s = Get-PortalStatus -Artifacts $dir; "status: $($s.Running) $($s.Port) $
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
 ```
 Expect: `zero: True`, `busy: port 18200 is in use by pwsh (process <pid>); free it, or set PORTAL_PORT in .env or pass -Port`, `status: True 18200 http://127.0.0.1:18200 seed`.
+
+### 3.4 Up replaces a running portal; -NoReplace throws
+Up itself runs on 8200 over `artifacts/`; this drives the same private `Invoke-PortalUp` on the test port.
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$dir = Join-Path $env:TEMP 'portal-check-3.4'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$m = Get-Module Portal
+try {
+    $a = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+    $snap = New-PortalSnap -Url $a.Url -Note 'check 3.4'
+    $b = & $m { param($d) Invoke-PortalUp -Port 18200 -Artifacts $d -Filesystem '' } $dir
+    "replaced $($b.Replaced) with $($b.Boot); new process: $($b.ProcessId -ne $a.ProcessId); old gone: $(-not (Get-Process -Id $a.ProcessId -ErrorAction SilentlyContinue))"
+    try { & $m { param($d) Invoke-PortalUp -Port 18200 -Artifacts $d -Filesystem '' -NoReplace } $dir } catch { "noreplace: $($_.Exception.Message)" }
+}
+finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `replaced seed with <stamp>; new process: True; old gone: True` (`<stamp>` the snap just taken), then `noreplace: A portal is already running at http://127.0.0.1:18200 (process <pid>). Stop it with Stop-Portal first.` The 10 s timeout path is Pester's (a held port, 1 s bound).

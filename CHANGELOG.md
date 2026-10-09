@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4 — 2026-10-09
+
+- `Invoke-Build Up` replaces a running portal: when `artifacts/portal.json` records a live portal it calls `Stop-Portal`, waits for that port to free (10 s at most, else it throws naming the owner and starts nothing), then starts, printing `replaced <old stamp> with <new stamp>`. `-NoReplace` keeps 0.3.3's throw. The logic is the private `Invoke-PortalUp` and `Wait-PortalPortFree` (docs/design.md 32).
+- CLAUDE.md: the lift pin reads Graph.Node v0.2.1, and the read-only skill line names all three copies and what Pester checks them against.
+- Pester: replace, nothing to replace, `-NoReplace` and the timeout path, plus a check that Up wires them. Go tests 30, Pester 60.
+
 ## 0.3.3 — 2026-10-09
 
 0.3.3: git-guard hook; run-report 0.2.2; graph-node 0.2.1

@@ -1,14 +1,17 @@
 #Requires -Version 7.4
 # Invoke-Build script. Run: Invoke-Build              (Modules, Build, Test, Smoke, Pester)
 #                           Invoke-Build Up           (start the portal on its fixed port over artifacts/: -Port,
-#                                                      else PORTAL_PORT from .env, else the environment, else 8200)
+#                                                      else PORTAL_PORT from .env, else the environment, else 8200;
+#                                                      a running one is stopped and replaced; -NoReplace throws instead)
 #                           Invoke-Build Status       (port, URL and boot stamp of the running portal)
 #                           Invoke-Build Down         (stop it)
 #                           Invoke-Build Generate     (regenerate internal/gen from api/openapi.yaml)
 #                           Invoke-Build Screenshot   (docs/screenshots/portal.png)
 param(
     # Up's port; absent means PORTAL_PORT from .env, else the environment, else 8200. 0 is refused.
-    [int] $Port
+    [int] $Port,
+    # Up throws when a portal is already running instead of stopping and replacing it.
+    [switch] $NoReplace
 )
 
 $repo     = $PSScriptRoot
@@ -61,9 +64,14 @@ task Test {
     Invoke-Go @('test', '-count=1', './...')
 }
 
+# A portal already recorded in artifacts/ is stopped, its port waited on (10 s at most) and a new one started in its
+# place (docs/design.md 32).
 task Up Build, {
-    Import-Module $module -Force
-    $p = if ($Port) { Start-Portal -Port $Port } else { Start-Portal }
+    $m = Import-Module $module -Force -PassThru
+    $up = @{ NoReplace = [bool]$NoReplace }
+    if ($Port) { $up.Port = $Port }
+    $p = & $m { param($a) Invoke-PortalUp @a } $up
+    if ($p.Replaced) { print Green "replaced $($p.Replaced) with $($p.Boot)" }
     print Green "portal at $($p.Url) (process $($p.ProcessId)), booted from $($p.Boot); Invoke-Build Down stops it"
 }
 

@@ -168,3 +168,14 @@ After each fit the Canvas host records `data-fit="<graph>/<panel>"`: the drawn g
 - **settings.json and Report task.** Only `git-guard` has a `settings.fragment.json`, and its entry is already in `.claude/settings.json` once (entry 30), so the merge changed nothing. No doc or build task says the Report task writes to Graph's `artifacts/` (entry 30), and `artifacts/` is gitignored.
 - **Version 0.3.3** in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated for the embedded spec.
 - **Not changed.** CLAUDE.md still names the pinned tag as v0.2.0. The agent rules are Jerry's to edit.
+
+## 32. Up replaces a running portal
+
+0.3.4's brief: when a portal already holds the port, `Invoke-Build Up` calls `Stop-Portal`, waits for the port to free (bounded, 10 s), starts, and logs `replaced <old stamp> with <new stamp>`; `-NoReplace` keeps the throw. The logic lives in two private functions, `Invoke-PortalUp` and `Wait-PortalPortFree`, so Pester can drive it on the test port over its own artifacts; Up calls `Invoke-PortalUp` in the module's scope.
+
+- **"A portal holds the port" means the portal recorded in `artifacts/portal.json` is alive** (`Get-PortalStatus` Running). `Stop-Portal` stops only what it recorded, so a port held by anything else, a portal started over other artifacts included, is never stopped: `Start-Portal` throws naming the owner, as before. Stopping an unrecorded process by port would be a guess.
+- **The wait is on the recorded portal's port**, polled every 200 ms with `Assert-PortalPortFree`. After 10 s it throws `port <n> is still held 10 s after Stop-Portal: <owner>` and does not start; Pester runs the same path with a 1 s bound against a listener the test holds.
+- **The stamps** are the old portal's `X-Portal-Boot` as `Get-PortalStatus` reads it (else the recorded one) and the new record's `Boot`. They can be equal (both the newest snap); the line is printed anyway, since a replacement happened.
+- **`-NoReplace`** goes straight to `Start-Portal`, so the message is 0.3.3's `A portal is already running at … Stop it with Stop-Portal first.`
+- **Report.** Portal's `.build.ps1` still has no Report task; the run report is written with Graph's `New-GraphRunReport -Repo C:\__Code\Portal`, as the run-report skill says for an agent's ad-hoc script.
+- **Version 0.3.4** in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated for the embedded spec.

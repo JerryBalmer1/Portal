@@ -78,9 +78,9 @@ BeforeAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.3.3 and needs PowerShell 7.4' {
+    It 'is version 0.3.4 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.3.3'
+        $m.ModuleVersion | Should -Be '0.3.4'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -218,10 +218,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.3.3, the seven Kinds, the seven edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.3.4, the seven Kinds, the seven edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.3\.3$'
+        $text | Should -Match '(?m)^version: 0\.3\.4$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -304,6 +304,60 @@ Describe 'Fixed port' {
     }
 }
 
+# Invoke-Build Up's start, Invoke-PortalUp, on the test port over its own artifacts (docs/design.md 32).
+Describe 'Up replaces a running portal' {
+    BeforeAll { $script:UpWork = Join-Path $TestDrive 'up' }
+    AfterEach { Stop-Portal -Artifacts $UpWork }
+    It 'Up stops the running portal, waits for the port and starts another, naming both boot stamps' {
+        $first = Start-Portal -Port 18200 -Artifacts $UpWork -Filesystem ''
+        $snap = New-PortalSnap -Url $first.Url -Note 'up: replace'
+        $p = InModuleScope Portal -Parameters @{ Work = $UpWork } { param($Work) Invoke-PortalUp -Port 18200 -Artifacts $Work -Filesystem '' }
+        $p.Replaced | Should -Be 'seed'
+        $p.Boot | Should -Be $snap.stamp
+        $p.ProcessId | Should -Not -Be $first.ProcessId
+        Get-Process -Id $first.ProcessId -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
+        (Get-PortalStatus -Artifacts $UpWork).ProcessId | Should -Be $p.ProcessId
+    }
+    It 'Up with nothing running starts one and replaces nothing' {
+        $p = InModuleScope Portal -Parameters @{ Work = $UpWork } { param($Work) Invoke-PortalUp -Port 18200 -Artifacts $Work -Filesystem '' }
+        $p.Replaced | Should -BeNullOrEmpty
+        (Get-PortalStatus -Artifacts $UpWork).Running | Should -BeTrue
+    }
+    It '-NoReplace keeps the throw and leaves the running portal alone' {
+        $first = Start-Portal -Port 18200 -Artifacts $UpWork -Filesystem ''
+        { InModuleScope Portal -Parameters @{ Work = $UpWork } { param($Work) Invoke-PortalUp -Port 18200 -Artifacts $Work -Filesystem '' -NoReplace } } |
+            Should -Throw '*already running*Stop-Portal first*'
+        Get-Process -Id $first.ProcessId -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+        (Get-PortalStatus -Artifacts $UpWork).ProcessId | Should -Be $first.ProcessId
+    }
+    It 'throws when the port is still held after the wait, and starts nothing' {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 18200)
+        $listener.Start()
+        try {
+            InModuleScope Portal {
+                Mock Get-PortalStatus { [pscustomobject]@{ Running = $true; Port = 18200; Boot = 'seed' } }
+                Mock Stop-Portal { }
+                Mock Start-Portal { throw 'Start-Portal must not run' }
+                $t = [Diagnostics.Stopwatch]::StartNew()
+                { Invoke-PortalUp -Port 18200 -Artifacts (Join-Path $TestDrive 'held') -FreeTimeoutSec 1 } |
+                    Should -Throw "*port 18200 is still held 1 s after Stop-Portal*in use by pwsh (process $PID)*"
+                $t.Elapsed.TotalSeconds | Should -BeLessThan 5
+                Should -Invoke Stop-Portal -Times 1 -Exactly
+                Should -Invoke Start-Portal -Times 0 -Exactly
+            }
+        }
+        finally { $listener.Stop() }
+    }
+    It 'waits 10 s by default and Invoke-Build Up passes -NoReplace and logs the replacement' {
+        InModuleScope Portal { (Get-Command Invoke-PortalUp).Parameters['FreeTimeoutSec'] } | Should -Not -BeNullOrEmpty
+        (Get-Content (Join-Path $Repo 'src' 'Portal' 'Private' 'Invoke-PortalUp.ps1') -Raw) | Should -Match '\[int\] \$FreeTimeoutSec = 10\b'
+        $build = Get-Content (Join-Path $Repo '.build.ps1') -Raw
+        $build | Should -Match '\[switch\] \$NoReplace'
+        $build | Should -Match 'Invoke-PortalUp'
+        $build | Should -Match '"replaced \$\(\$p\.Replaced\) with \$\(\$p\.Boot\)"'
+    }
+}
+
 Describe 'Live portal' {
     BeforeAll {
         $script:Work = Join-Path $TestDrive 'live'
@@ -319,7 +373,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.3.3'
+        $s.version | Should -Be '0.3.4'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
