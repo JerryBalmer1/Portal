@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3 — 2026-10-09
+
+0.3.3: git-guard hook; run-report 0.2.2; graph-node 0.2.1
+
+- `graph-node` skill recopied at 0.2.1. Graph's committed copy is byte for byte the copy at Graph.Node tag v0.2.1. `git-guard` 0.1.0 and `run-report` 0.2.2 already matched Graph's committed files. The `.claude/settings.json` git-guard entry was already in place (docs/design.md 31).
+- Graph.Node lift moved from tag v0.2.0 to v0.2.1. The lift covers `internal/graphnode/schemas`, `internal/graphnode/graph` and `cmd/graphnode` (now reports 0.2.1). It brings the `alert:` and `ledger:` id prefixes and their shape checks. The one registered edit still names Portal as the `ui:` owner.
+- Pester: `$GraphNodeTag` is now v0.2.1 and the registered edit matches upstream's new `ui:` row. graph-node is also checked against Graph's committed skill (version, full text, no extra files). "names the repo Portal" now skips the read-only graph-node copy. Go tests 30, Pester 55.
+
 ## 0.3.2 — 2026-10-09
 
 - `git-guard` skill (0.1.0) copied read-only from Graph's committed HEAD (0.2.8) and wired in a new `.claude/settings.json` as a PreToolUse hook on the Bash and PowerShell tools: an agent's commit, push, tag, `--amend`, `gh pr merge` and `gh release create` are refused (docs/design.md 30).

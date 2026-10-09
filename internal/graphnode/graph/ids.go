@@ -23,6 +23,8 @@ var idPrefixes = []IDPrefix{
 	{Prefix: "decision:", Owner: "Graph.RunReport", Shape: "decision:<n>, n a positive integer"},
 	{Prefix: "notrun:", Owner: "Graph.RunReport", Shape: "notrun:<n>, n a positive integer"},
 	{Prefix: "touched:", Owner: "Graph.RunReport", Shape: "touched:<path relative to the repo>, forward slashes"},
+	{Prefix: "alert:", Owner: "Claude.Agent.Alerts", Shape: "alert:<rule>:<seq>, or alert:<rule>:line-<n> for a ledger line without seq; rule matches ^[a-z][a-z0-9-]*$, seq and n positive integers"},
+	{Prefix: "ledger:", Owner: "Claude.Agent.Alerts", Shape: "ledger:<seq>, or ledger:line-<n> for a ledger line without seq; seq and n positive integers"},
 }
 
 // IDPrefixes returns the registered id prefixes, in registry order.
@@ -45,6 +47,8 @@ func PrefixOf(id string) (IDPrefix, bool) {
 var (
 	positiveInt = regexp.MustCompile(`^[1-9][0-9]*$`)
 	runRest     = regexp.MustCompile(`^[^:/\\]+:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$`)
+	ledgerRest  = regexp.MustCompile(`^(line-)?[1-9][0-9]*$`)
+	alertRest   = regexp.MustCompile(`^[a-z][a-z0-9-]*:(line-)?[1-9][0-9]*$`)
 )
 
 // ValidID checks that id has the shape registered for prefix ("fs" or "fs:").
@@ -80,6 +84,14 @@ func ValidID(prefix, id string) error {
 	case "run:":
 		if !runRest.MatchString(rest) {
 			return errors.New("must be run:<repo folder name>:<UTC stamp ending Z>")
+		}
+	case "alert:":
+		if !alertRest.MatchString(rest) {
+			return errors.New("must be alert:<rule>:<seq> or alert:<rule>:line-<n>")
+		}
+	case "ledger:":
+		if !ledgerRest.MatchString(rest) {
+			return errors.New("must be ledger:<seq> or ledger:line-<n>")
 		}
 	case "finding:", "decision:", "notrun:":
 		if !positiveInt.MatchString(rest) {

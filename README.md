@@ -7,7 +7,7 @@ The portal of the graph family: a blank page plus one API. Every panel on the pa
 Rows, bottom to top:
 
 ```
-Graph.Node           the shape: schemas, validator (lifted here at v0.2.0, internal/graphnode)
+Graph.Node           the shape: schemas, validator (lifted here at v0.2.1, internal/graphnode)
 emitters             write layers: Graph.Emitter.FileSystem, ...
 Portal               mounts layers read-only; its own screen is a graph/1 envelope
 Graph                orchestrates; calls the PowerShell wrappers here
@@ -24,15 +24,15 @@ Nothing edits below its own row.
 | `internal/gen/api/` | Generated from the spec: models, chi server interface, embedded spec. Read-only. |
 | `internal/server/` | The handlers; Go spec tests (every operation against the spec, route and client parity). |
 | `internal/store/` | Screen graph and its boot, validation, layers, snaps and approval, diff. |
-| `internal/graphnode/` | Graph.Node's schemas and `graph` package, lifted at tag v0.2.0 with `ui:` registered to Portal (docs/design.md 4). |
+| `internal/graphnode/` | Graph.Node's schemas and `graph` package, lifted at tag v0.2.1 with `ui:` registered to Portal (docs/design.md 4). |
 | `cmd/portal/` | The server: `portal [-port 8200] [-artifacts artifacts] [-mount name=path]... [-filesystem <dir or file>] [-no-seed]`, on 127.0.0.1; `-port 0` is refused; `PORTAL_SNAP=<stamp>` boots from that snap; `PORTAL_MODE=production` hides the Designer. |
 | `cmd/graphnode/` | Graph.Node's validator CLI, lifted: `graphnode validate <graph.json> [--ontology <ontology.yaml>]`, `validate-ontology <ontology.yaml>`, `prefixes`, `check-id <prefix> <id>`, `schema [name]`, `version`. |
 | `web/` | The page: `index.html`, `portal.js`, `client.js`, renderers `canvas.js`, `table.js`, `detail.js`, `designer.js` (with Approve; collapsible sections, each a State node), `base.css`, vendored Cytoscape. |
-| `ontology.yaml` | Module `Portal` 0.3.2: Kinds Container, Widget, Layout, Category, State, Theme, Ref; edges contains, laid-out-by, is-a, opens, displays, has-state, themed-by; findings absent, approved. |
+| `ontology.yaml` | Module `Portal` 0.3.3: Kinds Container, Widget, Layout, Category, State, Theme, Ref; edges contains, laid-out-by, is-a, opens, displays, has-state, themed-by; findings absent, approved. |
 | `src/Portal/` | PowerShell module: `Start-Portal`, `Stop-Portal`, `Get-PortalStatus`, `Get-PortalScreen`, `New-PortalSnap`, `Compare-PortalSnap`, `Mount-PortalLayer`. |
-| `tests/` | Pester (`Invoke-Tests.ps1`, `Portal.Tests.ps1`) and fixtures: `layers/filesystem/` (a FileSystem layer and its ontology), `invalid.graph.json` (Graph.Node's at v0.2.0). |
+| `tests/` | Pester (`Invoke-Tests.ps1`, `Portal.Tests.ps1`) and fixtures: `layers/filesystem/` (a FileSystem layer and its ontology), `invalid.graph.json` (Graph.Node's at v0.2.1). |
 | `docs/` | `design.md` (decisions, numbered), `manual-check-list.md`, `screenshots/portal.png`. |
-| `.claude/skills/` | `manual-check-list`, `ontology-doc`, `readme` (this repo's docs); `graph-node` (copied read-only from Graph.Node v0.2.0); `run-report` 0.2.2 and `git-guard` 0.1.0 (copied read-only from Graph's committed HEAD, 0.2.8). |
+| `.claude/skills/` | `manual-check-list`, `ontology-doc`, `readme` (this repo's docs); `graph-node` (0.2.1, copied read-only from Graph.Node v0.2.1); `run-report` 0.2.2 and `git-guard` 0.1.0 (copied read-only from Graph's committed HEAD, 0.2.8). |
 | `.claude/settings.json` | Wires `git-guard` as a PreToolUse hook on the Bash and PowerShell tools: an agent's `git commit`, `git push`, `git tag`, `--amend`, `gh pr merge` and `gh release create` are refused. |
 | `.env.example` | `PORTAL_PORT=8200`; copy to `.env` (gitignored) to move the portal. |
 
@@ -111,4 +111,4 @@ A refused write answers 422 with `problems`, each `{code, path, message, severit
 
 ## Status
 
-0.3.2: the `git-guard` hook wired in `.claude/settings.json`, `run-report` recopied at 0.2.2 (writes only to this repo's `artifacts/`). 0.3.1: Designer sections collapsible, each a State node (`ui:state:designer:<slug>`), Title Case headings and buttons, the Canvas fits its panel after load. Decisions and what was deferred: docs/design.md (entry 30 is 0.3.2's, 28 and 29 0.3.1's, 24 to 27 0.3.0's, 18 to 23 0.2.0's; 9, 14, 15, 16 and 22 name the next questions).
+0.3.3: `graph-node` recopied at 0.2.1 and the Graph.Node lift moved to tag v0.2.1 (`ui:` still registered to Portal). 0.3.2: the `git-guard` hook wired in `.claude/settings.json`, `run-report` recopied at 0.2.2 (writes only to this repo's `artifacts/`). 0.3.1: Designer sections collapsible, each a State node (`ui:state:designer:<slug>`), Title Case headings and buttons, the Canvas fits its panel after load. Decisions and what was deferred: docs/design.md (entry 31 is 0.3.3's, 30 0.3.2's, 28 and 29 0.3.1's, 24 to 27 0.3.0's, 18 to 23 0.2.0's; 9, 14, 15, 16 and 22 name the next questions).

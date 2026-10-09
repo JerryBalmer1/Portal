@@ -2,7 +2,7 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.3.2, id prefix `ui:` (registered to Portal in the lifted Graph.Node id registry), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.3.3, id prefix `ui:` (registered to Portal in the lifted Graph.Node id registry), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 

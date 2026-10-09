@@ -11,6 +11,8 @@ A node id is any non-empty string (node.schema.json). An id that starts with a r
 | `decision:` | Graph.RunReport | `decision:<n>`, n a positive integer |
 | `notrun:` | Graph.RunReport | `notrun:<n>`, n a positive integer |
 | `touched:` | Graph.RunReport | `touched:<path relative to the repo>`, forward slashes |
+| `alert:` | Claude.Agent.Alerts | `alert:<rule>:<seq>`, or `alert:<rule>:line-<n>` for a ledger line without seq; rule matches `^[a-z][a-z0-9-]*$`, seq and n positive integers |
+| `ledger:` | Claude.Agent.Alerts | `ledger:<seq>`, or `ledger:line-<n>` for a ledger line without seq; seq and n positive integers |
 
 ## `fs:` in full
 

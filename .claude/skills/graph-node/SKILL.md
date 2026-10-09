@@ -1,7 +1,7 @@
 ---
 name: graph-node
 description: How to produce, declare, validate and read graph/1 envelopes with GraphNode, the base graph shape shared by every graph module (emitters such as Graph.Emitter.FileSystem, Graph.Emitter.Network, Graph.Emitter.Terraform, Graph.Emitter.AzureDevOps; consumers such as GraphRenderer). Use any time this repo writes or reads a graph.json envelope or an ontology.yaml, builds nodes, edges or node ids, or reports GraphNode problem codes.
-version: 0.2.0
+version: 0.2.1
 ---
 
 # GraphNode for emitters and consumers
@@ -68,8 +68,10 @@ Some id prefixes are registered to a module; GraphNode's `schemas/ids.md` is the
 | Prefix | Owner | Shape |
 |---|---|---|
 | `fs:` | Graph.Emitter.FileSystem | `fs:` + path relative to the root, forward slashes; the root is `fs:.`; no trailing slash; case preserved |
-| `ui:` | GraphRenderer | reserved |
+| `ui:` | Graph.Portal | reserved |
 | `run:`, `finding:`, `decision:`, `notrun:`, `touched:` | Graph.RunReport | the run report's id rules |
+| `alert:` | Claude.Agent.Alerts | `alert:<rule>:<seq>` or `alert:<rule>:line-<n>`; rule `^[a-z][a-z0-9-]*$` |
+| `ledger:` | Claude.Agent.Alerts | `ledger:<seq>` or `ledger:line-<n>` |
 
 - If your module owns a prefix, every id with it must have the registered shape. Check with `Test-GraphId -Prefix fs -Id 'fs:src/main.go'` (one `[bool]` per id, pipeline input allowed; `-Verbose` says why one fails), `graph.ValidID("fs", id)` or `graphnode check-id fs <id>`.
 - To edge to a node another module owns (a Terraform resource to the `.tf` file it came from), use that module's prefix and shape, `fs:modules/net/main.tf`, so the edge meets the node when a merge brings the layers together. In your own envelope that endpoint is missing: both validators report the `dangling-edge` as a warning, not an error, when the missing id carries a registered prefix whose owner is not your envelope's `module`. A missing id with your own prefix, or no registered prefix, is an error.
@@ -81,7 +83,7 @@ Your repo ships one `ontology.yaml` that declares every Kind, edge Kind and find
 
 ```yaml
 module: Example
-version: 0.2.0
+version: 0.2.1
 kinds:
   VNet:
     description: A virtual network.
@@ -179,3 +181,4 @@ Any other Kind is yours and is declared in your `ontology.yaml`. Never add your 
 
 - 0.1.0: initial; stamps (`layer`, `stamp.*`, ActionRun `startedAt`, `finishedAt`) must be UTC ending `Z`, builders convert `[datetime]`, new code `stamp`; `display` on a node or edge is rejected (`schema`); pure `Test-Graph` checks the edge Kind pattern; a relative `envelope.ontology` path is relative to the envelope file's directory; `-Strict` errors for an unbuilt binary or an unsupported platform.
 - 0.2.0: problems carry `severity` (`error`, `warning`) and only errors fail; Kind `display` checked (`#rrggbb` colour, shape circle|square|diamond|hexagon, integer `size`), edge Kind `display` is `{color, style}`, new code `display`; id prefix registry (`schemas/ids.md`), `Get-GraphIdPrefix`, `Test-GraphId`, `graphnode prefixes` and `check-id`, `graph.IDPrefixes`, `ValidID`, `PrefixOf`, and a dangling edge to another module's prefix is a warning; `%` and `|` in edge id parts are percent-encoded, new code `edgeid`, `graph.ParseEdgeID`; action `inputs` as `[{name, type, required}]` and `returns: {type}`, ActionRun `result`, `Test-Graph -Ontology` and `graphnode validate --ontology` check ActionRuns, new code `action`, `graph.ValidateWithOntology`, `CheckActionRuns`, `HasErrors`. 0.1.0 shapes and `inputs` maps are warnings until 0.3.0.
+- 0.2.1: `ui:` is registered to Graph.Portal, not GraphRenderer; `alert:` and `ledger:` are registered to Claude.Agent.Alerts, with their shapes checked by `Test-GraphId`, `graph.ValidID` and `graphnode check-id` (`schemas/ids.md`, `Get-GraphIdPrefix`, `graph.IDPrefixes`, `graphnode prefixes`).

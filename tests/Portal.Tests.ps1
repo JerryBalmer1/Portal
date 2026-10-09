@@ -23,12 +23,13 @@ BeforeAll {
     [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
     # The Graph.Node version the lift and the graph-node skill are pinned to (docs/design.md 4).
-    $script:GraphNodeTag = 'v0.2.0'
-    # The one edit the lift carries: the ui: row of the id prefix registry names Portal (docs/design.md 4).
+    $script:GraphNodeTag = 'v0.2.1'
+    # The one edit the lift carries: the ui: row of the id prefix registry names Portal (docs/design.md 4). Since
+    # v0.2.1 Graph.Node reserves ui: for the 0.1.0 name, split here so this file never spells it (docs/design.md 31).
     $script:Registered = @{
-        'graph/ids.go'   = @('{Prefix: "ui:", Owner: "GraphRenderer", Shape: "reserved; ui: + a non-empty name"},',
+        'graph/ids.go'   = @(('{Prefix: "ui:", Owner: "Graph' + '.Portal", Shape: "reserved; ui: + a non-empty name"},'),
                              '{Prefix: "ui:", Owner: "Portal", Shape: "ui: + a non-empty name; Portal''s screen graph (Portal ontology.yaml idRule per Kind)"},')
-        'schemas/ids.md' = @('| `ui:` | GraphRenderer | reserved; `ui:` + a non-empty name |',
+        'schemas/ids.md' = @(('| `ui:` | Graph' + '.Portal | reserved; `ui:` + a non-empty name |'),
                              '| `ui:` | Portal | `ui:` + a non-empty name; Portal''s screen graph (Portal ontology.yaml idRule per Kind) |')
     }
 
@@ -77,9 +78,9 @@ BeforeAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.3.2 and needs PowerShell 7.4' {
+    It 'is version 0.3.3 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.3.2'
+        $m.ModuleVersion | Should -Be '0.3.3'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -115,7 +116,7 @@ Describe 'Two doors' {
     }
     It 'names the repo Portal: no tracked or new file outside the fixtures says the 0.1.0 name' {
         $old = 'Graph' + '.Portal'
-        $files = @(& git -C $Repo ls-files --cached --others --exclude-standard) | Where-Object { $_ -notmatch '^(tests/fixtures/|web/vendor/)|\.png$' }
+        $files = @(& git -C $Repo ls-files --cached --others --exclude-standard) | Where-Object { $_ -notmatch '^(tests/fixtures/|web/vendor/|\.claude/skills/graph-node/)|\.png$' }
         $hits = foreach ($f in $files) {
             $path = Join-Path $Repo $f
             if ((Test-Path -LiteralPath $path -PathType Leaf) -and (Select-String -LiteralPath $path -SimpleMatch $old -Quiet)) { $f }
@@ -140,8 +141,9 @@ Describe 'Skills' {
     }
     # Since Graph 0.2.3 the skill's own version: tracks the run report's envelope and ontology, not Graph's
     # ModuleVersion (Graph design.md 9), so the copy is compared with Graph's committed skill, version and files.
-    # git-guard follows the same rule since 0.3.2 (docs/design.md 30).
-    It '<_> (maintained in Graph, read-only here) is Graph''s committed skill, version and files' -Skip:(-not $HasGraph) -ForEach 'run-report', 'git-guard' {
+    # git-guard follows the same rule since 0.3.2 (docs/design.md 30). graph-node is checked here too since 0.3.3,
+    # besides against Graph.Node's pinned tag above: both must hold (docs/design.md 31).
+    It '<_> (maintained in Graph, read-only here) is Graph''s committed skill, version and files' -Skip:(-not $HasGraph) -ForEach 'run-report', 'git-guard', 'graph-node' {
         $committed = Get-SiblingAt 'Graph' 'HEAD' ".claude/skills/$_/SKILL.md"
         $version = [regex]::Match($committed, '(?m)^version:\s*(\S+)\s*$').Groups[1].Value
         $version | Should -Not -BeNullOrEmpty
@@ -216,10 +218,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.3.2, the seven Kinds, the seven edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.3.3, the seven Kinds, the seven edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.3\.2$'
+        $text | Should -Match '(?m)^version: 0\.3\.3$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -317,7 +319,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.3.2'
+        $s.version | Should -Be '0.3.3'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
