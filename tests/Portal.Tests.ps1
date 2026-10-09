@@ -77,9 +77,9 @@ BeforeAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.3.1 and needs PowerShell 7.4' {
+    It 'is version 0.3.2 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.3.1'
+        $m.ModuleVersion | Should -Be '0.3.2'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -125,8 +125,8 @@ Describe 'Two doors' {
 }
 
 Describe 'Skills' {
-    It 'has the five skills' {
-        foreach ($s in 'manual-check-list', 'ontology-doc', 'readme', 'graph-node', 'run-report') {
+    It 'has the six skills' {
+        foreach ($s in 'manual-check-list', 'ontology-doc', 'readme', 'graph-node', 'run-report', 'git-guard') {
             Join-Path $SkillRoot $s 'SKILL.md' | Should -Exist
         }
     }
@@ -140,13 +140,38 @@ Describe 'Skills' {
     }
     # Since Graph 0.2.3 the skill's own version: tracks the run report's envelope and ontology, not Graph's
     # ModuleVersion (Graph design.md 9), so the copy is compared with Graph's committed skill, version and files.
-    It 'run-report (maintained in Graph, read-only here) is Graph''s committed skill, version and files' -Skip:(-not $HasGraph) {
-        $committed = Get-SiblingAt 'Graph' 'HEAD' '.claude/skills/run-report/SKILL.md'
+    # git-guard follows the same rule since 0.3.2 (docs/design.md 30).
+    It '<_> (maintained in Graph, read-only here) is Graph''s committed skill, version and files' -Skip:(-not $HasGraph) -ForEach 'run-report', 'git-guard' {
+        $committed = Get-SiblingAt 'Graph' 'HEAD' ".claude/skills/$_/SKILL.md"
         $version = [regex]::Match($committed, '(?m)^version:\s*(\S+)\s*$').Groups[1].Value
-        Get-FrontVersion (Join-Path $SkillRoot 'run-report' 'SKILL.md') | Should -Be $version -Because 'recopy .claude/skills/run-report from Graph when its committed version: changes'
-        foreach ($f in @(& git -C (Join-Path $Code 'Graph') ls-tree -r --name-only HEAD .claude/skills/run-report)) {
+        $version | Should -Not -BeNullOrEmpty
+        Get-FrontVersion (Join-Path $SkillRoot $_ 'SKILL.md') | Should -Be $version -Because "recopy .claude/skills/$_ from Graph when its committed version: changes"
+        $files = @(& git -C (Join-Path $Code 'Graph') ls-tree -r --name-only HEAD ".claude/skills/$_")
+        $files.Count | Should -BeGreaterThan 0
+        foreach ($f in $files) {
             Get-Lf (Join-Path $Repo $f) | Should -BeExactly (Get-SiblingAt 'Graph' 'HEAD' $f) -Because $f
         }
+        @(Get-ChildItem -LiteralPath (Join-Path $SkillRoot $_) -Recurse -File).Count | Should -Be $files.Count -Because "the copy holds only Graph's committed files"
+    }
+    It '.claude/settings.json wires the git-guard hook for Bash and PowerShell' {
+        $settings = Get-Content -LiteralPath (Join-Path $Repo '.claude' 'settings.json') -Raw | ConvertFrom-Json
+        $fragment = Get-Content -LiteralPath (Join-Path $SkillRoot 'git-guard' 'settings.fragment.json') -Raw | ConvertFrom-Json
+        $want = $fragment.hooks.PreToolUse[0]
+        $entry = @($settings.hooks.PreToolUse | Where-Object { $_.matcher -eq $want.matcher -and $_.hooks.command -contains $want.hooks[0].command })
+        $entry.Count | Should -Be 1
+    }
+    It 'git-guard hook exits <Code> for <Command>' -ForEach @(
+        @{ Command = 'git status'; Code = 0 }
+        @{ Command = 'git add -A'; Code = 0 }
+        @{ Command = 'git commit -m x'; Code = 2 }
+        @{ Command = 'git push'; Code = 2 }
+        @{ Command = 'git tag v1'; Code = 2 }
+        @{ Command = 'gh pr merge 1'; Code = 2 }
+    ) {
+        $json = @{ tool_name = 'Bash'; tool_input = @{ command = $Command } } | ConvertTo-Json -Compress
+        $err = $json | & pwsh -NoProfile -File (Join-Path $SkillRoot 'git-guard' 'hook.ps1') 2>&1
+        $LASTEXITCODE | Should -Be $Code
+        if ($Code -eq 2) { ($err -join ' ') | Should -Match '^git-guard:' }
     }
     It 'run-report reference ontology passes graphnode validate-ontology' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $SkillRoot 'run-report' 'reference' 'ontology.yaml')
@@ -191,10 +216,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.3.1, the seven Kinds, the seven edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.3.2, the seven Kinds, the seven edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.3\.1$'
+        $text | Should -Match '(?m)^version: 0\.3\.2$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -292,7 +317,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.3.1'
+        $s.version | Should -Be '0.3.2'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'

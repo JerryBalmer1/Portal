@@ -1,5 +1,5 @@
 module: Portal
-version: 0.3.1
+version: 0.3.2
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.

@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.3.1 on 2026-10-09, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: items 0.2, 1.1, 1.4, 2.1 were run for 0.3.1; 0.1, 1.2, 1.3, 1.5, 1.6, 3.1, 3.2, 3.3 were verified for 0.3.0 and not re-run. Item 2.1 was checked by a headless capture (Invoke-Build Screenshot), not by a person at a browser. Items 2.2, 2.3 and 2.4 were not run: they need a person at a browser. 2.4's seeded look is pinned by Pester's headless `--dump-dom` check, but no one clicked a section toggle.
+Verified for: 0.3.2 on 2026-10-09, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 was run for 0.3.2; 0.3 was not run by hand (an agent's shell cannot quote the denied commands) but Pester feeds the hook six commands and checks the exit codes; 1.1, 1.4, 2.1 were run for 0.3.1 and 0.1, 1.2, 1.3, 1.5, 1.6, 3.1, 3.2, 3.3 for 0.3.0, not re-run (0.3.2 changed no code they exercise). Item 2.1 was checked by a headless capture (Invoke-Build Screenshot), not by a person at a browser. Items 2.2, 2.3 and 2.4 were not run: they need a person at a browser. 2.4's seeded look is pinned by Pester's headless `--dump-dom` check, but no one clicked a section toggle.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -18,7 +18,15 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `internal/server` and `internal/store` (30 tests); Smoke prints `smoke: seed 18 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"ratio":<r>}` with `<g>` above half of `<p>` (662 of 903 here), and `artifacts/smoke-report.json` has `checks.menu.restart.topBar` `ui:menu:graph`, `ui:menu:smoke`; Pester ends `Tests Passed: 46, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
+Expect: go test ends `ok` for `internal/server` and `internal/store` (30 tests); Smoke prints `smoke: seed 18 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"ratio":<r>}` with `<g>` above half of `<p>` (662 of 903 here), and `artifacts/smoke-report.json` has `checks.menu.restart.topBar` `ui:menu:graph`, `ui:menu:smoke`; Pester ends `Tests Passed: 54, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
+
+### 0.3 git-guard hook
+Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
+```powershell
+'{"tool_name":"Bash","tool_input":{"command":"git status"}}' | pwsh -NoProfile -File .claude/skills/git-guard/hook.ps1; "exit $LASTEXITCODE"
+'{"tool_name":"Bash","tool_input":{"command":"echo hi && git push"}}' | pwsh -NoProfile -File .claude/skills/git-guard/hook.ps1; "exit $LASTEXITCODE"
+```
+Expect: `exit 0`, then `git-guard: agents edit and stage only; commits are run by Jerry from a separate shell` and `exit 2`.
 
 ## 1. API
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 — 2026-10-09
+
+- `git-guard` skill (0.1.0) copied read-only from Graph's committed HEAD (0.2.8) and wired in a new `.claude/settings.json` as a PreToolUse hook on the Bash and PowerShell tools: an agent's commit, push, tag, `--amend`, `gh pr merge` and `gh release create` are refused (docs/design.md 30).
+- `run-report` skill recopied at Graph's committed 0.2.2: the report is written only to this repo's `artifacts/run-report.json`, never to `C:\__Code\Graph\artifacts`. Portal's `.build.ps1` has no Report task and no doc said otherwise, so nothing else needed correcting.
+- Pester: both copied skills match Graph's committed copy (`version:` line and full text of every file, no extra files); `.claude/settings.json` holds the git-guard entry once; the hook exits 0, 0, 2, 2, 2, 2 for status, add, commit, push, tag and `gh pr merge`. Go tests 30, Pester 54.
+
 ## 0.3.1 — 2026-10-09
 
 - Designer sections collapsible: Approve, Kinds (ontology.yaml), Categories, Add Panel, Add Container, Add Category and Add Menu Entry each have a head row (heading left, the panels' `collapse`/`expand` button right) and a body that collapsing hides. Open or closed is a State node per section, `ui:state:designer:<slug>`, joined from `ui:designer` by `has-state`, so it is in the graph and in snaps. The seed has all seven, Approve and Categories open, the rest collapsed (18 nodes, 15 edges). A snap without them boots with them added at those defaults. A toggle writes the State and updates the section in place without redrawing the page. The page reads a node's own State by id, since the Designer now holds eight (docs/design.md 28).
