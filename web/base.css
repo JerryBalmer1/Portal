@@ -251,3 +251,10 @@ body { display: flex; flex-direction: column; }
 .pt-widget > .gr-box-body > .pt-host { position: absolute; inset: 0; }
 .pt-container > .gr-box-body > .pt-host { position: relative; }
 .pt-container:not(.pt-root) > .gr-box-body { overflow: auto; }
+/* The top bar's menu sits after the title; the stats keep the right end. */
+.gr-bar .gr-title { margin-right: 0; }
+.pt-menu { display: flex; flex-wrap: wrap; gap: 6px; margin-right: auto; }
+.pt-designer .pt-depth { color: var(--gr-text-muted); }
+@keyframes pt-opened { from { box-shadow: 0 0 0 2px var(--gr-accent), var(--gr-glow); } to { box-shadow: var(--gr-glow); } }
+.pt-opened { animation: pt-opened 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .pt-opened { animation: none; outline: 2px solid var(--gr-accent); } }

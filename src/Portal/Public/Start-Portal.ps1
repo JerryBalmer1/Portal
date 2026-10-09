@@ -4,7 +4,10 @@ function Start-Portal {
         Starts the portal binary, waits until GET /api/screen answers, records it in <Artifacts>/portal.json and
         returns the record (ProcessId, Port, Url, Artifacts, Mode, Boot, LogPath).
     .DESCRIPTION
-        The binary is build/win-x64/portal.exe at the repo root (Invoke-Build Build). The screen boots from the
+        The binary is build/win-x64/portal.exe at the repo root (Invoke-Build Build). The port is fixed: -Port,
+        else PORTAL_PORT from the repo's .env, else the PORTAL_PORT environment variable, else 8200. 0 is refused,
+        and a busy port throws naming the port and the process that owns it; another port is never picked. The
+        screen boots from the
         newest snap under <Artifacts>/snaps, or from the one -Snap names (PORTAL_SNAP), else from the dev seed
         (empty with -NoSeed); Boot in the record says which, as GET /api/screen's X-Portal-Boot header does.
         -Filesystem is mounted as layer "filesystem" when it exists (a directory's newest *.graph.json); -Mount
@@ -13,11 +16,11 @@ function Start-Portal {
     .EXAMPLE
         Start-Portal
     .EXAMPLE
-        Start-Portal -Port 0 -Artifacts $env:TEMP\portal -Snap 2026-10-09T01-02-03.456Z -Production
+        Start-Portal -Port 18200 -Artifacts $env:TEMP\portal -Snap 2026-10-09T01-02-03.456Z -Production
     #>
     [CmdletBinding()]
     param(
-        [ValidateRange(0, 65535)] [int] $Port = 8080,
+        [int] $Port,
         [string] $Artifacts = $script:ArtifactsRoot,
         [AllowEmptyString()] [string] $Filesystem = $script:DefaultFilesystem,
         [hashtable] $Mount = @{},
@@ -31,14 +34,10 @@ function Start-Portal {
     if ($running -and (Get-Process -Id $running.ProcessId -ErrorAction SilentlyContinue)) {
         throw "A portal is already running at $($running.Url) (process $($running.ProcessId)). Stop it with Stop-Portal first."
     }
+    $Port = Get-PortalPort -Port ($PSBoundParameters.ContainsKey('Port') ? $Port : $null)
     $exe = Get-PortalBinaryPath
+    Assert-PortalPortFree -Port $Port
     $null = New-Item -ItemType Directory -Force -Path $Artifacts
-    if ($Port -eq 0) {
-        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
-        $listener.Start()
-        $Port = $listener.LocalEndpoint.Port
-        $listener.Stop()
-    }
     $all = @('-port', $Port, '-artifacts', $Artifacts, '-filesystem', $Filesystem)
     foreach ($k in $Mount.Keys) { $all += @('-mount', "$k=$($Mount[$k])") }
     if ($NoSeed) { $all += '-no-seed' }

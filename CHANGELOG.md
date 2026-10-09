@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 — 2026-10-09
+
+- Fixed port 8200: `Start-Portal` and `Invoke-Build Up` take `-Port`, else `PORTAL_PORT` from `.env` (`.env.example` at the root; `.env` gitignored), else the environment, else 8200. Port 0 is refused by the wrappers and by the binary (`-port` now defaults to 8200); a busy port fails naming the port and its owning process, and another is never picked. Tests, Smoke and Screenshot use 18200. New `Invoke-Build Status` and `Get-PortalStatus`: port, URL and boot stamp (docs/design.md 24).
+- Menu as nodes: a seeded `Menu` Category; a menu entry is a Container that `is-a` Menu and `opens` the Container or Widget it shows (new edge Kind `opens`). The seed's one entry, "Graph" (`ui:menu:graph`), opens the filesystem Canvas `ui:canvas`. The top bar draws the entries from `GET /api/screen`, knowing only the name Menu; choosing one expands and scrolls to its target. The Designer's "Add menu entry" form is one node and two edges through the existing POSTs, shows in the top bar without a reload, and Approve snaps it (docs/design.md 25).
+- Designer lists refresh after every add from `GET /api/screen`: Categories lists every Category as a tree by refines depth, the category and refines dropdowns follow it, and the panel list offers only Categories that reach a renderer. Pinned by a Go test: a Category added refining Canvas is on the screen with its `is-a` edge (docs/design.md 26).
+- `run-report` skill recopied from Graph's committed 0.2.3 (skill `version: 0.2.1`); Pester now compares the copy's version and files with Graph's committed skill, not Graph's ModuleVersion (docs/design.md 27).
+- Smoke: seed, add a menu entry, approve, Theme opacity, approve, restart, and the entry is in the restarted top bar (headless Chrome `--dump-dom`). design.md 24–27.
+
 ## 0.2.0 — 2026-10-09
 
 - Renamed to `Portal` everywhere: Go module `github.com/JerryBalmer1/Portal`, envelope and ontology `module`, spec and page title, docs, skills. PowerShell module `src/Portal` with `Start-Portal`, `Stop-Portal`, `Get-PortalScreen`, `New-PortalSnap`, `Compare-PortalSnap`, `Mount-PortalLayer`; none clashes with the Graph module (docs/design.md 18).

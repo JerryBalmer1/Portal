@@ -36,7 +36,7 @@ Sections are fixed: 0 the build; 1 the API by curl-like calls; 2 the page in a b
 
 ## Item format
 
-A fenced `powershell` block, then `Expect:` in one or two sentences naming what appears: status codes, problem codes, counts, a value, the Invoke-Build summary line. Every block runs from the repo root, starts with `Import-Module .\src\Portal\Portal.psd1 -Force` when it uses the module, starts its own portal on `-Port 0` under `$env:TEMP` and stops it in a `finally`, and depends on no earlier item except 0.2 for the binaries. Never `pwsh -Command { }`.
+A fenced `powershell` block, then `Expect:` in one or two sentences naming what appears: status codes, problem codes, counts, a value, the Invoke-Build summary line. Every block runs from the repo root, starts with `Import-Module .\src\Portal\Portal.psd1 -Force` when it uses the module, starts its own portal on `-Port 18200` (the test port; 0 is refused since 0.3.0) under `$env:TEMP` and stops it in a `finally`, one portal at a time, and depends on no earlier item except 0.2 for the binaries. Never `pwsh -Command { }`.
 
 ## Procedure
 

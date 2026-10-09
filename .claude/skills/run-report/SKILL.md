@@ -1,12 +1,12 @@
 ---
 name: run-report
 description: Write artifacts/run-report.json, the machine record of an agent task or a build in any repo of the graph family (Graph, Graph.Node, Graph.Emitter.FileSystem, Graph.Emitter.Network, Graph.Emitter.Terraform, Graph.Emitter.AzureDevOps, Graph.Emitter.Git.Repository, Graph.Emitter.Agent, Graph.Emitter.Reference, GraphRenderer). Use at the end of every agent task, after the prose report, and whenever Invoke-Build Report runs. The report is a Graph.Node envelope (module Graph.RunReport) with one node per bullet of the prose report.
-version: 0.2.2
+version: 0.2.1
 ---
 
 # Run report
 
-Every task in a repo of the graph family ends with two reports that say the same thing: the prose report in the conversation, and `run-report.json`, a Graph.Node envelope the portal can draw and Jerry can paste into the next conversation. This skill is maintained in Graph (`C:\__Code\Graph\.claude\skills\run-report`) and copied read-only into every sibling, the same rule as `graph-node`. Never edit a copy; recopy it when Graph's version changes.
+Every task in a repo of the graph family ends with two reports that say the same thing: the prose report in the conversation, and `run-report.json`, a Graph.Node envelope the portal can draw and Jerry can paste into the next conversation. This skill is maintained in Graph (`C:\__Code\Graph\.claude\skills\run-report`) and copied read-only into every sibling, the same rule as `graph-node`. Never edit a copy; recopy it when the `version:` above changes. That `version:` is the one canonical version of this skill: it tracks the run report's envelope and `reference/ontology.yaml`, not Graph's module version, and bumps only when one of them changes (Graph design.md 9). Graph's Pester compares every sibling's copy against it.
 
 ## When it fires
 
@@ -73,7 +73,7 @@ He pastes the file into the next conversation, so the record is the same on both
 
 ## Changes
 
-- 0.2.2: Graph's portal function is `Start-GraphRenderer` (was `Start-GraphPortal`, a deprecated alias until 0.3.0). Kinds, edges and `New-GraphRunReport` unchanged; every sibling recopies it.
+- Graph 0.2.3: the version no longer follows Graph's module version; it bumps only when the envelope or the ontology changes (Graph design.md 9). Graph 0.2.2 had stamped this skill 0.2.2 for a wording change (`Start-GraphRenderer` for `Start-GraphPortal`); that is reverted to 0.2.1, the wording kept. Siblings need not recopy.
 - 0.2.1: `reference/ontology.yaml` uses Graph.Node 0.2.0's four shapes (Run and Touched `square`, Finding `circle`, Decision `diamond`, NotRun `hexagon`) and `graphnode validate-ontology` returns `[]` on it, no warnings. Kinds, properties, edges and `New-GraphRunReport` unchanged; every sibling recopies it.
 - 0.2.0: the family list names the emitters by their new repo names (Graph.Emitter.Network, Graph.Emitter.Terraform, Graph.Emitter.AzureDevOps) and adds Graph.Emitter.Git.Repository, Graph.Emitter.Agent and Graph.Emitter.Reference. Kinds, edges and `New-GraphRunReport` unchanged.
 - 0.1.0: initial. Kinds Run, Finding, Decision, NotRun, Touched; edges `reports`, `touched`; `New-GraphRunReport`; written by Graph's default chain, `Down` and `Report`.

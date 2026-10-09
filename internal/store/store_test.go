@@ -26,7 +26,7 @@ func TestOntologyValidates(t *testing.T) {
 			t.Errorf("Kind %s missing", k)
 		}
 	}
-	for _, e := range []string{"contains", "laid-out-by", "is-a", "displays", "has-state", "themed-by"} {
+	for _, e := range []string{"contains", "laid-out-by", "is-a", "displays", "has-state", "themed-by", "opens"} {
 		if _, ok := o.EdgeKinds[e]; !ok {
 			t.Errorf("edge Kind %s missing", e)
 		}
@@ -108,7 +108,8 @@ func TestSeedValidatesAndBootsFromSeed(t *testing.T) {
 		t.Fatalf("seed: %v", ps)
 	}
 	want := map[string]string{Root: "Container", "ui:layout:root": "Layout", SeedTheme: "Theme", "ui:canvas": "Widget", "ui:designer": "Container",
-		"ui:category:Canvas": "Category", "ui:category:Table": "Category", "ui:category:Detail": "Category", "ui:category:Designer": "Category"}
+		"ui:category:Canvas": "Category", "ui:category:Table": "Category", "ui:category:Detail": "Category", "ui:category:Designer": "Category",
+		"ui:category:Menu": "Category", SeedMenuEntry: "Container"}
 	idx := env.NodeIndex()
 	for id, kind := range want {
 		if i, ok := idx[id]; !ok || env.Nodes[i].Kind != kind {
@@ -265,4 +266,47 @@ func TestDanglingEdgeToAnotherOwnerIsStillRefused(t *testing.T) {
 		}
 	}
 	t.Errorf("no dangling-edge error: %v", inv.Problems)
+}
+
+// The seed's menu is nodes and edges only: one Container that is-a Menu and
+// opens the Canvas, contained by nothing, so the screen tree never draws it.
+func TestSeedMenuEntryIsAContainerThatIsAMenuAndOpensTheCanvas(t *testing.T) {
+	p, err := New(Options{Artifacts: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, _ := p.Screen()
+	menu := categoryByName(env, MenuCategory)
+	if menu == "" {
+		t.Fatal("seed has no Menu Category")
+	}
+	var entries []string
+	opens := map[string]string{}
+	for _, e := range env.Edges {
+		switch {
+		case e.Kind == "is-a" && e.To == menu:
+			entries = append(entries, e.From)
+		case e.Kind == "opens":
+			opens[e.From] = e.To
+		case e.Kind == "contains" && e.To == SeedMenuEntry:
+			t.Errorf("menu entry is contained by %s", e.From)
+		}
+	}
+	if !slices.Equal(entries, []string{SeedMenuEntry}) {
+		t.Fatalf("menu entries %v, want [%s]", entries, SeedMenuEntry)
+	}
+	n := env.Nodes[env.NodeIndex()[SeedMenuEntry]]
+	if n.Kind != "Container" || n.Name != "Graph" {
+		t.Errorf("menu entry is %s %q, want Container \"Graph\"", n.Kind, n.Name)
+	}
+	if opens[SeedMenuEntry] != "ui:canvas" {
+		t.Errorf("menu entry opens %q, want ui:canvas", opens[SeedMenuEntry])
+	}
+	// opens leaves only a Container and ends at a Container or a Widget.
+	if _, err := p.AddEdge([]byte(`{"kind":"opens","from":"ui:canvas","to":"ui:root"}`)); err == nil {
+		t.Error("opens from a Widget accepted")
+	}
+	if _, err := p.AddEdge([]byte(`{"kind":"opens","from":"ui:menu:graph","to":"ui:theme:default"}`)); err == nil {
+		t.Error("opens to a Theme accepted")
+	}
 }

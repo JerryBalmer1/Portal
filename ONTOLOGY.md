@@ -2,7 +2,7 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.2.0, id prefix `ui:` (registered to Portal in the lifted Graph.Node id registry), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.3.0, id prefix `ui:` (registered to Portal in the lifted Graph.Node id registry), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 
@@ -11,9 +11,10 @@ Module `Portal`, version 0.2.0, id prefix `ui:` (registered to Portal in the lif
 | Screen graph | The envelope `GET /api/screen` returns: module `Portal`, `root` `ui:root`, every panel a node. Held in memory; it reaches disk only as a snap. |
 | Boot | What a start loads the screen from: the snap `PORTAL_SNAP` names, else the newest snap, else the dev seed (`empty` with `-no-seed`). Reported in the `X-Portal-Boot` header (docs/design.md 20). |
 | Container | Kind. A box holding Containers and Widgets by `contains`; arranged by its Layout, drawn with its Theme. Properties `parent`, `order`, `visible`, `bounds`. The root is the Container no `contains` points at. |
+| Menu entry | A Container that `is-a` the Category named Menu and `opens` the Container or Widget it shows. Drawn in the top bar, by `order` then id, never on the screen; contained by nothing. The seed's is `ui:menu:graph`, "Graph", opening `ui:canvas` (docs/design.md 25). |
 | Widget | Kind. A panel; its Category (`is-a`) decides how it draws, `source` says what. Properties `type`, `source`, `bounds`, `order`, `visible`. |
 | Layout | Kind. `mode` grid, flow or canvas; `columns` for grid (12 when absent). Joined by `laid-out-by`. |
-| Category | Graph.Node base Kind used as a panel type. `name`, `properties.label` (required by Graph.Node), `description`. The base Categories Canvas, Table, Detail and Designer have renderers; any other draws with the base it `is-a`. |
+| Category | Graph.Node base Kind used as a panel type. `name`, `properties.label` (required by Graph.Node), `description`. The base Categories Canvas, Table, Detail and Designer have renderers; any other draws with the base it `is-a`. The seeded Category Menu has no renderer: its Containers are the top bar's entries. |
 | State | Kind. Per-node display state: `collapsed`, `selected`, `scroll`. Id `ui:state:<id without ui:>`, joined by `has-state`. A display Kind. |
 | Theme | Kind. How a Container and what it holds look: `color` (accent, `#rrggbb`), `opacity` (glass surface, 0 to 1), `font` (CSS font-family). Joined by `themed-by`; a Container without one takes its parent's. A display Kind, and a node like any other, so a theme change is a changed node in a diff (docs/design.md 22). |
 | Display Kind | State or Theme: the only Kinds whose `properties` may hold display keys (docs/design.md 5). |
@@ -30,7 +31,7 @@ Module `Portal`, version 0.2.0, id prefix `ui:` (registered to Portal in the lif
 
 | Kind | Properties (required in bold) | Edges |
 |---|---|---|
-| Container | `parent`, `bounds`, `order`, `visible` | `contains` → Container, Widget; `laid-out-by` → Layout; `themed-by` → Theme; `is-a` → Category; `has-state` → State |
+| Container | `parent`, `bounds`, `order`, `visible` | `contains` → Container, Widget; `laid-out-by` → Layout; `themed-by` → Theme; `is-a` → Category; `opens` → Container, Widget; `has-state` → State |
 | Widget | `type`, `source`, `bounds`, `order`, `visible` | `is-a` → Category; `displays` → Ref; `has-state` → State |
 | Layout | **`mode`**, `columns` | `has-state` → State |
 | Category | **`label`**, `description` | `is-a` → Category; `has-state` → State |
@@ -52,7 +53,7 @@ Graph.Node's: `schema`, `duplicate-node`, `duplicate-edge`, `dangling-edge`, `ed
 | `property-type` | A property of the wrong type, a required one missing, `mode` not grid/flow/canvas, `bounds` or `scroll` malformed, a Theme `color` not `#rrggbb`, `opacity` outside 0 to 1, a blank `font`. Also a Category with no `properties` at all, which Graph.Node 0.2.0 lets through (docs/design.md 10). |
 | `display` | A display property (`display`, `color`, `shape`, `icon`, `collapsed`, `selected`, `scroll`, `opacity`, `font`) on a node that is not a display Kind, or on an edge. |
 | `unknown-edge-kind` | The edge Kind is not in `ontology.yaml`. |
-| `edge-endpoints` | The edge's ends are not of the Kinds its edge Kind allows. |
+| `edge-endpoints` | The edge's ends are not of the Kinds its edge Kind allows (an `opens` to a Layout, say). |
 | `unknown-category` | An `is-a` to something that is not a Category on screen, or a Widget `type` naming no Category. |
 | `unknown-ref` | A Ref names a layer that is not mounted or a node it does not hold. |
 | `unknown-field` | A top-level node key other than id, kind, name, properties, source, findings, stamp. |

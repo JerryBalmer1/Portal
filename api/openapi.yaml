@@ -1,11 +1,11 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.2.0
+  version: 0.3.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes and Refs joined by contains, laid-out-by, is-a,
-    displays, has-state and themed-by edges (ontology.yaml, module Portal). Data layers are mounted
+    displays, has-state, themed-by and opens edges (ontology.yaml, module Portal). Data layers are mounted
     read-only and queried; nothing here ever writes to a data layer. Source of truth for the API
     surface: the Go server (cmd/portal) is generated from this file by oapi-codegen v2.8.0 and the
     JS client in web/client.js is checked against it by the Go spec tests.

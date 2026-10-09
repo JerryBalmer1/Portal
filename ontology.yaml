@@ -1,8 +1,8 @@
 module: Portal
-version: 0.2.0
+version: 0.3.0
 kinds:
   Container:
-    description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at.
+    description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
     idRule: "ui:<name>; the dev seed's root is ui:root"
     properties:
       - { name: parent, type: string, description: "Id of the Container that contains this one; informational, the contains edge decides." }
@@ -63,6 +63,10 @@ edgeKinds:
     description: A Widget or Container is of a Category; a Category may refine another.
     from: [Widget, Container, Category]
     to: [Category]
+  opens:
+    description: A menu entry (a Container that is-a Menu) shows a Container or a Widget on screen when chosen in the top bar.
+    from: [Container]
+    to: [Container, Widget]
   displays:
     description: A Widget shows one node of a mounted data layer, through its Ref.
     from: [Widget]

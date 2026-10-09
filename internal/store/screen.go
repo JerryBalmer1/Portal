@@ -26,6 +26,14 @@ const (
 // DesignerCategory is the name of the Category production mode hides.
 const DesignerCategory = "Designer"
 
+// MenuCategory is the name of the Category whose Containers are the top
+// bar's entries; each opens the Container or Widget it shows
+// (docs/design.md 25).
+const MenuCategory = "Menu"
+
+// SeedMenuEntry is the dev seed's one menu entry, "Graph", opening ui:canvas.
+const SeedMenuEntry = "ui:menu:graph"
+
 var (
 	// ErrNotFound: no such node, layer or snap.
 	ErrNotFound = errors.New("not found")
@@ -169,8 +177,9 @@ func (p *Portal) stamp() string {
 const StampLayout = "2006-01-02T15:04:05.000Z"
 
 // seed builds the dev screen: one root Container, its grid Layout and Theme,
-// the four Categories, one Canvas Widget on the filesystem layer and the
-// Designer panel (docs/design.md 7). The Theme's values are base.css's own,
+// the four base Categories and Menu, one Canvas Widget on the filesystem
+// layer, the Designer panel and one menu entry opening the Canvas
+// (docs/design.md 7 and 25). The Theme's values are base.css's own,
 // so a seeded page looks as it did before Themes.
 func (p *Portal) seed() error {
 	env := p.screen
@@ -186,11 +195,13 @@ func (p *Portal) seed() error {
 		cat("Canvas", "Draws a mounted layer as a graph (GraphRenderer's canvas widget). Colour and shape come from the layer ontology's Kind display block; grey when there is none."),
 		cat("Table", "Lists the nodes of a mounted layer query: id, Kind, name."),
 		cat("Detail", "Shows one data node: the node selected on a Canvas, else the Ref its displays edge points at."),
-		cat(DesignerCategory, "Lists the ontology Kinds and adds Containers, Widgets and Categories through the API. Hidden when PORTAL_MODE=production."),
+		cat(DesignerCategory, "Lists the ontology Kinds and adds Containers, Widgets, Categories and menu entries through the API. Hidden when PORTAL_MODE=production."),
+		cat(MenuCategory, "The top bar's entries: every Container that is-a Menu, in order, each showing the Container or Widget its opens edge points at."),
 		graph.Node{ID: "ui:canvas", Kind: "Widget", Name: "filesystem", Properties: map[string]any{
 			"type": "Canvas", "source": "filesystem", "bounds": map[string]any{"x": 0, "y": 0, "w": 8, "h": 9}}},
 		graph.Node{ID: "ui:designer", Kind: "Container", Name: "designer", Properties: map[string]any{
 			"order": 1, "parent": Root, "bounds": map[string]any{"x": 8, "y": 0, "w": 4, "h": 9}}},
+		graph.Node{ID: SeedMenuEntry, Kind: "Container", Name: "Graph", Properties: map[string]any{"order": 0}},
 	)
 	env.Edges = append(env.Edges,
 		graph.NewEdge(Root, "ui:layout:root", "laid-out-by"),
@@ -199,6 +210,8 @@ func (p *Portal) seed() error {
 		graph.NewEdge("ui:canvas", "ui:category:Canvas", "is-a"),
 		graph.NewEdge(Root, "ui:designer", "contains"),
 		graph.NewEdge("ui:designer", "ui:category:"+DesignerCategory, "is-a"),
+		graph.NewEdge(SeedMenuEntry, "ui:category:"+MenuCategory, "is-a"),
+		graph.NewEdge(SeedMenuEntry, "ui:canvas", "opens"),
 	)
 	all := make([]string, 0, len(env.Nodes))
 	for _, n := range env.Nodes {

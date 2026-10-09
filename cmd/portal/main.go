@@ -1,12 +1,13 @@
 // Command portal serves the portal: the one API (api/openapi.yaml) and the
 // page that draws the screen graph.
 //
-//	portal [-port 8080] [-artifacts artifacts] [-mount name=path]...
+//	portal [-port 8200] [-artifacts artifacts] [-mount name=path]...
 //	       [-filesystem <dir|file>] [-no-seed]
 //
 // The screen boots from the newest snap under <artifacts>/snaps, or from the
 // one PORTAL_SNAP=<stamp> names, else from the dev seed. PORTAL_MODE=production
-// hides every node that is-a Designer.
+// hides every node that is-a Designer. The port is fixed: 0 is refused, and a
+// busy port stops the binary rather than moving it (docs/design.md 24).
 package main
 
 import (
@@ -29,19 +30,34 @@ const defaultFilesystem = `C:\__Code\Graph.Emitter.FileSystem\artifacts\layers`
 // host is the only interface the portal listens on.
 const host = "127.0.0.1"
 
+// DefaultPort is the portal's fixed port; .env.example's PORTAL_PORT.
+const DefaultPort = 8200
+
+// checkPort refuses 0 (a port picked at random is not fixed) and anything
+// outside 1-65535.
+func checkPort(port int) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("-port %d: the portal serves on one fixed port, 1-65535 (default %d); 0 is refused", port, DefaultPort)
+	}
+	return nil
+}
+
 type mounts []string
 
 func (m *mounts) String() string     { return strings.Join(*m, ",") }
 func (m *mounts) Set(s string) error { *m = append(*m, s); return nil }
 
 func main() {
-	port := flag.Int("port", 8080, "TCP port on 127.0.0.1; 0 picks a free one")
+	port := flag.Int("port", DefaultPort, "TCP port on 127.0.0.1, 1-65535; never picked for you")
 	artifacts := flag.String("artifacts", "artifacts", "directory for snaps/; the screen boots from the newest")
 	filesystem := flag.String("filesystem", defaultFilesystem, "mounted as layer \"filesystem\" at startup when present (a directory's newest *.graph.json); empty skips it")
 	noSeed := flag.Bool("no-seed", false, "with no snap to boot from, start empty instead of seeding the dev screen")
 	var ms mounts
 	flag.Var(&ms, "mount", "name=path of a layer to mount at startup; repeatable")
 	flag.Parse()
+	if err := checkPort(*port); err != nil {
+		log.Fatalf("portal: %v", err)
+	}
 
 	mode := os.Getenv("PORTAL_MODE")
 	if mode != "" && mode != "production" && mode != "development" {
@@ -74,6 +90,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := server.Serve(ctx, host, *port, server.New(p)); err != nil {
-		log.Fatal(err)
+		log.Fatalf("portal: port %d: %v; free it, or set PORTAL_PORT in .env or pass -port", *port, err)
 	}
 }

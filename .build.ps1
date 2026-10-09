@@ -1,14 +1,21 @@
 #Requires -Version 7.4
 # Invoke-Build script. Run: Invoke-Build              (Modules, Build, Test, Smoke, Pester)
-#                           Invoke-Build Up           (start the portal on :8080 over artifacts/)
+#                           Invoke-Build Up           (start the portal on its fixed port over artifacts/: -Port,
+#                                                      else PORTAL_PORT from .env, else the environment, else 8200)
+#                           Invoke-Build Status       (port, URL and boot stamp of the running portal)
 #                           Invoke-Build Down         (stop it)
 #                           Invoke-Build Generate     (regenerate internal/gen from api/openapi.yaml)
 #                           Invoke-Build Screenshot   (docs/screenshots/portal.png)
-param()
+param(
+    # Up's port; absent means PORTAL_PORT from .env, else the environment, else 8200. 0 is refused.
+    [int] $Port
+)
 
 $repo     = $PSScriptRoot
 $buildDir = Join-Path $repo 'build'
 $module   = Join-Path $repo 'src' 'Portal' 'Portal.psd1'
+# Smoke, Pester and Screenshot run here, so a portal on the fixed port keeps running through a build.
+$testPort = 18200
 
 function Invoke-Go {
     param([Parameter(Mandatory)] [string[]] $Arguments, [hashtable] $Env = @{})
@@ -56,8 +63,15 @@ task Test {
 
 task Up Build, {
     Import-Module $module -Force
-    $p = Start-Portal
-    print Green "portal at $($p.Url) (process $($p.ProcessId)); Invoke-Build Down stops it"
+    $p = if ($Port) { Start-Portal -Port $Port } else { Start-Portal }
+    print Green "portal at $($p.Url) (process $($p.ProcessId)), booted from $($p.Boot); Invoke-Build Down stops it"
+}
+
+task Status {
+    Import-Module $module -Force
+    $s = Get-PortalStatus
+    $state = if ($s.Running) { "running (process $($s.ProcessId), $($s.Mode))" } else { 'not running' }
+    print Green "port $($s.Port) · $($s.Url) · boot $(if ($s.Boot) { $s.Boot } else { '-' }) · $state"
 }
 
 task Down {
@@ -65,9 +79,11 @@ task Down {
     Stop-Portal -Verbose
 }
 
-# The approve-and-reboot loop on a fresh artifacts/smoke over the FileSystem fixture: boot from the seed, approve, change
-# the seed Theme's opacity, approve, restart, and assert the restart booted from the second stamp with that opacity and
-# that the second approval's diff is exactly the Theme node. Writes artifacts/smoke-report.json.
+# The approve-and-reboot loop on a fresh artifacts/smoke over the FileSystem fixture, on port 18200: boot from the seed,
+# add a menu entry through the existing POSTs, approve, change the seed Theme's opacity, approve, restart, and assert the
+# restart booted from the second stamp with that opacity and the menu entry, that the top bar draws the entry (Chrome's
+# --dump-dom; skipped and said so without Chrome) and that the second approval's diff is exactly the Theme node.
+# Writes artifacts/smoke-report.json.
 task Smoke Build, {
     Import-Module $module -Force
     $artifacts = Join-Path $repo 'artifacts' 'smoke'
@@ -76,11 +92,11 @@ task Smoke Build, {
     $report = [ordered]@{ startedAt = [datetime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'); result = 'failed'; checks = [ordered]@{} }
     $p = $null
     try {
-        $p = Start-Portal -Port 0 -Artifacts $artifacts -Filesystem $fixture
+        $p = Start-Portal -Port $testPort -Artifacts $artifacts -Filesystem $fixture
         if ($p.Boot -ne 'seed') { throw "a fresh artifacts/smoke booted from $($p.Boot), not seed" }
         $screen = Get-PortalScreen -Url $p.Url
         $ids = @($screen.nodes.id)
-        foreach ($id in 'ui:root', 'ui:layout:root', 'ui:theme:default', 'ui:canvas', 'ui:designer', 'ui:category:Canvas', 'ui:category:Table', 'ui:category:Detail', 'ui:category:Designer') {
+        foreach ($id in 'ui:root', 'ui:layout:root', 'ui:theme:default', 'ui:canvas', 'ui:designer', 'ui:category:Canvas', 'ui:category:Table', 'ui:category:Detail', 'ui:category:Designer', 'ui:category:Menu', 'ui:menu:graph') {
             if ($id -notin $ids) { throw "seed lacks $id" }
         }
         $report.checks.seed = [ordered]@{ boot = $p.Boot; nodes = $screen.nodes.Count; edges = $screen.edges.Count }
@@ -89,7 +105,14 @@ task Smoke Build, {
         if (-not $layer -or -not $layer.hasOntology) { throw 'layer filesystem not mounted with its ontology' }
         $report.checks.layer = [ordered]@{ name = $layer.name; nodes = $layer.counts.nodes; hasOntology = $layer.hasOntology }
 
-        $a = New-PortalSnap -Url $p.Url -Note 'smoke: the seed'
+        # A menu entry is a node and two edges through the existing POSTs, as the Designer's form writes it.
+        $entry = 'ui:menu:smoke'
+        $null = Invoke-RestMethod -Method Post -Uri "$($p.Url)/api/nodes" -ContentType 'application/json' -Body (@{ id = $entry; kind = 'Container'; name = 'Smoke'; properties = @{ order = 1 } } | ConvertTo-Json -Compress)
+        $null = Invoke-RestMethod -Method Post -Uri "$($p.Url)/api/edges" -ContentType 'application/json' -Body (@{ kind = 'is-a'; from = $entry; to = 'ui:category:Menu' } | ConvertTo-Json -Compress)
+        $null = Invoke-RestMethod -Method Post -Uri "$($p.Url)/api/edges" -ContentType 'application/json' -Body (@{ kind = 'opens'; from = $entry; to = 'ui:designer' } | ConvertTo-Json -Compress)
+        $report.checks.menu = [ordered]@{ added = $entry; edges = @("$entry|ui:category:Menu|is-a", "$entry|ui:designer|opens") }
+
+        $a = New-PortalSnap -Url $p.Url -Note 'smoke: the seed and a menu entry'
         if ($a.PSObject.Properties['previous']) { throw "the first approval has a previous snap: $($a.previous)" }
         $patch = @{ properties = @{ opacity = 0.35 } } | ConvertTo-Json -Compress
         $null = Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/nodes/ui:theme:default" -Body $patch -ContentType 'application/json'
@@ -106,7 +129,7 @@ task Smoke Build, {
         }
 
         Stop-Portal -Artifacts $artifacts
-        $p = Start-Portal -Port 0 -Artifacts $artifacts -Filesystem $fixture
+        $p = Start-Portal -Port $testPort -Artifacts $artifacts -Filesystem $fixture
         $after = Get-PortalScreen -Url $p.Url
         $opacity = ($after.nodes | Where-Object id -EQ 'ui:theme:default').properties.opacity
         $report.checks.restart = [ordered]@{ boot = $p.Boot; themeOpacity = $opacity }
@@ -114,6 +137,8 @@ task Smoke Build, {
         if ($opacity -ne 0.35) { throw "the restart's Theme opacity is $opacity, not 0.35" }
         $d = Compare-PortalSnap $a $b -Url $p.Url
         if (@($d.changed.nodes).Count -ne 1 -or $d.changed.nodes[0].id -ne 'ui:theme:default') { throw 'GET /api/diff disagrees with the approval' }
+        foreach ($id in $report.checks.menu.edges) { if ($id -notin @($after.edges.id)) { throw "the restart lacks the menu edge $id" } }
+        $report.checks.menu.restart = Test-TopBarMenu -Url $p.Url -Entries @('ui:menu:graph', $entry)
 
         $report.result = 'passed'
         print Green "smoke: seed $($report.checks.seed.nodes) nodes; approved $($a.stamp), then $($b.stamp) changing $($changed -join ', '); restart booted from $($p.Boot)"
@@ -148,7 +173,7 @@ task Screenshot Build, {
     $null = New-Item -ItemType Directory -Force -Path $outDir, $work
     $png = Join-Path $outDir 'portal.png'
     try {
-        $p = Start-Portal -Port 0 -Artifacts (Join-Path $work 'artifacts') -Filesystem $fs
+        $p = Start-Portal -Port $testPort -Artifacts (Join-Path $work 'artifacts') -Filesystem $fs
         $common = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--force-prefers-reduced-motion', '--virtual-time-budget=8000')
         Remove-Item -LiteralPath $png -ErrorAction SilentlyContinue
         $null = Start-Process -FilePath $browser -ArgumentList ($common + @("--screenshot=$png", '--window-size=1400,900', '--hide-scrollbars', "$($p.Url)/")) -Wait -NoNewWindow -PassThru `
@@ -167,6 +192,28 @@ task Screenshot Build, {
         Stop-Portal -Artifacts (Join-Path $work 'artifacts')
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+
+# Loads the page in headless Chrome (--dump-dom; Edge's new headless prints none on Windows) and throws unless the top
+# bar draws exactly -Entries, in that order. Returns what it saw, or that it skipped and why when there is no Chrome.
+function Test-TopBarMenu {
+    param([Parameter(Mandatory)] [string] $Url, [Parameter(Mandatory)] [string[]] $Entries)
+    $chrome = @(Find-HeadlessBrowser -Prefer chrome) | Where-Object { $_ -match 'chrome' } | Select-Object -First 1
+    if (-not $chrome) { return [ordered]@{ topBar = 'skipped: no Chrome for --dump-dom' } }
+    $work = Join-Path ([IO.Path]::GetTempPath()) "Portal-menu-$([guid]::NewGuid())"
+    $null = New-Item -ItemType Directory -Force -Path $work
+    try {
+        $dom = Join-Path $work 'dom.html'
+        $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--virtual-time-budget=8000', '--dump-dom', "$Url/")
+        $null = Start-Process -FilePath $chrome -ArgumentList $argv -Wait -NoNewWindow -PassThru `
+            -RedirectStandardOutput $dom -RedirectStandardError (Join-Path $work 'd.err')
+        $text = [string](Get-Content -LiteralPath $dom -Raw -ErrorAction SilentlyContinue)
+        $bar = [regex]::Match($text, '<nav[^>]*id="menu"[^>]*>(.*?)</nav>', 'Singleline').Groups[1].Value
+        $seen = @([regex]::Matches($bar, 'data-entry="([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+        if (($seen -join ',') -ne ($Entries -join ',')) { throw "the top bar draws [$($seen -join ', ')], not [$($Entries -join ', ')]" }
+        [ordered]@{ topBar = $seen }
+    }
+    finally { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 # msedge, then chrome (chrome first with -Prefer chrome): PATH first, then the default install locations.

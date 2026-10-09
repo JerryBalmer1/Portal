@@ -1,8 +1,8 @@
 # Portal manual check list
 
-Verified for: 0.2.0 on 2026-10-09, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: items 0.1, 0.2, 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 3.1, 3.2. Item 2.1 was checked by a headless capture (Invoke-Build Screenshot), not by a person at a browser. Item 2.2 was not run: it needs a person to click Approve in a browser.
+Verified for: 0.3.0 on 2026-10-09, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: items 0.1, 0.2, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 2.1, 3.1, 3.2, 3.3. Item 2.1 was checked by a headless capture (Invoke-Build Screenshot), not by a person at a browser. Item 2.3's forms and menu were driven by script in Chrome (docs/design.md 26), not by a person, so its block was not run as written. Item 2.2 was not run: it needs a person to click Approve in a browser.
 
-Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP`: a directory that holds snaps boots from the newest of them.
+Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
 ## 0. Toolchain
 
@@ -18,7 +18,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `internal/server` and `internal/store`; Smoke prints `smoke: seed 9 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>`; Pester ends `Tests Passed: 35, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
+Expect: go test ends `ok` for `internal/server` and `internal/store`; Smoke prints `smoke: seed 11 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>` and `artifacts/smoke-report.json` has `checks.menu.restart.topBar` `ui:menu:graph`, `ui:menu:smoke`; Pester ends `Tests Passed: 42, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
 
 ## 1. API
 
@@ -27,7 +27,7 @@ Expect: go test ends `ok` for `internal/server` and `internal/store`; Smoke prin
 Import-Module .\src\Portal\Portal.psd1 -Force
 $dir = Join-Path $env:TEMP 'portal-check-1.1'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-$p = Start-Portal -Port 0 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
 try {
     $s = Get-PortalScreen -Url $p.Url
     "boot: $($p.Boot); nodes: $($s.nodes.Count), edges: $($s.edges.Count), root: $($s.root)"
@@ -37,14 +37,14 @@ try {
 }
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: `boot: seed; nodes: 9, edges: 6, root: ui:root`, then `Category: 4`, `Container: 2`, `Layout: 1`, `Theme: 1`, `Widget: 1`, then `layer: filesystem 52 nodes, ontology True`.
+Expect: `boot: seed; nodes: 11, edges: 8, root: ui:root`, then `Category: 5`, `Container: 3`, `Layout: 1`, `Theme: 1`, `Widget: 1`, then `layer: filesystem 52 nodes, ontology True`.
 
 ### 1.2 Display, Graph.Node shape and Category refusals
 ```powershell
 Import-Module .\src\Portal\Portal.psd1 -Force
 $dir = Join-Path $env:TEMP 'portal-check-1.2'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-$p = Start-Portal -Port 0 -Artifacts $dir -Filesystem ''
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
 try {
     foreach ($body in '{"id":"ui:w","kind":"Widget","properties":{"color":"#ff0000"}}',
                       '{"id":"ui:w","kind":"Widget","display":{"color":"#ff0000"}}',
@@ -67,7 +67,7 @@ Expect: `422 display`, `422 schema`, `422 unknown-category`, `422 property-type`
 Import-Module .\src\Portal\Portal.psd1 -Force
 $dir = Join-Path $env:TEMP 'portal-check-1.3'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-$p = Start-Portal -Port 0 -Artifacts $dir -Filesystem ''
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
 try {
     try { Mount-PortalLayer -Name bad -Path .\tests\fixtures\invalid.graph.json -Url $p.Url }
     catch { "refused: $((@($_.TargetObject.problems.code) | Sort-Object -Unique) -join ', ')" }
@@ -84,14 +84,15 @@ Import-Module .\src\Portal\Portal.psd1 -Force
 $dev  = Join-Path $env:TEMP 'portal-check-1.4-dev'
 $prod = Join-Path $env:TEMP 'portal-check-1.4-prod'
 Remove-Item $dev, $prod -Recurse -Force -ErrorAction SilentlyContinue
-$d = Start-Portal -Port 0 -Artifacts $dev -Filesystem ''
-$p = Start-Portal -Port 0 -Artifacts $prod -Filesystem '' -Production
+$d = Start-Portal -Port 18200 -Artifacts $dev -Filesystem ''
+try { $full = (Get-PortalScreen -Url $d.Url).nodes.id } finally { Stop-Portal -Artifacts $dev }
+$p = Start-Portal -Port 18200 -Artifacts $prod -Filesystem '' -Production
 try {
     $shown = (Get-PortalScreen -Url $p.Url).nodes.id
-    "hidden: $(((Get-PortalScreen -Url $d.Url).nodes.id | Where-Object { $_ -notin $shown }) -join ', ')"
+    "hidden: $(($full | Where-Object { $_ -notin $shown }) -join ', ')"
 }
 finally {
-    Stop-Portal -Artifacts $dev; Stop-Portal -Artifacts $prod
+    Stop-Portal -Artifacts $prod
     Remove-Item $dev, $prod -Recurse -Force -ErrorAction SilentlyContinue
 }
 ```
@@ -131,6 +132,28 @@ Remove-Item $dir, "$dir.out", "$dir.err" -Recurse -Force -ErrorAction SilentlyCo
 ```
 Expect: `boot: seed`, `first: previous [] diff []`, `second: previous is first True; changed ui:theme:default`, `restart boots from second: True`, `PORTAL_SNAP boots from first: True`.
 
+### 1.6 A menu entry is a node and two edges, and survives Approve and a restart
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$dir = Join-Path $env:TEMP 'portal-check-1.6'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+try {
+    $post = { param($path, $body) Invoke-WebRequest -Method Post -Uri "$($p.Url)$path" -Body $body -ContentType application/json -SkipHttpErrorCheck }
+    (& $post '/api/nodes' '{"id":"ui:menu:designer","kind":"Container","name":"Designer","properties":{"order":1}}').StatusCode
+    (& $post '/api/edges' '{"kind":"is-a","from":"ui:menu:designer","to":"ui:category:Menu"}').StatusCode
+    (& $post '/api/edges' '{"kind":"opens","from":"ui:menu:designer","to":"ui:designer"}').StatusCode
+    $r = & $post '/api/edges' '{"kind":"opens","from":"ui:menu:designer","to":"ui:layout:root"}'
+    "$($r.StatusCode) $((($r.Content | ConvertFrom-Json).problems.code) -join ',')"
+    $null = New-PortalSnap -Url $p.Url -Note 'menu'
+    Stop-Portal -Artifacts $dir
+    $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+    (Get-PortalScreen -Url $p.Url).edges | Where-Object kind -In 'is-a', 'opens' | Where-Object from -Like 'ui:menu:*' | ForEach-Object id
+}
+finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `201`, `201`, `201`, `422 edge-endpoints`, then the four menu edges `ui:menu:graph|ui:category:Menu|is-a`, `ui:menu:graph|ui:canvas|opens`, `ui:menu:designer|ui:category:Menu|is-a`, `ui:menu:designer|ui:designer|opens`.
+
 ## 2. Page
 
 ### 2.1 The FileSystem layer draws in colour
@@ -138,19 +161,31 @@ Expect: `boot: seed`, `first: previous [] diff []`, `second: previous is first T
 # needs C:\__Code\Graph.Emitter.FileSystem\artifacts\layers (falls back to the fixture)
 Invoke-Build Screenshot
 ```
-Expect: `captured ...\docs\screenshots\portal.png; canvas coloured from ontology: 52/52`. The PNG shows the filesystem Canvas on the left (with the sibling's layer, whose ontology uses Graph.Node 0.2.0 display: Directories as blue rounded squares labelled `name/`, larger than Files, which are grey circles; with the fixture, Directories are amber rounded boxes and Files blue squares), and the Designer panel on the right with the Approve form at the top, then seven Kinds and four Categories. The top bar holds the title and the counts, and no snap button.
+Expect: `captured ...\docs\screenshots\portal.png; canvas coloured from ontology: 52/52`. The top bar holds the title, the menu (one entry, `Graph`) and the counts. The PNG shows the filesystem Canvas on the left (with the sibling's layer, whose ontology uses Graph.Node 0.2.0 display: Directories as blue rounded squares labelled `name/`, larger than Files, which are grey circles; with the fixture, Directories are amber rounded boxes and Files blue squares), and the Designer panel on the right with the Approve form at the top, then seven Kinds and five Categories. No snap button in the top bar.
 
 ### 2.2 Approve from the Designer
 ```powershell
 Import-Module .\src\Portal\Portal.psd1 -Force
 $dir = Join-Path $env:TEMP 'portal-check-2.2'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-$p = Start-Portal -Port 0 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
 Start-Process $p.Url
 Read-Host 'Type a note in Approve and press approve; then in a second shell PATCH ui:theme:default opacity to 0.3, reload, approve again; press Enter here to stop'
 Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 ```
 Expect: the first approve shows `approved <stamp> · <note>` and `first snap: nothing to compare`; after the PATCH and a reload the panels are more opaque, and the second shows `against <first stamp>:` and `changed 1 nodes, 0 edges: ui:theme:default`.
+
+### 2.3 Menu, Add Category and Add menu entry in the Designer
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$dir = Join-Path $env:TEMP 'portal-check-2.3'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
+Start-Process $p.Url
+Read-Host 'Collapse the Canvas, then press Graph in the top bar; Add Category Tree refining Canvas; Add menu entry Designer opening designer; press Enter here to stop'
+Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+```
+Expect: Graph expands the Canvas and outlines it; after Add Category the Categories list shows `└ Tree (refines Canvas)` under Canvas and the category and refines dropdowns offer `· Tree`; after Add menu entry the top bar shows `Graph` then `Designer`; neither add reloads the page.
 
 ## 3. PowerShell
 
@@ -159,7 +194,7 @@ Expect: the first approve shows `approved <stamp> · <note>` and `first snap: no
 Import-Module .\src\Portal\Portal.psd1 -Force
 $dir = Join-Path $env:TEMP 'portal-check-3.1'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-$p = Start-Portal -Port 0 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
 try {
     $a = New-PortalSnap -Url $p.Url -Note 'first'
     Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/nodes/ui:theme:default" -ContentType application/json -Body '{"properties":{"opacity":0.2}}' | Out-Null
@@ -170,7 +205,7 @@ try {
     "same: $(@((Compare-PortalSnap $a $a -Url $p.Url).changed.nodes).Count)"
     & .\build\win-x64\graphnode.exe validate $b.path | Out-Null; "exit $LASTEXITCODE"
     Stop-Portal -Artifacts $dir
-    $p = Start-Portal -Port 0 -Artifacts $dir -Filesystem ''
+    $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
     "restart: boot is second $($p.Boot -eq $b.stamp); opacity $(((Get-PortalScreen -Url $p.Url).nodes | Where-Object id -EQ 'ui:theme:default').properties.opacity)"
 }
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
@@ -182,15 +217,30 @@ Expect: `approval: lighter; changed ui:theme:default`, `diff: changed ui:theme:d
 Import-Module .\src\Portal\Portal.psd1 -Force
 $dir = Join-Path $env:TEMP 'portal-check-3.2'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-$p = Start-Portal -Port 0 -Artifacts $dir -Filesystem ''
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
 $a = New-PortalSnap -Url $p.Url
 $null = New-PortalSnap -Url $p.Url
 Stop-Portal -Artifacts $dir
 try {
-    $p = Start-Portal -Port 0 -Artifacts $dir -Filesystem '' -Snap $a.stamp
+    $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' -Snap $a.stamp
     "boot is first: $($p.Boot -eq $a.stamp)"
-    try { Start-Portal -Port 0 -Artifacts "$dir-x" -Filesystem '' -Snap 2000-01-01T00-00-00.000Z -TimeoutSec 5 } catch { "refused: $($_.Exception.Message -match 'no snap 2000-01-01T00-00-00.000Z')" }
+    Stop-Portal -Artifacts $dir
+    try { Start-Portal -Port 18200 -Artifacts "$dir-x" -Filesystem '' -Snap 2000-01-01T00-00-00.000Z -TimeoutSec 5 } catch { "refused: $($_.Exception.Message -match 'no snap 2000-01-01T00-00-00.000Z')" }
 }
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir, "$dir-x" -Recurse -Force -ErrorAction SilentlyContinue }
 ```
 Expect: `boot is first: True`, `refused: True`.
+
+### 3.3 Fixed port: 0 refused, a busy port named, Status
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$dir = Join-Path $env:TEMP 'portal-check-3.3'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+try { Start-Portal -Port 0 -Artifacts $dir -Filesystem '' } catch { "zero: $($_.Exception.Message -match '0 is never picked')" }
+$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 18200); $l.Start()
+try { Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' } catch { "busy: $($_.Exception.Message)" } finally { $l.Stop() }
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+try { $s = Get-PortalStatus -Artifacts $dir; "status: $($s.Running) $($s.Port) $($s.Url) $($s.Boot)" }
+finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `zero: True`, `busy: port 18200 is in use by pwsh (process <pid>); free it, or set PORTAL_PORT in .env or pass -Port`, `status: True 18200 http://127.0.0.1:18200 seed`.

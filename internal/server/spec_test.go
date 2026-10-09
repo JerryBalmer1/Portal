@@ -619,3 +619,57 @@ func TestScreenReportsWhatItBootedFrom(t *testing.T) {
 		t.Errorf("restart booted from %q, want %q", got, snap.Stamp)
 	}
 }
+
+// A Category added through POST, refining Canvas, is on GET /api/screen with
+// its refines (is-a) edge: what the Designer re-reads after every add.
+func TestRefinedCategoryIsOnTheScreenWithItsRefinesEdge(t *testing.T) {
+	h := newHarness(t)
+	s, _, _ := newPortal(t, false)
+	h.do(t, s.URL, "POST", "/api/nodes", `{"id":"ui:category:Tree","kind":"Category","name":"Tree","properties":{"label":"Tree"}}`, 201)
+	h.do(t, s.URL, "POST", "/api/edges", `{"kind":"is-a","from":"ui:category:Tree","to":"ui:category:Canvas"}`, 201)
+	var env graph.Envelope
+	if err := json.Unmarshal(h.do(t, s.URL, "GET", "/api/screen", "", 200), &env); err != nil {
+		t.Fatal(err)
+	}
+	i, ok := env.NodeIndex()["ui:category:Tree"]
+	if !ok || env.Nodes[i].Kind != "Category" || env.Nodes[i].Name != "Tree" {
+		t.Fatal("GET /api/screen lacks the Category Tree")
+	}
+	found := false
+	for _, e := range env.Edges {
+		found = found || (e.Kind == "is-a" && e.From == "ui:category:Tree" && e.To == "ui:category:Canvas")
+	}
+	if !found {
+		t.Error("GET /api/screen lacks ui:category:Tree is-a ui:category:Canvas")
+	}
+}
+
+// A menu entry is a node add and two edge adds through the existing POSTs;
+// an approval snaps it and a restart boots it back (docs/design.md 25).
+func TestMenuEntryAddedThroughPostSurvivesApproveAndRestart(t *testing.T) {
+	h := newHarness(t)
+	s, _, dir := newPortal(t, false)
+	h.do(t, s.URL, "POST", "/api/nodes", `{"id":"ui:menu:designer","kind":"Container","name":"Designer","properties":{"order":1}}`, 201)
+	h.do(t, s.URL, "POST", "/api/edges", `{"kind":"is-a","from":"ui:menu:designer","to":"ui:category:Menu"}`, 201)
+	h.do(t, s.URL, "POST", "/api/edges", `{"kind":"opens","from":"ui:menu:designer","to":"ui:designer"}`, 201)
+	codes := problemCodes(t, h.do(t, s.URL, "POST", "/api/edges", `{"kind":"opens","from":"ui:menu:designer","to":"ui:layout:root"}`, 422))
+	if !has(codes, "edge-endpoints") {
+		t.Errorf("opens to a Layout: codes %v, want edge-endpoints", codes)
+	}
+	snapStamp(t, h, s.URL)
+	p, err := store.New(store.Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, _ := p.Screen()
+	want := map[string]bool{
+		"ui:menu:graph|ui:category:Menu|is-a": true, "ui:menu:graph|ui:canvas|opens": true,
+		"ui:menu:designer|ui:category:Menu|is-a": true, "ui:menu:designer|ui:designer|opens": true,
+	}
+	for _, e := range env.Edges {
+		delete(want, e.ID)
+	}
+	if len(want) > 0 {
+		t.Errorf("after restart the screen lacks %v", want)
+	}
+}

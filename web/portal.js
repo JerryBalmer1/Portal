@@ -3,7 +3,9 @@
 // contains edges and Layout, and mounts each Widget (and any Container that
 // is-a a Category with a renderer) by its Category. A Category without a
 // renderer of its own uses the one it is-a, so a new panel type is a Category
-// node and an is-a edge, never new code (docs/design.md 1).
+// node and an is-a edge, never new code (docs/design.md 1). The top bar's
+// menu is nodes too: every Container that is-a the Category named Menu, each
+// showing what its opens edge points at (docs/design.md 25).
 import { createClient } from '/static/client.js';
 import * as canvas from '/static/canvas.js';
 import * as table from '/static/table.js';
@@ -12,11 +14,14 @@ import * as designer from '/static/designer.js';
 
 // The base Categories: the only names bound to code.
 const RENDERERS = { Canvas: canvas, Table: table, Detail: detail, Designer: designer };
+// The one name the top bar looks for.
+const MENU = 'Menu';
 
 const client = createClient();
 const bus = new EventTarget();
 const screenEl = document.getElementById('screen');
 const statsEl = document.getElementById('stats');
+const menuEl = document.getElementById('menu');
 let mounted = [];
 
 // index builds the lookups the page draws from.
@@ -39,6 +44,21 @@ export function index(screen) {
     state: (id) => (targets(id, 'has-state')[0] || {}).properties || {},
     theme: (id) => (targets(id, 'themed-by')[0] || {}).properties || null,
     category: (id) => targets(id, 'is-a')[0] || null,
+    // menu is the top bar: the Containers that is-a Menu, by order, each
+    // with the node its opens edge shows (null when that is gone).
+    menu() {
+      const cat = screen.nodes.find((n) => n.kind === 'Category' && n.name === MENU);
+      if (!cat) return [];
+      return screen.edges
+        .filter((e) => e.kind === 'is-a' && e.to === cat.id && nodes.get(e.from)?.kind === 'Container')
+        .map((e) => nodes.get(e.from))
+        .sort((a, b) => order(a) - order(b) || a.id.localeCompare(b.id))
+        .map((entry) => ({ entry, opens: targets(entry.id, 'opens')[0] || null }));
+    },
+    isRenderer: (name) => Object.hasOwn(RENDERERS, name),
+    isMenuEntry(id) {
+      return (out.get(id) || []).some((e) => e.kind === 'is-a' && nodes.get(e.to)?.name === MENU);
+    },
     // base walks is-a from a node until a Category bound to a renderer.
     base(id) {
       const seen = new Set();
@@ -52,7 +72,7 @@ export function index(screen) {
     },
     root() {
       if (screen.root && nodes.get(screen.root)?.kind === 'Container') return nodes.get(screen.root);
-      return screen.nodes.find((n) => n.kind === 'Container' && !inbound.has(n.id)) || null;
+      return screen.nodes.find((n) => n.kind === 'Container' && !inbound.has(n.id) && !this.isMenuEntry(n.id)) || null;
     },
   };
 }
@@ -72,6 +92,8 @@ function draw(screen, ontology) {
   screenEl.replaceChildren();
   statsEl.textContent = `${screen.nodes.length} nodes · ${screen.edges.length} edges · ${screen.layer}`;
   const ix = index(screen);
+  const ctx = { client, bus, screen, ontology, ix, refresh };
+  drawMenu(ctx);
   const root = ix.root();
   if (!root) {
     const p = document.createElement('p');
@@ -80,9 +102,50 @@ function draw(screen, ontology) {
     screenEl.appendChild(p);
     return;
   }
-  const ctx = { client, bus, screen, ontology, ix, refresh };
   const el = drawContainer(ctx, root, null, true);
   if (el) screenEl.appendChild(el);
+}
+
+// drawMenu fills the top bar from the graph: one button per menu entry.
+// Choosing one shows what it opens: expanded (a State write, as the collapse
+// toggle does) and scrolled into view. Which entry was chosen is a viewer's
+// pointer, like a Canvas selection, and is not written.
+function drawMenu(ctx) {
+  menuEl.replaceChildren();
+  for (const { entry, opens } of ctx.ix.menu()) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'gr-btn pt-menu-entry';
+    b.dataset.entry = entry.id;
+    b.textContent = entry.name || entry.id;
+    if (!opens) {
+      b.disabled = true;
+      b.title = `${entry.id} has no opens edge`;
+    } else {
+      b.dataset.opens = opens.id;
+      b.title = `opens ${opens.name || opens.id}`;
+      b.addEventListener('click', () => show(ctx, opens.id));
+    }
+    menuEl.appendChild(b);
+  }
+}
+
+async function show(ctx, id) {
+  try {
+    if (ctx.ix.state(id).collapsed) {
+      await ctx.client.patchNode(id, { state: { collapsed: false } });
+      await refresh();
+    }
+  } catch (err) {
+    showError(screenEl, err);
+    return;
+  }
+  const el = screenEl.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  el.classList.remove('pt-opened');
+  void el.offsetWidth;
+  el.classList.add('pt-opened');
 }
 
 function visible(n) {

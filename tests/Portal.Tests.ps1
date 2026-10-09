@@ -56,9 +56,9 @@ BeforeAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.2.0 and needs PowerShell 7.4' {
+    It 'is version 0.3.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.2.0'
+        $m.ModuleVersion | Should -Be '0.3.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -117,10 +117,15 @@ Describe 'Skills' {
             Get-Lf (Join-Path $Repo $f) | Should -BeExactly (Get-GraphNodeAtTag $f) -Because $f
         }
     }
-    It 'run-report (maintained in Graph, read-only here) has the ModuleVersion Graph has committed' -Skip:(-not $HasGraph) {
-        $psd1 = Get-SiblingAt 'Graph' 'HEAD' 'src/Graph/Graph.psd1'
-        $committed = [regex]::Match($psd1, "ModuleVersion\s*=\s*'([^']+)'").Groups[1].Value
-        Get-FrontVersion (Join-Path $SkillRoot 'run-report' 'SKILL.md') | Should -Be $committed -Because 'recopy .claude/skills/run-report from Graph when its committed version changes'
+    # Since Graph 0.2.3 the skill's own version: tracks the run report's envelope and ontology, not Graph's
+    # ModuleVersion (Graph design.md 9), so the copy is compared with Graph's committed skill, version and files.
+    It 'run-report (maintained in Graph, read-only here) is Graph''s committed skill, version and files' -Skip:(-not $HasGraph) {
+        $committed = Get-SiblingAt 'Graph' 'HEAD' '.claude/skills/run-report/SKILL.md'
+        $version = [regex]::Match($committed, '(?m)^version:\s*(\S+)\s*$').Groups[1].Value
+        Get-FrontVersion (Join-Path $SkillRoot 'run-report' 'SKILL.md') | Should -Be $version -Because 'recopy .claude/skills/run-report from Graph when its committed version: changes'
+        foreach ($f in @(& git -C (Join-Path $Code 'Graph') ls-tree -r --name-only HEAD .claude/skills/run-report)) {
+            Get-Lf (Join-Path $Repo $f) | Should -BeExactly (Get-SiblingAt 'Graph' 'HEAD' $f) -Because $f
+        }
     }
     It 'run-report reference ontology passes graphnode validate-ontology' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $SkillRoot 'run-report' 'reference' 'ontology.yaml')
@@ -165,12 +170,12 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.2.0, the seven Kinds, the six edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.3.0, the seven Kinds, the seven edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.2\.0$'
+        $text | Should -Match '(?m)^version: 0\.3\.0$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref') { $text | Should -Match "(?m)^  ${k}:" }
-        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by') { $text | Should -Match "(?m)^  ${e}:" }
+        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
     }
     It 'the FileSystem fixture passes graphnode validate and has its ontology beside it' {
@@ -188,10 +193,73 @@ Describe 'Build output' {
     }
 }
 
+Describe 'Fixed port' {
+    BeforeAll { $script:TestPort = 18200 }
+    It '.env.example sets PORTAL_PORT=8200 and .env is gitignored' {
+        (Get-Content (Join-Path $Repo '.env.example')) | Should -Contain 'PORTAL_PORT=8200'
+        (Get-Content (Join-Path $Repo '.gitignore')) | Should -Contain '.env'
+    }
+    It 'resolves -Port, then PORTAL_PORT from .env, then the environment, then 8200' {
+        $envFile = Join-Path $TestDrive 'port.env'
+        $saved = $env:PORTAL_PORT
+        try {
+            InModuleScope Portal -Parameters @{ EnvFile = $envFile } {
+                param($EnvFile)
+                $env:PORTAL_PORT = $null
+                Remove-Item -LiteralPath $EnvFile -ErrorAction SilentlyContinue
+                Get-PortalPort -EnvFile $EnvFile | Should -Be 8200
+                $env:PORTAL_PORT = '8300'
+                Get-PortalPort -EnvFile $EnvFile | Should -Be 8300
+                Set-Content -LiteralPath $EnvFile -Value "# comment`nPORTAL_PORT=8400"
+                Get-PortalPort -EnvFile $EnvFile | Should -Be 8400
+                Get-PortalPort -Port 8500 -EnvFile $EnvFile | Should -Be 8500
+            }
+        }
+        finally { $env:PORTAL_PORT = $saved }
+    }
+    It 'refuses port 0, from -Port and from .env, and never starts the binary' {
+        { Start-Portal -Port 0 -Artifacts (Join-Path $TestDrive 'zero') -Filesystem '' } | Should -Throw '*0*refused*'
+        Join-Path $TestDrive 'zero' 'portal.json' | Should -Not -Exist
+        $envFile = Join-Path $TestDrive 'zero.env'
+        Set-Content -LiteralPath $envFile -Value 'PORTAL_PORT=0'
+        InModuleScope Portal -Parameters @{ EnvFile = $envFile } { param($EnvFile) { Get-PortalPort -EnvFile $EnvFile } | Should -Throw '*refused*' }
+    }
+    It 'fails on a busy port naming the port and the owning process, never picking another' {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $TestPort)
+        $listener.Start()
+        try {
+            { Start-Portal -Port $TestPort -Artifacts (Join-Path $TestDrive 'busy') -Filesystem '' } | Should -Throw "*port $TestPort is in use by pwsh (process $PID)*"
+            Join-Path $TestDrive 'busy' 'portal.json' | Should -Not -Exist
+        }
+        finally { $listener.Stop() }
+    }
+    It 'the binary refuses -port 0 itself' {
+        $out = & (Join-Path $Repo 'build' 'win-x64' 'portal.exe') -port 0 -artifacts (Join-Path $TestDrive 'bin0') -filesystem '' 2>&1
+        $LASTEXITCODE | Should -Not -Be 0
+        ($out -join ' ') | Should -Match '0 is refused'
+    }
+    It 'Get-PortalStatus gives the port, URL and boot stamp, running or not' {
+        $work = Join-Path $TestDrive 'status'
+        $idle = Get-PortalStatus -Artifacts $work
+        $idle.Running | Should -BeFalse
+        $idle.Port | Should -BeOfType [int]
+        $p = Start-Portal -Port $TestPort -Artifacts $work -Filesystem ''
+        try {
+            $s = Get-PortalStatus -Artifacts $work
+            $s.Running | Should -BeTrue
+            $s.Port | Should -Be $TestPort
+            $s.Url | Should -Be "http://127.0.0.1:$TestPort"
+            $s.Boot | Should -Be 'seed'
+            $s.ProcessId | Should -Be $p.ProcessId
+        }
+        finally { Stop-Portal -Artifacts $work }
+    }
+}
+
 Describe 'Live portal' {
     BeforeAll {
         $script:Work = Join-Path $TestDrive 'live'
-        $script:P = Start-Portal -Port 0 -Artifacts $Work -Filesystem $FsFixture
+        $script:P = Start-Portal -Port 18200 -Artifacts $Work -Filesystem $FsFixture
         $script:Url = $P.Url
     }
     AfterAll { Stop-Portal -Artifacts $Work }
@@ -203,17 +271,27 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.2.0'
+        $s.version | Should -Be '0.3.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
         $byId['ui:layout:root'].properties.mode | Should -Be 'grid'
         $byId['ui:theme:default'].kind | Should -Be 'Theme'
         $byId['ui:canvas'].properties.source | Should -Be 'filesystem'
-        @($s.nodes | Where-Object kind -EQ 'Category').name | Sort-Object | Should -Be @('Canvas', 'Designer', 'Detail', 'Table')
+        @($s.nodes | Where-Object kind -EQ 'Category').name | Sort-Object | Should -Be @('Canvas', 'Designer', 'Detail', 'Menu', 'Table')
         $s.edges.id | Should -Contain 'ui:canvas|ui:category:Canvas|is-a'
         $s.edges.id | Should -Contain 'ui:root|ui:theme:default|themed-by'
         Join-Path $Work 'state' | Should -Not -Exist
+    }
+    It 'seeds the menu as nodes: one Container "Graph" that is-a Menu and opens the Canvas, contained by nothing' {
+        $s = Get-PortalScreen -Url $Url
+        $entry = $s.nodes | Where-Object id -EQ 'ui:menu:graph'
+        $entry.kind | Should -Be 'Container'
+        $entry.name | Should -Be 'Graph'
+        $s.edges.id | Should -Contain 'ui:menu:graph|ui:category:Menu|is-a'
+        $s.edges.id | Should -Contain 'ui:menu:graph|ui:canvas|opens'
+        @($s.edges | Where-Object { $_.kind -eq 'contains' -and $_.to -eq 'ui:menu:graph' }) | Should -BeNullOrEmpty
+        (Send $Url POST '/api/edges' @{ kind = 'opens'; from = 'ui:menu:graph'; to = 'ui:layout:root' }).Body.problems.code | Should -Contain 'edge-endpoints'
     }
     It 'refuses a POST with display properties on a plain node (display lives in State and Theme nodes only)' {
         $r = Send $Url POST '/api/nodes' @{ id = 'ui:w1'; kind = 'Widget'; properties = @{ color = '#ff0000' } }
@@ -302,7 +380,7 @@ Describe 'Live portal' {
 Describe 'Boot order' {
     BeforeAll {
         $script:BootWork = Join-Path $TestDrive 'boot'
-        $p = Start-Portal -Port 0 -Artifacts $BootWork -Filesystem ''
+        $p = Start-Portal -Port 18200 -Artifacts $BootWork -Filesystem ''
         try {
             $script:First = New-PortalSnap -Url $p.Url -Note 'first'
             $null = Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/nodes/ui:theme:default" -ContentType 'application/json' -Body '{"properties":{"color":"#336699"}}'
@@ -315,31 +393,32 @@ Describe 'Boot order' {
     AfterEach { Stop-Portal -Artifacts $BootWork }
 
     It 'a restart boots from the newest snap, without the unapproved change' {
-        $p = Start-Portal -Port 0 -Artifacts $BootWork -Filesystem ''
+        $p = Start-Portal -Port 18200 -Artifacts $BootWork -Filesystem ''
         $p.Boot | Should -Be $Second.stamp
         ((Get-PortalScreen -Url $p.Url).nodes | Where-Object id -EQ 'ui:theme:default').properties.color | Should -Be '#336699'
     }
     It 'Start-Portal -Snap (PORTAL_SNAP) forces an older snap' {
-        $p = Start-Portal -Port 0 -Artifacts $BootWork -Filesystem '' -Snap $First.stamp
+        $p = Start-Portal -Port 18200 -Artifacts $BootWork -Filesystem '' -Snap $First.stamp
         $p.Boot | Should -Be $First.stamp
         ((Get-PortalScreen -Url $p.Url).nodes | Where-Object id -EQ 'ui:theme:default').properties.color | Should -Be '#f09648'
     }
     It 'a PORTAL_SNAP that names no snap stops the binary' {
-        { Start-Portal -Port 0 -Artifacts $BootWork -Filesystem '' -Snap '2000-01-01T00-00-00.000Z' -TimeoutSec 5 } | Should -Throw '*no snap 2000-01-01T00-00-00.000Z*'
+        { Start-Portal -Port 18200 -Artifacts $BootWork -Filesystem '' -Snap '2000-01-01T00-00-00.000Z' -TimeoutSec 5 } | Should -Throw '*no snap 2000-01-01T00-00-00.000Z*'
     }
 }
 
 Describe 'Production mode' {
+    # One test port: the development screen is read and stopped before the production one starts.
     BeforeAll {
-        $script:Dev  = Start-Portal -Port 0 -Artifacts (Join-Path $TestDrive 'dev') -Filesystem $FsFixture
-        $script:Prod = Start-Portal -Port 0 -Artifacts (Join-Path $TestDrive 'prod') -Filesystem $FsFixture -Production
+        $dev = Start-Portal -Port 18200 -Artifacts (Join-Path $TestDrive 'dev') -Filesystem $FsFixture
+        try { $script:Full = Get-PortalScreen -Url $dev.Url } finally { Stop-Portal -Artifacts (Join-Path $TestDrive 'dev') }
+        $script:Prod = Start-Portal -Port 18200 -Artifacts (Join-Path $TestDrive 'prod') -Filesystem $FsFixture -Production
     }
     AfterAll {
-        Stop-Portal -Artifacts (Join-Path $TestDrive 'dev')
         Stop-Portal -Artifacts (Join-Path $TestDrive 'prod')
     }
     It 'hides the Designer and only the Designer' {
-        $full = Get-PortalScreen -Url $Dev.Url
+        $full = $Full
         $shown = Get-PortalScreen -Url $Prod.Url
         @($full.nodes.id | Where-Object { $_ -notin $shown.nodes.id }) | Should -Be @('ui:designer')
         @($shown.edges | Where-Object { $_.from -eq 'ui:designer' -or $_.to -eq 'ui:designer' }).Count | Should -Be 0
