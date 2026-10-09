@@ -1,0 +1,4 @@
+artifacts/
+build/
+.env
+tests/testResults.xml

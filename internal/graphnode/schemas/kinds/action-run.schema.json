@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://graphnode.jerrybalmer.dev/schemas/kinds/action-run.schema.json",
+  "title": "ActionRun",
+  "description": "One execution of a declared Action. Edges: performed-on -> targets, produced -> created or changed nodes/edges.",
+  "allOf": [
+    { "$ref": "../node.schema.json" },
+    {
+      "properties": {
+        "kind": { "const": "ActionRun" },
+        "properties": {
+          "type": "object",
+          "required": ["action", "startedAt"],
+          "properties": {
+            "action":     { "type": "string", "description": "<Kind>.<action name>" },
+            "startedAt":  { "$ref": "../node.schema.json#/$defs/utcStamp" },
+            "finishedAt": { "$ref": "../node.schema.json#/$defs/utcStamp" },
+            "status":     { "type": "string", "enum": ["running", "succeeded", "failed", "cancelled"] },
+            "actor":      { "type": "string", "description": "who or what ran it; agent id, user, pipeline" },
+            "inputs":     { "type": "object", "additionalProperties": true, "description": "input name -> value; checked against the action's declared inputs when the ontology is given (design.md 16)" },
+            "result":     { "description": "what the action returned; checked against the action's declared returns.type when the ontology is given (design.md 16)" }
+          }
+        }
+      }
+    }
+  ]
+}

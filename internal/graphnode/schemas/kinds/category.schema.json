@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://graphnode.jerrybalmer.dev/schemas/kinds/category.schema.json",
+  "title": "Category",
+  "description": "A taxonomy node. Kinds join it by is-a edges. Written by the taxonomy module, never by an emitter.",
+  "allOf": [
+    { "$ref": "../node.schema.json" },
+    {
+      "properties": {
+        "kind": { "const": "Category" },
+        "properties": {
+          "type": "object",
+          "required": ["label"],
+          "properties": {
+            "label":       { "type": "string" },
+            "description": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

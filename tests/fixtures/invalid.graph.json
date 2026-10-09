@@ -1,0 +1,18 @@
+{
+  "schema": "graph/1",
+  "module": "Example",
+  "layer": "2026-10-08T00:00:00Z",
+  "nodes": [
+    { "id": "vnet:a", "kind": "VNet" },
+    { "id": "vnet:a", "kind": "VNet" },
+    { "id": "run:1", "kind": "ActionRun", "properties": { "action": "X.y", "finishedAt": "2026-10-08 00:00:02" } },
+    { "id": "vm:a", "kind": "VM", "display": { "color": "red" }, "stamp": { "layer": "2026-10-08T02:00:00+02:00" } }
+  ],
+  "edges": [
+    { "id": "vnet:a|snet:missing|contain", "kind": "contains", "from": "vnet:a", "to": "snet:missing" },
+    { "id": "vm:a|vnet:a|on", "kind": "on", "from": "vm:a", "to": "vnet:a", "display": { "color": "red" } },
+    { "id": "vm:a|vnet:a%zz|on", "kind": "on", "from": "vm:a", "to": "vnet:a%zz" },
+    { "id": "vm:a|fs:main.tf|on", "kind": "on", "from": "vm:a", "to": "fs:main.tf" }
+  ],
+  "findings": []
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://graphnode.jerrybalmer.dev/schemas/envelope.schema.json",
+  "title": "GraphNode Envelope",
+  "type": "object",
+  "required": ["schema", "module", "layer", "nodes", "edges"],
+  "properties": {
+    "schema":   { "const": "graph/1" },
+    "ontology": { "type": "string", "description": "path or URL of the emitter's ontology.yaml; a relative path is relative to the directory of this envelope file" },
+    "module":   { "type": "string", "minLength": 1 },
+    "version":  { "type": "string" },
+    "layer":    { "$ref": "node.schema.json#/$defs/utcStamp", "description": "this envelope's layer stamp: UTC ISO-8601 ending Z, sortable as a string" },
+    "root":     { "type": "string", "description": "id of the node the graph was built from, if any" },
+    "nodes":    { "type": "array", "items": { "$ref": "node.schema.json" } },
+    "edges":    { "type": "array", "items": { "$ref": "edge.schema.json" } },
+    "findings": { "type": "array", "items": { "$ref": "node.schema.json#/$defs/finding" } },
+    "counts": {
+      "type": "object",
+      "properties": {
+        "nodes":  { "type": "integer", "minimum": 0 },
+        "edges":  { "type": "integer", "minimum": 0 },
+        "byKind": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

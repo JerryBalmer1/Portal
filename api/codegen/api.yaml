@@ -1,0 +1,12 @@
+# Types, the chi server interface and the embedded spec, for every operation.
+# One binary serves the whole spec, so unlike GraphRenderer there is no
+# per-tag split.
+package: api
+output: ../../internal/gen/api/api.gen.go
+generate:
+  models: true
+  chi-server: true
+  embedded-spec: true
+output-options:
+  prefer-skip-optional-pointer: true
+  skip-prune: true

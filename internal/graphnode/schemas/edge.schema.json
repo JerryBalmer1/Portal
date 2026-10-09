@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://graphnode.jerrybalmer.dev/schemas/edge.schema.json",
+  "title": "GraphNode Edge",
+  "description": "id must equal from + '|' + to + '|' + kind, with '%' and '|' in from and to percent-encoded as %25 and %7C (design.md 15); enforced by the validators, not expressible here.",
+  "type": "object",
+  "required": ["id", "kind", "from", "to"],
+  "properties": {
+    "id":         { "type": "string", "minLength": 1 },
+    "kind":       { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$" },
+    "from":       { "type": "string", "minLength": 1 },
+    "to":         { "type": "string", "minLength": 1 },
+    "properties": { "type": "object", "additionalProperties": true },
+    "source":     { "type": "array", "items": { "$ref": "node.schema.json#/$defs/source" } },
+    "findings":   { "type": "array", "items": { "$ref": "node.schema.json#/$defs/finding" } },
+    "stamp":      { "$ref": "node.schema.json#/$defs/stamp" },
+    "display":    false
+  },
+  "additionalProperties": true
+}

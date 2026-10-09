@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://graphnode.jerrybalmer.dev/schemas/node.schema.json",
+  "title": "GraphNode Node",
+  "type": "object",
+  "required": ["id", "kind"],
+  "properties": {
+    "id":         { "type": "string", "minLength": 1 },
+    "kind":       { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$" },
+    "name":       { "type": "string" },
+    "properties": { "type": "object", "additionalProperties": true },
+    "source":     { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "findings":   { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "stamp":      { "$ref": "#/$defs/stamp" },
+    "display":    false
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "source": {
+      "type": "object",
+      "properties": {
+        "tool":    { "type": "string" },
+        "command": { "type": "string" },
+        "path":    { "type": "string" },
+        "file":    { "type": "string" },
+        "line":    { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "finding": {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind":     { "type": "string" },
+        "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+        "message":  { "type": "string" },
+        "target":   { "type": "string", "description": "node or edge id the finding is about" }
+      },
+      "additionalProperties": true
+    },
+    "stamp": {
+      "type": "object",
+      "properties": {
+        "layer":     { "$ref": "#/$defs/utcStamp" },
+        "firstSeen": { "$ref": "#/$defs/utcStamp" },
+        "lastSeen":  { "$ref": "#/$defs/utcStamp" }
+      },
+      "additionalProperties": false
+    },
+    "utcStamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$",
+      "description": "UTC ISO-8601 time ending Z, e.g. 2026-10-08T00:00:00Z; validators report code stamp when it does not match"
+    }
+  }
+}

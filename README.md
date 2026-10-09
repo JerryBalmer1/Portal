@@ -1,1 +1,101 @@
+> Terms used here (screen graph, boot, Container, Widget, Layout, Category, State, Theme, Ref, layer, snap, approve) are defined in [ONTOLOGY.md](ONTOLOGY.md).
+
 # Portal
+
+The portal of the graph family: a blank page plus one API. Every panel on the page is a node in a Graph.Node envelope; the API reads and changes that graph, mounts data layers read-only, approves the screen as a snap and diffs two snaps. Widgets are modules, one renderer per base Category; the graph widget (Canvas) is one of them. No UI model of its own (docs/design.md 1); the first data it draws is Graph.Emitter.FileSystem's layer. A start boots from the newest approved snap, else from the dev seed (docs/design.md 20).
+
+Rows, bottom to top:
+
+```
+Graph.Node           the shape: schemas, validator (lifted here at v0.2.0, internal/graphnode)
+emitters             write layers: Graph.Emitter.FileSystem, ...
+Portal               mounts layers read-only; its own screen is a graph/1 envelope
+Graph                orchestrates; calls the PowerShell wrappers here
+```
+
+Nothing edits below its own row.
+
+## What is here
+
+| Path | What |
+|---|---|
+| `api/openapi.yaml` | The one API, OpenAPI 3.0.3. Source of truth for routes, handlers and `web/client.js`. |
+| `api/codegen/` | oapi-codegen v2.8.0 config and the `go:generate` directive. |
+| `internal/gen/api/` | Generated from the spec: models, chi server interface, embedded spec. Read-only. |
+| `internal/server/` | The handlers; Go spec tests (every operation against the spec, route and client parity). |
+| `internal/store/` | Screen graph and its boot, validation, layers, snaps and approval, diff. |
+| `internal/graphnode/` | Graph.Node's schemas and `graph` package, lifted at tag v0.2.0 with `ui:` registered to Portal (docs/design.md 4). |
+| `cmd/portal/` | The server: `portal [-port 8080] [-artifacts artifacts] [-mount name=path]... [-filesystem <dir or file>] [-no-seed]`, on 127.0.0.1; `PORTAL_SNAP=<stamp>` boots from that snap; `PORTAL_MODE=production` hides the Designer. |
+| `cmd/graphnode/` | Graph.Node's validator CLI, lifted: `graphnode validate <graph.json> [--ontology <ontology.yaml>]`, `validate-ontology <ontology.yaml>`, `prefixes`, `check-id <prefix> <id>`, `schema [name]`, `version`. |
+| `web/` | The page: `index.html`, `portal.js`, `client.js`, renderers `canvas.js`, `table.js`, `detail.js`, `designer.js` (with Approve), `base.css`, vendored Cytoscape. |
+| `ontology.yaml` | Module `Portal` 0.2.0: Kinds Container, Widget, Layout, Category, State, Theme, Ref; edges contains, laid-out-by, is-a, displays, has-state, themed-by; findings absent, approved. |
+| `src/Portal/` | PowerShell module: `Start-Portal`, `Stop-Portal`, `Get-PortalScreen`, `New-PortalSnap`, `Compare-PortalSnap`, `Mount-PortalLayer`. |
+| `tests/` | Pester (`Invoke-Tests.ps1`, `Portal.Tests.ps1`) and fixtures: `layers/filesystem/` (a FileSystem layer and its ontology), `invalid.graph.json` (Graph.Node's at v0.2.0). |
+| `docs/` | `design.md` (decisions, numbered), `manual-check-list.md`, `screenshots/portal.png`. |
+| `.claude/skills/` | `manual-check-list`, `ontology-doc`, `readme` (this repo's docs); `graph-node` and `run-report` (copied read-only from Graph.Node v0.2.0 and Graph). |
+
+## Requirements
+
+| Tool | Notes |
+|---|---|
+| Windows x64 | The only build target. |
+| Go 1.27.0+ | `go.mod`; versions pinned there, `go.sum` committed. |
+| PowerShell 7.4+ | |
+| Pester 5.5+ | `Install-Module Pester -Scope CurrentUser` |
+| InvokeBuild | `Install-Module InvokeBuild -Scope CurrentUser` |
+| Edge or Chrome | Only for `Invoke-Build Screenshot`. |
+
+## Build
+
+```powershell
+Invoke-Build              # Modules, Build, Test, Smoke, Pester
+Invoke-Build Build        # portal.exe and graphnode.exe into build/win-x64/
+Invoke-Build Test         # go vet, go test
+Invoke-Build Smoke        # on artifacts/smoke: seed, approve, Theme opacity, approve, restart; artifacts/smoke-report.json
+Invoke-Build Up           # portal on http://127.0.0.1:8080 over artifacts/
+Invoke-Build Down         # stop it
+Invoke-Build Generate     # internal/gen from api/openapi.yaml
+Invoke-Build Screenshot   # docs/screenshots/portal.png
+```
+
+Pester runs only as `pwsh -NoProfile -File .\tests\Invoke-Tests.ps1`.
+
+## Use from PowerShell
+
+```powershell
+Import-Module .\src\Portal\Portal.psd1
+$p = Start-Portal -Port 0 -Artifacts $env:TEMP\portal-demo -Filesystem .\tests\fixtures\layers\filesystem
+$p.Boot                                                             # seed
+$a = New-PortalSnap -Note 'first layout' -Url $p.Url
+Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/nodes/ui:theme:default" -ContentType application/json -Body '{"properties":{"opacity":0.2}}' | Out-Null
+$b = New-PortalSnap -Note 'lighter glass' -Url $p.Url
+$b.diff.changed.nodes                                               # ui:theme:default
+(Compare-PortalSnap $a $b -Url $p.Url).changed.nodes.id             # ui:theme:default
+Stop-Portal -Artifacts $env:TEMP\portal-demo
+$p = Start-Portal -Port 0 -Artifacts $env:TEMP\portal-demo -Filesystem .\tests\fixtures\layers\filesystem
+$p.Boot -eq $b.stamp                                                # True
+(Get-PortalScreen -Url $p.Url).nodes.Count                          # 9
+Stop-Portal -Artifacts $env:TEMP\portal-demo
+```
+
+`Start-Portal -Snap <stamp>` boots from an older snap instead of the newest.
+
+## Use the API
+
+```
+GET    /api/screen                          the screen graph (envelope); header X-Portal-Boot: <stamp>, seed or empty
+POST   /api/nodes      POST /api/edges      add; Graph.Node shape; validated before accept
+PATCH  /api/nodes/{id}                      properties and display State only
+DELETE /api/nodes/{id}                      the node and its edges
+GET    /api/layers     POST /api/layers     mounted layers; mount from a path or an envelope
+GET    /api/layers/{name}/nodes?kind=&from= query a layer
+POST   /api/snap       {"note": "..."}      approve: artifacts/snaps/<stamp>.graph.json, previous, diff summary
+GET    /api/diff?a=<stamp>&b=<stamp>        added, removed, changed, and the merge
+GET    /api/ontology                        portal ontology and every layer's
+```
+
+A refused write answers 422 with `problems`, each `{code, path, message, severity}`; the codes are listed in [ONTOLOGY.md](ONTOLOGY.md).
+
+## Status
+
+0.2.0: renamed Portal, Graph.Node lifted at v0.2.0, boot from the newest snap, Approve, Theme. Decisions and what was deferred: docs/design.md (entries 18 to 23 are 0.2.0's; 9, 14, 15, 16 and 22 name the next questions).

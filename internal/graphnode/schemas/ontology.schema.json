@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://graphnode.jerrybalmer.dev/schemas/ontology.schema.json",
+  "title": "GraphNode Ontology",
+  "description": "An emitter's declaration of its Kinds. YAML on disk; validated as its JSON equivalent.",
+  "type": "object",
+  "required": ["kinds"],
+  "properties": {
+    "module":  { "type": "string" },
+    "version": { "type": "string" },
+    "kinds": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$" },
+      "additionalProperties": { "$ref": "#/$defs/kind" }
+    },
+    "edgeKinds": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$" },
+      "additionalProperties": { "$ref": "#/$defs/edgeKind" }
+    },
+    "findingKinds": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/findingKind" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "kind": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "idRule":      { "type": "string", "description": "how this Kind's id is built, in prose or a template" },
+        "properties":  { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/property" } ] } },
+        "display":     { "$ref": "#/$defs/display" },
+        "actions":     { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/action" } ] } }
+      },
+      "additionalProperties": false
+    },
+    "property": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name":        { "type": "string" },
+        "type":        { "type": "string", "enum": ["string", "integer", "number", "boolean", "object", "array"] },
+        "required":    { "type": "boolean" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "display": {
+      "type": "object",
+      "description": "How a renderer draws nodes of this Kind, resolved by node.kind; never carried on a node (design.md 13).",
+      "properties": {
+        "color":     { "$ref": "#/$defs/color" },
+        "shape":     { "type": "string", "enum": ["circle", "square", "diamond", "hexagon", "round-rectangle", "rectangle", "ellipse", "octagon"],
+                       "description": "circle | square | diamond | hexagon; round-rectangle, rectangle, ellipse and octagon are 0.1.0 names, accepted with a display warning until 0.3.0" },
+        "icon":      { "type": "string" },
+        "size":      { "type": "integer", "minimum": 1 },
+        "label":     { "type": "string", "description": "template; {name} and {properties.x} substitute" },
+        "collapsed": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "edgeDisplay": {
+      "type": "object",
+      "description": "How a renderer draws edges of this edge Kind, resolved by edge.kind (design.md 13).",
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "style": { "type": "string", "enum": ["solid", "dashed", "dotted"] }
+      },
+      "additionalProperties": false
+    },
+    "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb" },
+    "action": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name":        { "type": "string" },
+        "description": { "type": "string" },
+        "inputs": {
+          "oneOf": [
+            { "type": "array", "items": { "$ref": "#/$defs/actionInput" } },
+            { "type": "object", "additionalProperties": { "type": "string" }, "description": "0.1.0 form, input name -> type name; accepted with an action warning until 0.3.0" }
+          ]
+        },
+        "returns": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type":        { "$ref": "#/$defs/valueType" },
+            "description": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "trigger":     { "type": "string", "description": "manual | on-change | schedule:<cron> | event:<name>" },
+        "permissions": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "actionInput": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name":        { "type": "string", "minLength": 1 },
+        "type":        { "$ref": "#/$defs/valueType" },
+        "required":    { "type": "boolean", "description": "default false" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "valueType": { "type": "string", "minLength": 1, "description": "string | integer | number | boolean | object | array, or a Kind name (the value is that node's id) (design.md 16)" },
+    "edgeKind": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "from":        { "type": "array", "items": { "type": "string" } },
+        "to":          { "type": "array", "items": { "type": "string" } },
+        "display":     { "$ref": "#/$defs/edgeDisplay" }
+      },
+      "additionalProperties": false
+    },
+    "findingKind": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "severity":    { "type": "string", "enum": ["info", "warning", "error"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

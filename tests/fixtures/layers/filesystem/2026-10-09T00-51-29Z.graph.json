@@ -1,0 +1,941 @@
+{
+  "schema": "graph/1",
+  "ontology": "ontology.yaml",
+  "module": "Graph.Emitter.FileSystem",
+  "version": "0.1.0",
+  "layer": "2026-10-09T00:51:29Z",
+  "root": "fs:.",
+  "nodes": [
+    {
+      "id": "fs:.",
+      "kind": "Directory",
+      "name": "Graph.Emitter.FileSystem",
+      "properties": {
+        "childCount": 13,
+        "isHidden": false,
+        "name": "Graph.Emitter.FileSystem",
+        "modifiedAt": "2026-10-08T22:19:48Z"
+      },
+      "source": [
+        {
+          "path": "C:\\__Code\\Graph.Emitter.FileSystem",
+          "tool": "Graph.Emitter.FileSystem"
+        }
+      ]
+    },
+    {
+      "id": "fs:.build.ps1",
+      "kind": "File",
+      "name": ".build.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:16:24Z",
+        "name": ".build.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 1111
+      }
+    },
+    {
+      "id": "fs:.gitattributes",
+      "kind": "File",
+      "name": ".gitattributes",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:19:42Z",
+        "name": ".gitattributes",
+        "isHidden": false,
+        "extension": ".gitattributes",
+        "sizeBytes": 147
+      }
+    },
+    {
+      "id": "fs:.gitignore",
+      "kind": "File",
+      "name": ".gitignore",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:15:09Z",
+        "name": ".gitignore",
+        "isHidden": false,
+        "extension": ".gitignore",
+        "sizeBytes": 33
+      }
+    },
+    {
+      "id": "fs:AGENTS.md",
+      "kind": "File",
+      "name": "AGENTS.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:17:17Z",
+        "name": "AGENTS.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 675
+      }
+    },
+    {
+      "id": "fs:CHANGELOG.md",
+      "kind": "File",
+      "name": "CHANGELOG.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:17:20Z",
+        "name": "CHANGELOG.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 1396
+      }
+    },
+    {
+      "id": "fs:CLAUDE.md",
+      "kind": "File",
+      "name": "CLAUDE.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:17:16Z",
+        "name": "CLAUDE.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 2551
+      }
+    },
+    {
+      "id": "fs:ONTOLOGY.md",
+      "kind": "File",
+      "name": "ONTOLOGY.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:17:19Z",
+        "name": "ONTOLOGY.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 2452
+      }
+    },
+    {
+      "id": "fs:ontology.yaml",
+      "kind": "File",
+      "name": "ontology.yaml",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:13:02Z",
+        "name": "ontology.yaml",
+        "isHidden": false,
+        "extension": ".yaml",
+        "sizeBytes": 2077
+      }
+    },
+    {
+      "id": "fs:README.md",
+      "kind": "File",
+      "name": "README.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:17:46Z",
+        "name": "README.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 4017
+      }
+    },
+    {
+      "id": "fs:.claude",
+      "kind": "Directory",
+      "name": ".claude",
+      "properties": {
+        "childCount": 1,
+        "isHidden": false,
+        "name": ".claude",
+        "modifiedAt": "2026-10-08T22:11:19Z"
+      }
+    },
+    {
+      "id": "fs:docs",
+      "kind": "Directory",
+      "name": "docs",
+      "properties": {
+        "childCount": 2,
+        "isHidden": false,
+        "name": "docs",
+        "modifiedAt": "2026-10-08T22:19:33Z"
+      }
+    },
+    {
+      "id": "fs:docs/design.md",
+      "kind": "File",
+      "name": "design.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:17:18Z",
+        "name": "design.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 3773
+      }
+    },
+    {
+      "id": "fs:docs/manual-check-list.md",
+      "kind": "File",
+      "name": "manual-check-list.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:19:33Z",
+        "name": "manual-check-list.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 4385
+      }
+    },
+    {
+      "id": "fs:src",
+      "kind": "Directory",
+      "name": "src",
+      "properties": {
+        "childCount": 1,
+        "isHidden": false,
+        "name": "src",
+        "modifiedAt": "2026-10-08T22:11:19Z"
+      }
+    },
+    {
+      "id": "fs:tests",
+      "kind": "Directory",
+      "name": "tests",
+      "properties": {
+        "childCount": 7,
+        "isHidden": false,
+        "name": "tests",
+        "modifiedAt": "2026-10-08T22:16:09Z"
+      }
+    },
+    {
+      "id": "fs:tests/Export-FileSystemGraph.Tests.ps1",
+      "kind": "File",
+      "name": "Export-FileSystemGraph.Tests.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:15:41Z",
+        "name": "Export-FileSystemGraph.Tests.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 2036
+      }
+    },
+    {
+      "id": "fs:tests/Get-FileSystemGraph.Tests.ps1",
+      "kind": "File",
+      "name": "Get-FileSystemGraph.Tests.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:16:09Z",
+        "name": "Get-FileSystemGraph.Tests.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 5427
+      }
+    },
+    {
+      "id": "fs:tests/Invoke-Tests.ps1",
+      "kind": "File",
+      "name": "Invoke-Tests.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:15:09Z",
+        "name": "Invoke-Tests.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 685
+      }
+    },
+    {
+      "id": "fs:tests/Module.Tests.ps1",
+      "kind": "File",
+      "name": "Module.Tests.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:15:18Z",
+        "name": "Module.Tests.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 3956
+      }
+    },
+    {
+      "id": "fs:tests/Remove-FileSystemItem.Tests.ps1",
+      "kind": "File",
+      "name": "Remove-FileSystemItem.Tests.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:15:18Z",
+        "name": "Remove-FileSystemItem.Tests.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 1668
+      }
+    },
+    {
+      "id": "fs:tests/testResults.xml",
+      "kind": "File",
+      "name": "testResults.xml",
+      "properties": {
+        "modifiedAt": "2026-10-09T00:51:28Z",
+        "name": "testResults.xml",
+        "isHidden": false,
+        "extension": ".xml",
+        "sizeBytes": 11732
+      }
+    },
+    {
+      "id": "fs:tests/TestSetup.ps1",
+      "kind": "File",
+      "name": "TestSetup.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:15:00Z",
+        "name": "TestSetup.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 1371
+      }
+    },
+    {
+      "id": "fs:.claude/skills",
+      "kind": "Directory",
+      "name": "skills",
+      "properties": {
+        "childCount": 5,
+        "isHidden": false,
+        "name": "skills",
+        "modifiedAt": "2026-10-09T00:48:50Z"
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem",
+      "kind": "Directory",
+      "name": "Graph.Emitter.FileSystem",
+      "properties": {
+        "childCount": 4,
+        "isHidden": false,
+        "name": "Graph.Emitter.FileSystem",
+        "modifiedAt": "2026-10-08T22:11:52Z"
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Graph.Emitter.FileSystem.psd1",
+      "kind": "File",
+      "name": "Graph.Emitter.FileSystem.psd1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:11:51Z",
+        "name": "Graph.Emitter.FileSystem.psd1",
+        "isHidden": false,
+        "extension": ".psd1",
+        "sizeBytes": 912
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Graph.Emitter.FileSystem.psm1",
+      "kind": "File",
+      "name": "Graph.Emitter.FileSystem.psm1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:11:52Z",
+        "name": "Graph.Emitter.FileSystem.psm1",
+        "isHidden": false,
+        "extension": ".psm1",
+        "sizeBytes": 924
+      }
+    },
+    {
+      "id": "fs:.claude/skills/graph-node",
+      "kind": "Directory",
+      "name": "graph-node",
+      "properties": {
+        "childCount": 2,
+        "isHidden": false,
+        "name": "graph-node",
+        "modifiedAt": "2026-10-08T22:11:20Z"
+      }
+    },
+    {
+      "id": "fs:.claude/skills/graph-node/SKILL.md",
+      "kind": "File",
+      "name": "SKILL.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:11:20Z",
+        "name": "SKILL.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 13526
+      }
+    },
+    {
+      "id": "fs:.claude/skills/manual-check-list",
+      "kind": "Directory",
+      "name": "manual-check-list",
+      "properties": {
+        "childCount": 1,
+        "isHidden": false,
+        "name": "manual-check-list",
+        "modifiedAt": "2026-10-08T22:19:34Z"
+      }
+    },
+    {
+      "id": "fs:.claude/skills/manual-check-list/SKILL.md",
+      "kind": "File",
+      "name": "SKILL.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:19:34Z",
+        "name": "SKILL.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 7253
+      }
+    },
+    {
+      "id": "fs:.claude/skills/ontology-doc",
+      "kind": "Directory",
+      "name": "ontology-doc",
+      "properties": {
+        "childCount": 1,
+        "isHidden": false,
+        "name": "ontology-doc",
+        "modifiedAt": "2026-10-08T22:18:20Z"
+      }
+    },
+    {
+      "id": "fs:.claude/skills/ontology-doc/SKILL.md",
+      "kind": "File",
+      "name": "SKILL.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:18:20Z",
+        "name": "SKILL.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 4693
+      }
+    },
+    {
+      "id": "fs:.claude/skills/readme",
+      "kind": "Directory",
+      "name": "readme",
+      "properties": {
+        "childCount": 1,
+        "isHidden": false,
+        "name": "readme",
+        "modifiedAt": "2026-10-08T22:18:18Z"
+      }
+    },
+    {
+      "id": "fs:.claude/skills/readme/SKILL.md",
+      "kind": "File",
+      "name": "SKILL.md",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:18:18Z",
+        "name": "SKILL.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 4954
+      }
+    },
+    {
+      "id": "fs:.claude/skills/run-report",
+      "kind": "Directory",
+      "name": "run-report",
+      "properties": {
+        "childCount": 2,
+        "isHidden": false,
+        "name": "run-report",
+        "modifiedAt": "2026-10-09T00:48:50Z"
+      }
+    },
+    {
+      "id": "fs:.claude/skills/run-report/SKILL.md",
+      "kind": "File",
+      "name": "SKILL.md",
+      "properties": {
+        "modifiedAt": "2026-10-09T00:48:50Z",
+        "name": "SKILL.md",
+        "isHidden": false,
+        "extension": ".md",
+        "sizeBytes": 6366
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Private",
+      "kind": "Directory",
+      "name": "Private",
+      "properties": {
+        "childCount": 4,
+        "isHidden": false,
+        "name": "Private",
+        "modifiedAt": "2026-10-08T22:12:05Z"
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Private/ConvertTo-FileSystemId.ps1",
+      "kind": "File",
+      "name": "ConvertTo-FileSystemId.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:11:54Z",
+        "name": "ConvertTo-FileSystemId.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 436
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Private/ConvertTo-FileSystemNode.ps1",
+      "kind": "File",
+      "name": "ConvertTo-FileSystemNode.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:12:05Z",
+        "name": "ConvertTo-FileSystemNode.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 1232
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Private/Get-GraphNodeModule.ps1",
+      "kind": "File",
+      "name": "Get-GraphNodeModule.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:11:53Z",
+        "name": "Get-GraphNodeModule.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 978
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Private/Resolve-FileSystemId.ps1",
+      "kind": "File",
+      "name": "Resolve-FileSystemId.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:11:55Z",
+        "name": "Resolve-FileSystemId.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 1393
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Public",
+      "kind": "Directory",
+      "name": "Public",
+      "properties": {
+        "childCount": 3,
+        "isHidden": false,
+        "name": "Public",
+        "modifiedAt": "2026-10-08T22:13:01Z"
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Public/Export-FileSystemGraph.ps1",
+      "kind": "File",
+      "name": "Export-FileSystemGraph.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:12:48Z",
+        "name": "Export-FileSystemGraph.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 1803
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Public/Get-FileSystemGraph.ps1",
+      "kind": "File",
+      "name": "Get-FileSystemGraph.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:12:47Z",
+        "name": "Get-FileSystemGraph.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 4378
+      }
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Public/Remove-FileSystemItem.ps1",
+      "kind": "File",
+      "name": "Remove-FileSystemItem.ps1",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:13:01Z",
+        "name": "Remove-FileSystemItem.ps1",
+        "isHidden": false,
+        "extension": ".ps1",
+        "sizeBytes": 1137
+      }
+    },
+    {
+      "id": "fs:.claude/skills/graph-node/reference",
+      "kind": "Directory",
+      "name": "reference",
+      "properties": {
+        "childCount": 2,
+        "isHidden": false,
+        "name": "reference",
+        "modifiedAt": "2026-10-08T22:11:20Z"
+      }
+    },
+    {
+      "id": "fs:.claude/skills/graph-node/reference/envelope.example.json",
+      "kind": "File",
+      "name": "envelope.example.json",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:11:20Z",
+        "name": "envelope.example.json",
+        "isHidden": false,
+        "extension": ".json",
+        "sizeBytes": 1459
+      }
+    },
+    {
+      "id": "fs:.claude/skills/graph-node/reference/ontology.example.yaml",
+      "kind": "File",
+      "name": "ontology.example.yaml",
+      "properties": {
+        "modifiedAt": "2026-10-08T22:11:20Z",
+        "name": "ontology.example.yaml",
+        "isHidden": false,
+        "extension": ".yaml",
+        "sizeBytes": 904
+      }
+    },
+    {
+      "id": "fs:.claude/skills/run-report/reference",
+      "kind": "Directory",
+      "name": "reference",
+      "properties": {
+        "childCount": 2,
+        "isHidden": false,
+        "name": "reference",
+        "modifiedAt": "2026-10-09T00:48:50Z"
+      }
+    },
+    {
+      "id": "fs:.claude/skills/run-report/reference/ontology.yaml",
+      "kind": "File",
+      "name": "ontology.yaml",
+      "properties": {
+        "modifiedAt": "2026-10-09T00:48:50Z",
+        "name": "ontology.yaml",
+        "isHidden": false,
+        "extension": ".yaml",
+        "sizeBytes": 2729
+      }
+    },
+    {
+      "id": "fs:.claude/skills/run-report/reference/run-report.example.json",
+      "kind": "File",
+      "name": "run-report.example.json",
+      "properties": {
+        "modifiedAt": "2026-10-09T00:48:50Z",
+        "name": "run-report.example.json",
+        "isHidden": false,
+        "extension": ".json",
+        "sizeBytes": 38095
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "fs:.|fs:.build.ps1|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:.build.ps1"
+    },
+    {
+      "id": "fs:.|fs:.claude|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:.claude"
+    },
+    {
+      "id": "fs:.|fs:.gitattributes|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:.gitattributes"
+    },
+    {
+      "id": "fs:.|fs:.gitignore|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:.gitignore"
+    },
+    {
+      "id": "fs:.|fs:AGENTS.md|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:AGENTS.md"
+    },
+    {
+      "id": "fs:.|fs:CHANGELOG.md|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:CHANGELOG.md"
+    },
+    {
+      "id": "fs:.|fs:CLAUDE.md|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:CLAUDE.md"
+    },
+    {
+      "id": "fs:.|fs:docs|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:docs"
+    },
+    {
+      "id": "fs:.|fs:ONTOLOGY.md|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:ONTOLOGY.md"
+    },
+    {
+      "id": "fs:.|fs:ontology.yaml|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:ontology.yaml"
+    },
+    {
+      "id": "fs:.|fs:README.md|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:README.md"
+    },
+    {
+      "id": "fs:.|fs:src|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:src"
+    },
+    {
+      "id": "fs:.|fs:tests|contains",
+      "kind": "contains",
+      "from": "fs:.",
+      "to": "fs:tests"
+    },
+    {
+      "id": "fs:.claude|fs:.claude/skills|contains",
+      "kind": "contains",
+      "from": "fs:.claude",
+      "to": "fs:.claude/skills"
+    },
+    {
+      "id": "fs:docs|fs:docs/design.md|contains",
+      "kind": "contains",
+      "from": "fs:docs",
+      "to": "fs:docs/design.md"
+    },
+    {
+      "id": "fs:docs|fs:docs/manual-check-list.md|contains",
+      "kind": "contains",
+      "from": "fs:docs",
+      "to": "fs:docs/manual-check-list.md"
+    },
+    {
+      "id": "fs:src|fs:src/Graph.Emitter.FileSystem|contains",
+      "kind": "contains",
+      "from": "fs:src",
+      "to": "fs:src/Graph.Emitter.FileSystem"
+    },
+    {
+      "id": "fs:tests|fs:tests/Export-FileSystemGraph.Tests.ps1|contains",
+      "kind": "contains",
+      "from": "fs:tests",
+      "to": "fs:tests/Export-FileSystemGraph.Tests.ps1"
+    },
+    {
+      "id": "fs:tests|fs:tests/Get-FileSystemGraph.Tests.ps1|contains",
+      "kind": "contains",
+      "from": "fs:tests",
+      "to": "fs:tests/Get-FileSystemGraph.Tests.ps1"
+    },
+    {
+      "id": "fs:tests|fs:tests/Invoke-Tests.ps1|contains",
+      "kind": "contains",
+      "from": "fs:tests",
+      "to": "fs:tests/Invoke-Tests.ps1"
+    },
+    {
+      "id": "fs:tests|fs:tests/Module.Tests.ps1|contains",
+      "kind": "contains",
+      "from": "fs:tests",
+      "to": "fs:tests/Module.Tests.ps1"
+    },
+    {
+      "id": "fs:tests|fs:tests/Remove-FileSystemItem.Tests.ps1|contains",
+      "kind": "contains",
+      "from": "fs:tests",
+      "to": "fs:tests/Remove-FileSystemItem.Tests.ps1"
+    },
+    {
+      "id": "fs:tests|fs:tests/testResults.xml|contains",
+      "kind": "contains",
+      "from": "fs:tests",
+      "to": "fs:tests/testResults.xml"
+    },
+    {
+      "id": "fs:tests|fs:tests/TestSetup.ps1|contains",
+      "kind": "contains",
+      "from": "fs:tests",
+      "to": "fs:tests/TestSetup.ps1"
+    },
+    {
+      "id": "fs:.claude/skills|fs:.claude/skills/graph-node|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills",
+      "to": "fs:.claude/skills/graph-node"
+    },
+    {
+      "id": "fs:.claude/skills|fs:.claude/skills/manual-check-list|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills",
+      "to": "fs:.claude/skills/manual-check-list"
+    },
+    {
+      "id": "fs:.claude/skills|fs:.claude/skills/ontology-doc|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills",
+      "to": "fs:.claude/skills/ontology-doc"
+    },
+    {
+      "id": "fs:.claude/skills|fs:.claude/skills/readme|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills",
+      "to": "fs:.claude/skills/readme"
+    },
+    {
+      "id": "fs:.claude/skills|fs:.claude/skills/run-report|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills",
+      "to": "fs:.claude/skills/run-report"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem|fs:src/Graph.Emitter.FileSystem/Graph.Emitter.FileSystem.psd1|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem",
+      "to": "fs:src/Graph.Emitter.FileSystem/Graph.Emitter.FileSystem.psd1"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem|fs:src/Graph.Emitter.FileSystem/Graph.Emitter.FileSystem.psm1|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem",
+      "to": "fs:src/Graph.Emitter.FileSystem/Graph.Emitter.FileSystem.psm1"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem|fs:src/Graph.Emitter.FileSystem/Private|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem",
+      "to": "fs:src/Graph.Emitter.FileSystem/Private"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem|fs:src/Graph.Emitter.FileSystem/Public|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem",
+      "to": "fs:src/Graph.Emitter.FileSystem/Public"
+    },
+    {
+      "id": "fs:.claude/skills/graph-node|fs:.claude/skills/graph-node/reference|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/graph-node",
+      "to": "fs:.claude/skills/graph-node/reference"
+    },
+    {
+      "id": "fs:.claude/skills/graph-node|fs:.claude/skills/graph-node/SKILL.md|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/graph-node",
+      "to": "fs:.claude/skills/graph-node/SKILL.md"
+    },
+    {
+      "id": "fs:.claude/skills/manual-check-list|fs:.claude/skills/manual-check-list/SKILL.md|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/manual-check-list",
+      "to": "fs:.claude/skills/manual-check-list/SKILL.md"
+    },
+    {
+      "id": "fs:.claude/skills/ontology-doc|fs:.claude/skills/ontology-doc/SKILL.md|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/ontology-doc",
+      "to": "fs:.claude/skills/ontology-doc/SKILL.md"
+    },
+    {
+      "id": "fs:.claude/skills/readme|fs:.claude/skills/readme/SKILL.md|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/readme",
+      "to": "fs:.claude/skills/readme/SKILL.md"
+    },
+    {
+      "id": "fs:.claude/skills/run-report|fs:.claude/skills/run-report/reference|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/run-report",
+      "to": "fs:.claude/skills/run-report/reference"
+    },
+    {
+      "id": "fs:.claude/skills/run-report|fs:.claude/skills/run-report/SKILL.md|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/run-report",
+      "to": "fs:.claude/skills/run-report/SKILL.md"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Private|fs:src/Graph.Emitter.FileSystem/Private/ConvertTo-FileSystemId.ps1|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem/Private",
+      "to": "fs:src/Graph.Emitter.FileSystem/Private/ConvertTo-FileSystemId.ps1"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Private|fs:src/Graph.Emitter.FileSystem/Private/ConvertTo-FileSystemNode.ps1|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem/Private",
+      "to": "fs:src/Graph.Emitter.FileSystem/Private/ConvertTo-FileSystemNode.ps1"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Private|fs:src/Graph.Emitter.FileSystem/Private/Get-GraphNodeModule.ps1|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem/Private",
+      "to": "fs:src/Graph.Emitter.FileSystem/Private/Get-GraphNodeModule.ps1"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Private|fs:src/Graph.Emitter.FileSystem/Private/Resolve-FileSystemId.ps1|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem/Private",
+      "to": "fs:src/Graph.Emitter.FileSystem/Private/Resolve-FileSystemId.ps1"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Public|fs:src/Graph.Emitter.FileSystem/Public/Export-FileSystemGraph.ps1|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem/Public",
+      "to": "fs:src/Graph.Emitter.FileSystem/Public/Export-FileSystemGraph.ps1"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Public|fs:src/Graph.Emitter.FileSystem/Public/Get-FileSystemGraph.ps1|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem/Public",
+      "to": "fs:src/Graph.Emitter.FileSystem/Public/Get-FileSystemGraph.ps1"
+    },
+    {
+      "id": "fs:src/Graph.Emitter.FileSystem/Public|fs:src/Graph.Emitter.FileSystem/Public/Remove-FileSystemItem.ps1|contains",
+      "kind": "contains",
+      "from": "fs:src/Graph.Emitter.FileSystem/Public",
+      "to": "fs:src/Graph.Emitter.FileSystem/Public/Remove-FileSystemItem.ps1"
+    },
+    {
+      "id": "fs:.claude/skills/graph-node/reference|fs:.claude/skills/graph-node/reference/envelope.example.json|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/graph-node/reference",
+      "to": "fs:.claude/skills/graph-node/reference/envelope.example.json"
+    },
+    {
+      "id": "fs:.claude/skills/graph-node/reference|fs:.claude/skills/graph-node/reference/ontology.example.yaml|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/graph-node/reference",
+      "to": "fs:.claude/skills/graph-node/reference/ontology.example.yaml"
+    },
+    {
+      "id": "fs:.claude/skills/run-report/reference|fs:.claude/skills/run-report/reference/ontology.yaml|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/run-report/reference",
+      "to": "fs:.claude/skills/run-report/reference/ontology.yaml"
+    },
+    {
+      "id": "fs:.claude/skills/run-report/reference|fs:.claude/skills/run-report/reference/run-report.example.json|contains",
+      "kind": "contains",
+      "from": "fs:.claude/skills/run-report/reference",
+      "to": "fs:.claude/skills/run-report/reference/run-report.example.json"
+    }
+  ],
+  "findings": [],
+  "counts": {
+    "nodes": 52,
+    "edges": 51,
+    "byKind": {
+      "Directory": 16,
+      "File": 36
+    }
+  }
+}

@@ -1,0 +1,253 @@
+/* Portal stylesheet. Lifted from GraphRenderer's pkg/web/base.css (glass
+   preset, boxes, controls) with the theme tokens fixed in :root, since the
+   portal has one theme; the pt-* rules at the end are the portal's own.
+   Every colour, radius, shadow, blur and border reads a --gr- token. */
+:root {
+  --gr-surface: rgba(255,255,255,0.11);
+  --gr-blur: 32px;
+  --gr-border: 1px solid rgba(255,255,255,0.12);
+  --gr-glow: inset 0 1px 0 rgba(255,255,255,0.10), 0 16px 48px rgba(0,0,0,0.30);
+  --gr-radius: 16px;
+  --gr-accent: rgb(240,150,72);
+  --gr-text: rgb(255,255,255);
+  --gr-text-muted: rgba(255,255,255,0.72);
+  --gr-text-glow: 0 0 14px rgba(255,255,255,0.28);
+  --gr-base: rgb(38,34,32);
+  --gr-backdrop: radial-gradient(50vmax 40vmax at 12% 18%, rgba(178,128,88,0.46), transparent 70%), radial-gradient(45vmax 40vmax at 88% 86%, rgba(80,130,128,0.30), transparent 70%), radial-gradient(30vmax 26vmax at 70% 6%, rgba(160,120,96,0.22), transparent 70%), rgb(20,18,17);
+  /* Node fill when a layer ontology gives a Kind no display colour. */
+  --gr-fallback: rgb(138,138,138);
+}
+html, body {
+  margin: 0;
+  height: 100%;
+  color: var(--gr-text);
+  font: 14px/1.45 "Segoe UI Variable Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: transparent;
+}
+body {
+  display: flow-root;
+  text-shadow: var(--gr-text-glow);
+  -webkit-font-smoothing: antialiased;
+}
+/* The backdrop layer the glass sits over: preset gradients, then grain.
+   backdrop-filter has nothing to blur without it. */
+html::before, html::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+html::before {
+  background: var(--gr-backdrop);
+}
+html::after {
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.gr-bar {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 16px;
+  margin: 12px;
+  border-radius: var(--gr-radius);
+  background: var(--gr-surface);
+  backdrop-filter: blur(var(--gr-blur));
+  -webkit-backdrop-filter: blur(var(--gr-blur));
+  border: var(--gr-border);
+  box-shadow: var(--gr-glow);
+}
+.gr-bar .gr-title {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--gr-text);
+  margin-right: auto;
+}
+.gr-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: var(--gr-radius);
+  overflow: hidden;
+  background: var(--gr-surface);
+  backdrop-filter: blur(var(--gr-blur));
+  -webkit-backdrop-filter: blur(var(--gr-blur));
+  border: var(--gr-border);
+  box-shadow: var(--gr-glow);
+}
+/* Widget chrome stays quiet until the box is hovered. */
+.gr-box-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px 4px 14px;
+  font-size: 13px;
+  color: var(--gr-text-muted);
+  transition: color 0.15s;
+}
+.gr-box:hover .gr-box-head {
+  color: var(--gr-text);
+}
+.gr-box-head .gr-box-title {
+  margin-right: auto;
+  font-weight: 500;
+}
+.gr-box-head .gr-btn {
+  color: inherit;
+  font-size: 11px;
+}
+.gr-box-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.gr-error {
+  margin: 8px;
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+.gr-form {
+  display: grid;
+  gap: 6px;
+  padding: 8px 14px;
+}
+.gr-form-row {
+  display: grid;
+  grid-template-columns: 9em 1fr;
+  gap: 8px;
+  align-items: center;
+  color: var(--gr-text-muted);
+}
+
+/* Controls: glass fill, one hairline, half radius, accent on focus. */
+.gr-input, .gr-btn, select, input[type="text"], input[type="number"] {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  color: var(--gr-text);
+  font: inherit;
+  padding: 5px 10px;
+  border-radius: calc(var(--gr-radius) / 2);
+  background-color: var(--gr-surface);
+  border: var(--gr-border);
+  transition: border-color 0.15s, color 0.15s;
+}
+.gr-input:focus, .gr-btn:focus-visible, select:focus, input[type="text"]:focus, input[type="number"]:focus {
+  outline: none;
+  border-color: var(--gr-accent);
+}
+input[type="checkbox"].gr-input {
+  appearance: auto;
+  -webkit-appearance: auto;
+  justify-self: start;
+  padding: 0;
+  accent-color: var(--gr-accent);
+}
+.gr-btn {
+  cursor: pointer;
+}
+.gr-btn:hover {
+  border-color: var(--gr-accent);
+  color: var(--gr-text);
+}
+/* Caret drawn from two gradients in a token colour: no image, no literal. */
+select {
+  cursor: pointer;
+  padding-right: 28px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--gr-text-muted) 50%),
+    linear-gradient(135deg, var(--gr-text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+select:hover {
+  border-color: var(--gr-accent);
+}
+/* The open list is drawn by the OS over white: it needs an opaque fill. */
+option {
+  background-color: var(--gr-base);
+  color: var(--gr-text);
+  text-shadow: none;
+}
+
+/* Range: hairline track filled with the accent up to the thumb (--gr-fill is
+   set by the page's slider), accent thumb. */
+input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 6px;
+  margin: 0;
+  border-radius: calc(var(--gr-radius) / 2);
+  background: linear-gradient(to right, var(--gr-accent) var(--gr-fill, 100%), var(--gr-surface) var(--gr-fill, 100%));
+  border: var(--gr-border);
+  cursor: pointer;
+}
+input[type="range"]:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--gr-accent);
+  border: var(--gr-border);
+  box-shadow: var(--gr-glow);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--gr-accent);
+  border: var(--gr-border);
+  box-shadow: var(--gr-glow);
+}
+input[type="range"]::-moz-range-progress {
+  height: 100%;
+  background: var(--gr-accent);
+}
+input[type="range"]:focus {
+  outline: none;
+}
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  border-color: var(--gr-text);
+}
+
+/* ---- portal ---- */
+body { display: flex; flex-direction: column; }
+#screen { flex: 1; min-height: 0; margin: 0 12px 12px; display: flex; flex-direction: column; }
+.pt-mode { font-size: 12px; color: var(--gr-text-muted); }
+.pt-empty { margin: auto; color: var(--gr-text-muted); }
+.pt-container { min-height: 0; }
+.pt-container.gr-box > .gr-box-body { padding: 0 10px 10px; }
+.pt-root { flex: 1; }
+.pt-grid { display: grid; gap: 12px; height: 100%; grid-auto-rows: minmax(64px, 1fr); }
+.pt-flow { display: flex; flex-wrap: wrap; gap: 12px; align-content: flex-start; }
+.pt-flow > * { flex: 1 1 320px; min-height: 280px; }
+.pt-canvas { position: relative; height: 100%; min-height: 400px; }
+.pt-canvas > * { position: absolute; }
+.pt-collapsed > .gr-box-body { display: none; }
+.pt-collapsed { flex: 0 0 auto; }
+.pt-widget { min-height: 0; }
+.pt-badge { font-size: 11px; color: var(--gr-text-muted); }
+.pt-scroll { overflow: auto; position: absolute; inset: 0; }
+.pt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pt-table th { text-align: left; color: var(--gr-text-muted); font-weight: 500; position: sticky; top: 0; background: var(--gr-base); }
+.pt-table th, .pt-table td { padding: 4px 10px; border-bottom: var(--gr-border); }
+.pt-detail { padding: 6px 14px; font-size: 12px; }
+.pt-detail dt { color: var(--gr-text-muted); }
+.pt-detail dd { margin: 0 0 6px 0; word-break: break-all; }
+.pt-designer { padding: 4px 14px 12px; font-size: 12px; display: grid; gap: 10px; }
+.pt-designer h4 { margin: 4px 0 0; font-size: 12px; font-weight: 500; color: var(--gr-text-muted); }
+.pt-designer ul { margin: 0; padding-left: 16px; }
+.pt-designer .gr-form { padding: 0; }
+.pt-designer .gr-form-row { grid-template-columns: 6em 1fr; }
+.pt-status { min-height: 1.4em; color: var(--gr-text-muted); white-space: pre-wrap; }
+.pt-widget > .gr-box-body > .pt-host { position: absolute; inset: 0; }
+.pt-container > .gr-box-body > .pt-host { position: relative; }
+.pt-container:not(.pt-root) > .gr-box-body { overflow: auto; }

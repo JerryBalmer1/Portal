@@ -1,0 +1,561 @@
+openapi: 3.0.3
+info:
+  title: Portal
+  version: 0.2.0
+  description: >-
+    The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
+    Containers, Widgets, Layouts, Categories, States, Themes and Refs joined by contains, laid-out-by, is-a,
+    displays, has-state and themed-by edges (ontology.yaml, module Portal). Data layers are mounted
+    read-only and queried; nothing here ever writes to a data layer. Source of truth for the API
+    surface: the Go server (cmd/portal) is generated from this file by oapi-codegen v2.8.0 and the
+    JS client in web/client.js is checked against it by the Go spec tests.
+tags:
+  - name: screen
+    description: The screen graph and its writes. Every write validates the whole next screen with Graph.Node and the portal ontology before it is accepted.
+  - name: layers
+    description: Mounted data layers, read-only.
+  - name: snaps
+    description: Snapshots of the screen graph on disk and the diff between two.
+  - name: page
+    description: The static page and its assets.
+paths:
+  /:
+    get:
+      operationId: getIndex
+      tags: [page]
+      summary: The portal page. Boots blank and draws GET /api/screen.
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+  /static/{file}:
+    get:
+      operationId: getStatic
+      tags: [page]
+      summary: One static file by flat name (no subpaths), e.g. portal.js, client.js, cytoscape.min.js.
+      parameters:
+        - name: file
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: File contents.
+          content:
+            text/javascript:
+              schema: { type: string }
+            text/css:
+              schema: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/screen:
+    get:
+      operationId: getScreen
+      tags: [screen]
+      summary: The current screen graph. With PORTAL_MODE=production, every node with an is-a edge to the Designer Category is left out, with the edges that touch it.
+      responses:
+        "200":
+          description: The screen envelope (module Portal).
+          headers:
+            X-Portal-Boot:
+              required: true
+              description: What this process booted the screen from. The stamp of a snap under artifacts/snaps (PORTAL_SNAP when set, else the newest), or seed (no snap; the dev seed), or empty (no snap and -no-seed).
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+  /api/nodes:
+    post:
+      operationId: postNode
+      tags: [screen]
+      summary: Add one node. The body is a Graph.Node node. Rejected unless the next screen passes Graph.Node validation and the portal ontology checks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Node" }
+      responses:
+        "201":
+          description: The validated node, as stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Node" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/nodes/{id}:
+    patch:
+      operationId: patchNode
+      tags: [screen]
+      summary: Change a node's properties and its display State, nothing else. A property set to null is removed. state upserts the node's State node (ui:state:<id without ui:>) and its has-state edge.
+      parameters:
+        - $ref: "#/components/parameters/NodeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatchRequest" }
+      responses:
+        "200":
+          description: The validated node and, when state was given, its State node.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PatchResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Invalid" }
+    delete:
+      operationId: deleteNode
+      tags: [screen]
+      summary: Remove a node and every edge that touches it.
+      parameters:
+        - $ref: "#/components/parameters/NodeId"
+      responses:
+        "200":
+          description: The removed node and the ids of the removed edges.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeleteResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/edges:
+    post:
+      operationId: postEdge
+      tags: [screen]
+      summary: Add one edge. The body is a Graph.Node edge; id may be left out and is then set to from|to|kind. Rejected unless the next screen validates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EdgeInput" }
+      responses:
+        "201":
+          description: The validated edge, as stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Edge" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/layers:
+    get:
+      operationId: listLayers
+      tags: [layers]
+      summary: The mounted data layers, in mount order.
+      responses:
+        "200":
+          description: One summary per layer.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LayerSummary" }
+    post:
+      operationId: mountLayer
+      tags: [layers]
+      summary: Mount a layer from a path on disk (a .graph.json file, or a directory whose newest *.graph.json is taken) or from an envelope in the body. Refused with the Graph.Node problem codes when graphnode validate would fail. Mounting an existing name replaces it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MountRequest" }
+      responses:
+        "201":
+          description: The mounted layer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LayerSummary" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/layers/{name}/nodes:
+    get:
+      operationId: getLayerNodes
+      tags: [layers]
+      summary: Query one mounted layer. kind keeps nodes of that Kind; from keeps the node with that id and every node reachable from it along edges in their direction. Edges are kept when both ends survive.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: kind
+          in: query
+          required: false
+          schema: { type: string }
+        - name: from
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: An envelope holding the matching nodes and edges of that layer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/snap:
+    post:
+      operationId: postSnap
+      tags: [snaps]
+      summary: Approve the screen. Writes the screen graph to artifacts/snaps/<stamp>.graph.json, with ontology.yaml beside it and the note as the envelope's one finding of Kind approved, and reports what it added, removed and changed against the snap before it. The newest snap is what the next start boots from.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SnapRequest" }
+      responses:
+        "201":
+          description: The snap written, and its diff against the previous snap (absent for the first).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SnapResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/diff:
+    get:
+      operationId: getDiff
+      tags: [snaps]
+      summary: Merge snap a then snap b the Graph.Node design 11 way, read-only, and report what b added, removed and changed. Stamps are compared as given; nothing is written.
+      parameters:
+        - name: a
+          in: query
+          required: true
+          schema: { type: string }
+        - name: b
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The diff and the merged envelope.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Diff" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/ontology:
+    get:
+      operationId: getOntology
+      tags: [screen, layers]
+      summary: The portal ontology and the ontology of every mounted layer (null when a layer names none or it could not be read).
+      responses:
+        "200":
+          description: Ontologies, as decoded from YAML.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OntologySet" }
+components:
+  parameters:
+    NodeId:
+      name: id
+      in: path
+      required: true
+      description: Screen node id, e.g. ui:canvas. URL-encode it.
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: The body is not JSON of the right shape, or a parameter is missing.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: No such node, layer, snap or file.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: A node or edge with that id already exists.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Invalid:
+      description: Validation failed. problems lists every Graph.Node and portal problem found.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InternalError:
+      description: Unexpected failure.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        problems:
+          type: array
+          items: { $ref: "#/components/schemas/Problem" }
+    Problem:
+      type: object
+      description: One validation failure. Graph.Node codes (schema, duplicate-node, duplicate-edge, dangling-edge, edge-id, edgeid, counts, kind, stamp, display, action) and portal codes (id-prefix, unknown-kind, unknown-property, property-type, display, unknown-edge-kind, edge-endpoints, unknown-category, unknown-ref, unknown-field, ontology).
+      required: [code, path, message]
+      properties:
+        code: { type: string }
+        path: { type: string }
+        message: { type: string }
+        severity:
+          type: string
+          enum: [error, warning]
+          description: Graph.Node 0.2.0 severity. A refusal carries errors only; a layer ontology's ontologyProblems may hold warnings.
+    Counts:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes: { type: integer }
+        edges: { type: integer }
+        byKind:
+          type: object
+          additionalProperties: { type: integer }
+    Envelope:
+      type: object
+      description: A Graph.Node envelope (graph/1). The schemas in internal/graphnode/schemas are authoritative.
+      required: [schema, module, layer, nodes, edges]
+      properties:
+        schema:
+          type: string
+          enum: [graph/1]
+        ontology: { type: string }
+        module: { type: string }
+        version: { type: string }
+        layer: { type: string }
+        root: { type: string }
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/Node" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/Edge" }
+        findings:
+          type: array
+          items: { $ref: "#/components/schemas/Finding" }
+        counts: { $ref: "#/components/schemas/Counts" }
+    Node:
+      type: object
+      description: A Graph.Node node. A display key is refused (Graph.Node), and so are display properties on any Kind but State and Theme (portal).
+      required: [id, kind]
+      properties:
+        id: { type: string }
+        kind: { type: string }
+        name: { type: string }
+        properties: { $ref: "#/components/schemas/Properties" }
+        source:
+          type: array
+          items: { $ref: "#/components/schemas/SourceRef" }
+        findings:
+          type: array
+          items: { $ref: "#/components/schemas/Finding" }
+        stamp: { $ref: "#/components/schemas/Stamp" }
+    Edge:
+      type: object
+      required: [id, kind, from, to]
+      properties:
+        id:
+          type: string
+          description: from + "|" + to + "|" + kind
+        kind: { type: string }
+        from: { type: string }
+        to: { type: string }
+        properties: { $ref: "#/components/schemas/Properties" }
+        source:
+          type: array
+          items: { $ref: "#/components/schemas/SourceRef" }
+        findings:
+          type: array
+          items: { $ref: "#/components/schemas/Finding" }
+        stamp: { $ref: "#/components/schemas/Stamp" }
+    EdgeInput:
+      type: object
+      description: An Edge whose id may be left out.
+      required: [kind, from, to]
+      properties:
+        id: { type: string }
+        kind: { type: string }
+        from: { type: string }
+        to: { type: string }
+        properties: { $ref: "#/components/schemas/Properties" }
+    Properties:
+      type: object
+      additionalProperties: true
+    SourceRef:
+      type: object
+      properties:
+        tool: { type: string }
+        command: { type: string }
+        path: { type: string }
+        file: { type: string }
+        line: { type: integer }
+    Stamp:
+      type: object
+      properties:
+        layer: { type: string }
+        firstSeen: { type: string }
+        lastSeen: { type: string }
+    Finding:
+      type: object
+      required: [kind, message]
+      additionalProperties: true
+      properties:
+        kind: { type: string }
+        severity: { type: string }
+        message: { type: string }
+        target: { type: string }
+    StateProperties:
+      type: object
+      additionalProperties: false
+      properties:
+        collapsed: { type: boolean, nullable: true }
+        selected: { type: boolean, nullable: true }
+        scroll:
+          type: object
+          nullable: true
+          properties:
+            x: { type: number }
+            y: { type: number }
+    PatchRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        properties: { $ref: "#/components/schemas/Properties" }
+        state: { $ref: "#/components/schemas/StateProperties" }
+    PatchResult:
+      type: object
+      required: [node]
+      properties:
+        node: { $ref: "#/components/schemas/Node" }
+        state: { $ref: "#/components/schemas/Node" }
+    DeleteResult:
+      type: object
+      required: [node, edges]
+      properties:
+        node: { $ref: "#/components/schemas/Node" }
+        edges:
+          type: array
+          items: { type: string }
+    MountRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9._-]*$"
+        path:
+          type: string
+          description: A .graph.json file, or a directory whose newest *.graph.json (by name) is mounted. The envelope's ontology is resolved relative to the file.
+        envelope:
+          type: object
+          additionalProperties: true
+          description: An envelope given inline. Exactly one of path and envelope.
+    LayerSummary:
+      type: object
+      required: [name, module, stamp, counts, hasOntology]
+      properties:
+        name: { type: string }
+        module: { type: string }
+        version: { type: string }
+        stamp:
+          type: string
+          description: The envelope's layer stamp.
+        path:
+          type: string
+          description: The file mounted, when mounted from disk.
+        counts: { $ref: "#/components/schemas/Counts" }
+        hasOntology: { type: boolean }
+        ontologyProblems:
+          type: array
+          description: Present when the layer names an ontology that could not be read or failed graphnode validate-ontology; the layer is mounted without it and draws grey.
+          items: { $ref: "#/components/schemas/Problem" }
+    SnapRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        note:
+          type: string
+          maxLength: 2000
+          description: Why this screen is approved. Stored as the snap envelope's approved finding.
+    SnapResult:
+      type: object
+      required: [stamp, layer, path, counts, note]
+      properties:
+        stamp:
+          type: string
+          description: File-safe stamp, the snap's name (2026-10-09T01-02-03.456Z).
+        layer:
+          type: string
+          description: The envelope's layer, UTC ending Z (2026-10-09T01:02:03.456Z).
+        path: { type: string }
+        counts: { $ref: "#/components/schemas/Counts" }
+        note: { type: string, description: "The note as given, trimmed; empty when none." }
+        previous:
+          type: string
+          description: Stamp of the newest snap before this one. Absent for the first snap.
+        diff: { $ref: "#/components/schemas/DiffSummary" }
+    Ids:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items: { type: string }
+        edges:
+          type: array
+          items: { type: string }
+    DiffSummary:
+      type: object
+      description: Ids of what this snap added, removed and changed against previous; GET /api/diff gives the full diff.
+      required: [added, removed, changed]
+      properties:
+        added: { $ref: "#/components/schemas/Ids" }
+        removed: { $ref: "#/components/schemas/Ids" }
+        changed: { $ref: "#/components/schemas/Ids" }
+    Delta:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/Node" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/Edge" }
+    Change:
+      type: object
+      required: [id, before, after]
+      properties:
+        id: { type: string }
+        before: { type: object, additionalProperties: true }
+        after: { type: object, additionalProperties: true }
+    Changes:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/Change" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/Change" }
+    Diff:
+      type: object
+      required: [a, b, added, removed, changed, merged]
+      properties:
+        a: { type: string }
+        b: { type: string }
+        added: { $ref: "#/components/schemas/Delta" }
+        removed: { $ref: "#/components/schemas/Delta" }
+        changed: { $ref: "#/components/schemas/Changes" }
+        merged: { $ref: "#/components/schemas/Envelope" }
+    OntologySet:
+      type: object
+      required: [portal, layers]
+      properties:
+        portal: { type: object, additionalProperties: true }
+        layers:
+          type: object
+          additionalProperties:
+            type: object
+            nullable: true
+            additionalProperties: true

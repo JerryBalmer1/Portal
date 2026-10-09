@@ -1,0 +1,84 @@
+module: Portal
+version: 0.2.0
+kinds:
+  Container:
+    description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at.
+    idRule: "ui:<name>; the dev seed's root is ui:root"
+    properties:
+      - { name: parent, type: string, description: "Id of the Container that contains this one; informational, the contains edge decides." }
+      - { name: bounds, type: object, description: "{x, y, w, h}, as on a Widget, for a Container placed inside another." }
+      - { name: order, type: integer, description: "Sort key among siblings, ascending." }
+      - { name: visible, type: boolean, description: "false hides the Container and everything in it. Absent means true." }
+  Widget:
+    description: A panel that draws something. Its Category (is-a) decides how; its source says what.
+    idRule: "ui:<name>"
+    properties:
+      - { name: type, type: string, description: "Name of the Category it is-a; informational, the is-a edge decides. Must name a Category node when present." }
+      - { name: source, type: string, description: "A mounted layer name, optionally with a query: filesystem or filesystem?kind=File&from=fs:src." }
+      - { name: bounds, type: object, description: "{x, y, w, h}: grid cells under a grid Layout, pixels under a canvas Layout, ignored under flow." }
+      - { name: order, type: integer, description: "Sort key among siblings, ascending." }
+      - { name: visible, type: boolean, description: "false hides the Widget. Absent means true." }
+  Layout:
+    description: How a Container arranges its children. Joined to the Container by laid-out-by.
+    idRule: "ui:layout:<name>"
+    properties:
+      - { name: mode, type: string, required: true, description: "grid, flow or canvas." }
+      - { name: columns, type: integer, description: "Grid columns; grid mode only. Absent means 12." }
+  Category:
+    description: A panel type. Graph.Node base Kind; Widgets and Containers join it by is-a, and a Category may is-a another to inherit its renderer.
+    idRule: "ui:category:<name>"
+    properties:
+      - { name: label, type: string, required: true, description: "Required by Graph.Node's Category schema; equals the node name." }
+      - { name: description, type: string }
+  State:
+    description: Per-node display state. With Theme, the only Kinds that may carry display properties. Joined from its node by has-state.
+    idRule: "ui:state:<id of the node without ui:>"
+    properties:
+      - { name: collapsed, type: boolean }
+      - { name: selected, type: boolean }
+      - { name: scroll, type: object, description: "{x, y} in pixels." }
+  Theme:
+    description: How a Container and everything in it looks. Joined from the Container by themed-by; a Container without one takes its parent's. A display Kind, like State, and a node like any other, so a theme change is a changed node in a diff.
+    idRule: "ui:theme:<name>; the dev seed's is ui:theme:default"
+    properties:
+      - { name: color, type: string, description: "Accent colour, #rrggbb." }
+      - { name: opacity, type: number, description: "Opacity of the glass surface of panels, 0 to 1." }
+      - { name: font, type: string, description: "CSS font-family." }
+  Ref:
+    description: A stand-in on screen for one node of a mounted data layer, so a displays edge stays inside the screen envelope (Graph.Node rejects dangling edges).
+    idRule: "ui:ref:<layer>/<data node id>"
+    properties:
+      - { name: layer, type: string, required: true, description: "Mounted layer name." }
+      - { name: node, type: string, required: true, description: "Node id in that layer." }
+edgeKinds:
+  contains:
+    description: A Container holds a Container or a Widget.
+    from: [Container]
+    to: [Container, Widget]
+  laid-out-by:
+    description: A Container is arranged by a Layout.
+    from: [Container]
+    to: [Layout]
+  is-a:
+    description: A Widget or Container is of a Category; a Category may refine another.
+    from: [Widget, Container, Category]
+    to: [Category]
+  displays:
+    description: A Widget shows one node of a mounted data layer, through its Ref.
+    from: [Widget]
+    to: [Ref]
+  has-state:
+    description: Any screen node to its display State.
+    from: [Container, Widget, Layout, Category, Ref]
+    to: [State]
+  themed-by:
+    description: A Container is drawn with a Theme, and so is everything it contains that has no Theme of its own.
+    from: [Container]
+    to: [Theme]
+findingKinds:
+  approved:
+    description: Set by POST /api/snap on the snap envelope (not on a node); its message is the approval note.
+    severity: info
+  absent:
+    description: Set by GET /api/diff on a node or edge present in snap a and absent from snap b; the merge keeps it rather than deleting it (Graph.Node design 11).
+    severity: info
