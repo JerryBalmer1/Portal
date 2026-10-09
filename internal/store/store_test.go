@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -456,4 +457,155 @@ func mustRead(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// fixtureLayers is the FileSystem fixture's directory, as the server tests
+// mount it.
+const fixtureLayers = "../../tests/fixtures/layers/filesystem"
+
+func mountNode(t *testing.T, p *Portal, name string) (graph.Node, bool) {
+	t.Helper()
+	env, err := p.Screen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	i, ok := env.NodeIndex()[MountID(name)]
+	if !ok {
+		return graph.Node{}, false
+	}
+	return env.Nodes[i], true
+}
+
+// A mount by path is a Mount node on screen; an approved snap brings the
+// layer back at boot (docs/design.md 33).
+func TestPathMountIsRecordedAndRemountedAfterApprove(t *testing.T) {
+	dir := t.TempDir()
+	p, err := New(Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.MountLayer(Mount{Name: "runs", Path: fixtureLayers}); err != nil {
+		t.Fatal(err)
+	}
+	n, ok := mountNode(t, p, "runs")
+	abs, _ := filepath.Abs(fixtureLayers)
+	if !ok || n.Kind != MountKind || n.Properties["layer"] != "runs" || n.Properties["path"] != abs {
+		t.Fatalf("Mount node %+v (on screen %v), want path %s", n, ok, abs)
+	}
+	// The same path again changes nothing on screen, stamp included.
+	before, _ := p.Screen()
+	if _, err := p.MountLayer(Mount{Name: "runs", Path: fixtureLayers}); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := p.Screen(); after.Layer != before.Layer || len(after.Nodes) != len(before.Nodes) {
+		t.Errorf("remounting the same path moved the screen: %s %d -> %s %d", before.Layer, len(before.Nodes), after.Layer, len(after.Nodes))
+	}
+	if _, err := p.TakeSnap("runs"); err != nil {
+		t.Fatal(err)
+	}
+	q, err := New(Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(q.Layers()) != 0 {
+		t.Fatalf("New mounted %d layers; Remount is the caller's", len(q.Layers()))
+	}
+	mounted, failed := q.Remount()
+	if len(failed) != 0 || len(mounted) != 1 || mounted[0].Name != "runs" || len(mounted[0].Env.Nodes) == 0 {
+		t.Fatalf("Remount: mounted %v, failed %v", mounted, failed)
+	}
+	// Remount and MountAtStart never write the screen.
+	if _, ok := mountNode(t, q, "filesystem"); ok {
+		t.Error("before any flag mount, the screen has ui:mount:filesystem")
+	}
+	if _, err := q.MountAtStart(Mount{Name: "filesystem", Path: fixtureLayers}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := mountNode(t, q, "filesystem"); ok {
+		t.Error("a flag mount was recorded on screen")
+	}
+}
+
+// An inline mount cannot be read again, so it removes the name's Mount node.
+func TestInlineMountRemovesTheMountNode(t *testing.T) {
+	p, err := New(Options{Artifacts: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.MountLayer(Mount{Name: "runs", Path: fixtureLayers}); err != nil {
+		t.Fatal(err)
+	}
+	env := `{"schema":"graph/1","module":"M","layer":"2026-10-09T00:00:00Z","nodes":[{"id":"a","kind":"K"}],"edges":[]}`
+	if _, err := p.MountLayer(Mount{Name: "runs", Envelope: []byte(env)}); err != nil {
+		t.Fatal(err)
+	}
+	if n, ok := mountNode(t, p, "runs"); ok {
+		t.Errorf("inline mount left %+v", n)
+	}
+}
+
+// A recorded layer that is gone is reported and skipped; the boot goes on.
+func TestRemountOfAMissingPathFailsThatLayerOnly(t *testing.T) {
+	dir := t.TempDir()
+	p, err := New(Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(t.TempDir(), "layers")
+	if err := os.MkdirAll(gone, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(fixtureLayers, "2026-10-09T00-51-29Z.graph.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gone, "2026-10-09T00-51-29Z.graph.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, path := range map[string]string{"gone": gone, "runs": fixtureLayers} {
+		if _, err := p.MountLayer(Mount{Name: name, Path: path}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := p.TakeSnap(""); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+	q, err := New(Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mounted, failed := q.Remount()
+	if len(mounted) != 1 || mounted[0].Name != "runs" || len(failed) != 1 || !strings.Contains(failed[0].Error(), "ui:mount:gone") {
+		t.Errorf("Remount: mounted %v, failed %v", mounted, failed)
+	}
+	if _, ok := mountNode(t, q, "gone"); !ok {
+		t.Error("a Mount node whose layer is gone was dropped from the screen")
+	}
+}
+
+// A Mount node written by hand is checked: its layer is a layer name and its
+// id follows from it.
+func TestMountNodeChecks(t *testing.T) {
+	p, err := New(Options{Artifacts: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for body, want := range map[string]string{
+		`{"id":"ui:mount:x","kind":"Mount","name":"x","properties":{"layer":"x"}}`:                              "property-type",
+		`{"id":"ui:mount:x","kind":"Mount","name":"x","properties":{"layer":"Bad Name","path":"p"}}`:            "property-type",
+		`{"id":"ui:mount:x","kind":"Mount","name":"x","properties":{"layer":"y","path":"p"}}`:                   "property-type",
+		`{"id":"ui:mount:x","kind":"Mount","name":"x","properties":{"layer":"x","path":"p","color":"#ffffff"}}`: "display",
+	} {
+		_, err := p.AddNode([]byte(body))
+		var inv *InvalidError
+		if !errors.As(err, &inv) || !slices.ContainsFunc(inv.Problems, func(q graph.Problem) bool { return q.Code == want }) {
+			t.Errorf("%s: %v, want %s", body, err, want)
+		}
+	}
+	if _, err := p.AddNode([]byte(`{"id":"ui:mount:x","kind":"Mount","name":"x","properties":{"layer":"x","path":"p"}}`)); err != nil {
+		t.Errorf("a well-formed Mount node was refused: %v", err)
+	}
 }

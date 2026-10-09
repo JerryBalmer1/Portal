@@ -5,7 +5,8 @@
 //	       [-filesystem <dir|file>] [-no-seed]
 //
 // The screen boots from the newest snap under <artifacts>/snaps, or from the
-// one PORTAL_SNAP=<stamp> names, else from the dev seed. PORTAL_MODE=production
+// one PORTAL_SNAP=<stamp> names, else from the dev seed; the layers its Mount
+// nodes record are mounted, then the flags'. PORTAL_MODE=production
 // hides every node that is-a Designer. The port is fixed: 0 is refused, and a
 // busy port stops the binary rather than moving it (docs/design.md 24).
 package main
@@ -68,6 +69,16 @@ func main() {
 		log.Fatalf("portal: %v", err)
 	}
 	fmt.Printf("booted from %s\n", p.Boot())
+	// The screen's Mount nodes first, so a flag naming the same layer wins
+	// (docs/design.md 33). A recorded layer that cannot be read is reported
+	// and left unmounted; it never stops the boot.
+	recorded, failed := p.Remount()
+	for _, l := range recorded {
+		fmt.Printf("mounted %s from %s (%s, %d nodes, ontology %v)\n", l.Name, l.Path, store.MountID(l.Name), len(l.Env.Nodes), l.Ontology != nil)
+	}
+	for _, err := range failed {
+		fmt.Fprintf(os.Stderr, "portal: not mounted: %v\n", err)
+	}
 	if *filesystem != "" {
 		if _, err := os.Stat(*filesystem); err == nil {
 			ms = append([]string{"filesystem=" + *filesystem}, ms...)
@@ -80,7 +91,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("portal: %v", err)
 		}
-		l, err := p.MountLayer(m)
+		l, err := p.MountAtStart(m)
 		if err != nil {
 			log.Fatalf("portal: mount %s: %v", m.Name, err)
 		}

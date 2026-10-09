@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.5 — 2026-10-09
+
+- A mount by path is a Mount node. `POST /api/layers` with `{name, path}` records `ui:mount:<name>` (`layer`, and `path` as given, made absolute) on the screen, so an approved snap mounts the layer again at boot. A directory path mounts its newest `*.graph.json` each time. Mounting the same path again leaves the screen and its stamp unchanged. An inline mount removes the node. Flag mounts (`-filesystem`, `-mount`) are never recorded and win over a recorded layer of the same name. A recorded layer that is gone at boot is printed and skipped (docs/design.md 33).
+- Top bar: the stats show the open view's data layer, `<layer> · <n> nodes · <m> edges · <stamp>`, from `GET /api/layers`. The open view is the target of the last menu entry chosen, else the first entry's. The screen graph's counts and stamp move to a `screen …` badge beside it.
+- `ontology.yaml` 0.3.5: Kind `Mount`. Go tests 35, Pester 61.
+
 ## 0.3.4 — 2026-10-09
 
 - `Invoke-Build Up` replaces a running portal: when `artifacts/portal.json` records a live portal it calls `Stop-Portal`, waits for that port to free (10 s at most, else it throws naming the owner and starts nothing), then starts, printing `replaced <old stamp> with <new stamp>`. `-NoReplace` keeps 0.3.3's throw. The logic is the private `Invoke-PortalUp` and `Wait-PortalPortFree` (docs/design.md 32).

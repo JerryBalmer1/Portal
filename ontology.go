@@ -13,5 +13,5 @@ var OntologyYAML []byte
 // Module and Version are the envelope header of every screen graph and snap.
 const (
 	Module  = "Portal"
-	Version = "0.3.4"
+	Version = "0.3.5"
 )

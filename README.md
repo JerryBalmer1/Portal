@@ -2,7 +2,7 @@
 
 # Portal
 
-The portal of the graph family: a blank page plus one API. Every panel on the page is a node in a Graph.Node envelope; the API reads and changes that graph, mounts data layers read-only, approves the screen as a snap and diffs two snaps. Widgets are modules, one renderer per base Category; the graph widget (Canvas) is one of them. No UI model of its own (docs/design.md 1); the first data it draws is Graph.Emitter.FileSystem's layer. A start boots from the newest approved snap, else from the dev seed (docs/design.md 20). The portal serves on one fixed port, 8200 (docs/design.md 24); the top bar's menu is graph too: Containers that `is-a` Menu, each `opens` what it shows (docs/design.md 25).
+The portal of the graph family: a blank page plus one API. Every panel on the page is a node in a Graph.Node envelope; the API reads and changes that graph, mounts data layers read-only, approves the screen as a snap and diffs two snaps. Widgets are modules, one renderer per base Category; the graph widget (Canvas) is one of them. No UI model of its own (docs/design.md 1); the first data it draws is Graph.Emitter.FileSystem's layer. A start boots from the newest approved snap, else from the dev seed (docs/design.md 20). The portal serves on one fixed port, 8200 (docs/design.md 24); the top bar's menu is graph too: Containers that `is-a` Menu, each `opens` what it shows (docs/design.md 25), and its stats are the open view's data layer (docs/design.md 33).
 
 Rows, bottom to top:
 
@@ -28,7 +28,7 @@ Nothing edits below its own row.
 | `cmd/portal/` | The server: `portal [-port 8200] [-artifacts artifacts] [-mount name=path]... [-filesystem <dir or file>] [-no-seed]`, on 127.0.0.1; `-port 0` is refused; `PORTAL_SNAP=<stamp>` boots from that snap; `PORTAL_MODE=production` hides the Designer. |
 | `cmd/graphnode/` | Graph.Node's validator CLI, lifted: `graphnode validate <graph.json> [--ontology <ontology.yaml>]`, `validate-ontology <ontology.yaml>`, `prefixes`, `check-id <prefix> <id>`, `schema [name]`, `version`. |
 | `web/` | The page: `index.html`, `portal.js`, `client.js`, renderers `canvas.js`, `table.js`, `detail.js`, `designer.js` (with Approve; collapsible sections, each a State node), `base.css`, vendored Cytoscape. |
-| `ontology.yaml` | Module `Portal` 0.3.4: Kinds Container, Widget, Layout, Category, State, Theme, Ref; edges contains, laid-out-by, is-a, opens, displays, has-state, themed-by; findings absent, approved. |
+| `ontology.yaml` | Module `Portal` 0.3.5: Kinds Container, Widget, Layout, Category, State, Theme, Ref, Mount; edges contains, laid-out-by, is-a, opens, displays, has-state, themed-by; findings absent, approved. |
 | `src/Portal/` | PowerShell module: `Start-Portal`, `Stop-Portal`, `Get-PortalStatus`, `Get-PortalScreen`, `New-PortalSnap`, `Compare-PortalSnap`, `Mount-PortalLayer`. |
 | `tests/` | Pester (`Invoke-Tests.ps1`, `Portal.Tests.ps1`) and fixtures: `layers/filesystem/` (a FileSystem layer and its ontology), `invalid.graph.json` (Graph.Node's at v0.2.1). |
 | `docs/` | `design.md` (decisions, numbered), `manual-check-list.md`, `screenshots/portal.png`. |
@@ -100,7 +100,7 @@ GET    /api/screen                          the screen graph (envelope); header 
 POST   /api/nodes      POST /api/edges      add; Graph.Node shape; validated before accept
 PATCH  /api/nodes/{id}                      properties and display State only
 DELETE /api/nodes/{id}                      the node and its edges
-GET    /api/layers     POST /api/layers     mounted layers; mount from a path or an envelope
+GET    /api/layers     POST /api/layers     mounted layers; mount from a path (recorded as ui:mount:<name>) or an envelope
 GET    /api/layers/{name}/nodes?kind=&from= query a layer
 POST   /api/snap       {"note": "..."}      approve: artifacts/snaps/<stamp>.graph.json, previous, diff summary
 GET    /api/diff?a=<stamp>&b=<stamp>        added, removed, changed, and the merge
@@ -111,4 +111,4 @@ A refused write answers 422 with `problems`, each `{code, path, message, severit
 
 ## Status
 
-0.3.4: `Invoke-Build Up` stops a running portal, waits up to 10 s for its port and starts a new one, printing `replaced <old stamp> with <new stamp>`; `-NoReplace` keeps the old throw. 0.3.3: `graph-node` recopied at 0.2.1 and the Graph.Node lift moved to tag v0.2.1 (`ui:` still registered to Portal). 0.3.2: the `git-guard` hook wired in `.claude/settings.json`, `run-report` recopied at 0.2.2 (writes only to this repo's `artifacts/`). 0.3.1: Designer sections collapsible, each a State node (`ui:state:designer:<slug>`), Title Case headings and buttons, the Canvas fits its panel after load. Decisions and what was deferred: docs/design.md (entry 32 is 0.3.4's, 31 0.3.3's, 30 0.3.2's, 28 and 29 0.3.1's, 24 to 27 0.3.0's, 18 to 23 0.2.0's; 9, 14, 15, 16 and 22 name the next questions).
+0.3.5: a layer mounted by path is a Mount node on screen (`ui:mount:<name>`), so an approved snap mounts it again at boot; the top bar shows the open view's layer, its counts and stamp, with the screen graph's in a badge. 0.3.4: `Invoke-Build Up` stops a running portal, waits up to 10 s for its port and starts a new one, printing `replaced <old stamp> with <new stamp>`; `-NoReplace` keeps the old throw. 0.3.3: `graph-node` recopied at 0.2.1 and the Graph.Node lift moved to tag v0.2.1 (`ui:` still registered to Portal). 0.3.2: the `git-guard` hook wired in `.claude/settings.json`, `run-report` recopied at 0.2.2 (writes only to this repo's `artifacts/`). 0.3.1: Designer sections collapsible, each a State node (`ui:state:designer:<slug>`), Title Case headings and buttons, the Canvas fits its panel after load. Decisions and what was deferred: docs/design.md (entry 33 is 0.3.5's, 32 0.3.4's, 31 0.3.3's, 30 0.3.2's, 28 and 29 0.3.1's, 24 to 27 0.3.0's, 18 to 23 0.2.0's; 9, 15, 16 and 22 name the next questions).

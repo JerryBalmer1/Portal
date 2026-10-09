@@ -78,9 +78,9 @@ BeforeAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.3.4 and needs PowerShell 7.4' {
+    It 'is version 0.3.5 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.3.4'
+        $m.ModuleVersion | Should -Be '0.3.5'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -218,11 +218,11 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.3.4, the seven Kinds, the seven edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.3.5, the eight Kinds, the seven edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.3\.4$'
-        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref') { $text | Should -Match "(?m)^  ${k}:" }
+        $text | Should -Match '(?m)^version: 0\.3\.5$'
+        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
     }
@@ -373,7 +373,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.3.4'
+        $s.version | Should -Be '0.3.5'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -418,6 +418,16 @@ Describe 'Live portal' {
         }
         # Field labels stay lower case.
         $designer | Should -Match '<label class="gr-form-row">name<'
+    }
+    It 'heads the page with the open view''s layer, the screen graph''s counts in a badge beside' {
+        $dom = Get-PageDom $Url
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $fs = (Invoke-WebRequest "$Url/api/layers").Content | ConvertFrom-Json -DateKind String | Where-Object name -EQ 'filesystem'
+        $s = Get-PortalScreen -Url $Url
+        $stats = [regex]::Match($dom, '<span class="pt-mode" id="stats" data-layer="([^"]*)"[^>]*>([^<]*)</span>')
+        $stats.Groups[1].Value | Should -Be 'filesystem'
+        $stats.Groups[2].Value | Should -Be "filesystem · $($fs.counts.nodes) nodes · $($fs.counts.edges) edges · $($fs.stamp)"
+        $dom | Should -Match ([regex]::Escape(">screen $(@($s.nodes).Count) · $(@($s.edges).Count) · "))
     }
     It 'a section State PATCH round-trips through New-PortalSnap and back' {
         $null = New-PortalSnap -Url $Url
@@ -503,6 +513,13 @@ Describe 'Live portal' {
         $inline.counts.nodes | Should -Be 1
         $inline.hasOntology | Should -BeFalse
         (Invoke-RestMethod "$Url/api/ontology").layers.fs2.kinds.Directory.display.color | Should -Not -BeNullOrEmpty
+        # A mount by path is recorded on screen for the next approval; an inline one is not.
+        $s = Get-PortalScreen -Url $Url
+        $m = $s.nodes | Where-Object id -EQ 'ui:mount:fs2'
+        $m.kind | Should -Be 'Mount'
+        $m.properties.path | Should -Be (Resolve-Path $FsFixture).Path
+        $s.nodes.id | Should -Not -Contain 'ui:mount:inline'
+        $s.nodes.id | Should -Not -Contain 'ui:mount:filesystem'
     }
     It 'never writes to a mounted layer' {
         $before = Get-ChildItem $FsFixture -File | ForEach-Object { "$($_.Name) $((Get-FileHash $_.FullName).Hash)" }

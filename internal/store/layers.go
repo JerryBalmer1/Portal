@@ -32,11 +32,55 @@ type Mount struct {
 	Envelope json.RawMessage `json:"envelope"`
 }
 
+// MountKind is the screen Kind that records a layer mounted by path through
+// POST /api/layers, so an approved snap mounts it again at boot
+// (docs/design.md 33).
+const MountKind = "Mount"
+
+// MountID is the id of the Mount node recording layer name.
+func MountID(name string) string { return "ui:mount:" + name }
+
 // MountLayer validates and mounts one layer, replacing a layer of the same
 // name. An envelope that fails Graph.Node validation is refused with its
 // problems; an ontology that cannot be read or fails is reported on the
-// layer, which then draws grey.
-func (p *Portal) MountLayer(m Mount) (*Layer, error) {
+// layer, which then draws grey. A mount by path records itself on the screen
+// as the Mount node ui:mount:<name> with the path as given (a directory
+// stays a directory); a mount by envelope removes that node, since an inline
+// envelope cannot be read again.
+func (p *Portal) MountLayer(m Mount) (*Layer, error) { return p.mount(m, true) }
+
+// MountAtStart mounts one layer without touching the screen: cmd/portal's
+// -mount and -filesystem flags, which mount again on every start, and the
+// screen's own Mount nodes at boot (Remount).
+func (p *Portal) MountAtStart(m Mount) (*Layer, error) { return p.mount(m, false) }
+
+// Remount mounts the layer each Mount node on the screen records, in screen
+// order, without touching the screen. A layer that cannot be mounted (its
+// file gone, its envelope invalid) is reported in failed and left unmounted;
+// it never stops the boot, and its Mount node stays.
+func (p *Portal) Remount() (mounted []*Layer, failed []error) {
+	p.mu.Lock()
+	var ms []Mount
+	for _, n := range p.screen.Nodes {
+		if n.Kind == MountKind {
+			layer, _ := n.Properties["layer"].(string)
+			path, _ := n.Properties["path"].(string)
+			ms = append(ms, Mount{Name: layer, Path: path})
+		}
+	}
+	p.mu.Unlock()
+	for _, m := range ms {
+		l, err := p.MountAtStart(m)
+		if err != nil {
+			failed = append(failed, fmt.Errorf("%s: %w", MountID(m.Name), err))
+			continue
+		}
+		mounted = append(mounted, l)
+	}
+	return mounted, failed
+}
+
+func (p *Portal) mount(m Mount, record bool) (*Layer, error) {
 	if !layerName.MatchString(m.Name) {
 		return nil, fmt.Errorf("%w: layer name %q must match %s", ErrBadRequest, m.Name, layerName)
 	}
@@ -68,6 +112,17 @@ func (p *Portal) MountLayer(m Mount) (*Layer, error) {
 	l.Ontology, l.OntologyProblems = loadLayerOntology(path, env.Ontology)
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if record {
+		given := ""
+		if !hasEnv {
+			if given, err = filepath.Abs(m.Path); err != nil {
+				return nil, err
+			}
+		}
+		if err := p.recordMount(m.Name, given); err != nil {
+			return nil, err
+		}
+	}
 	for i, x := range p.layers {
 		if x.Name == l.Name {
 			p.layers[i] = l
@@ -76,6 +131,51 @@ func (p *Portal) MountLayer(m Mount) (*Layer, error) {
 	}
 	p.layers = append(p.layers, l)
 	return l, nil
+}
+
+// recordMount makes the screen's Mount node for layer name say path, or
+// removes it when path is empty (an inline mount). The write is checked like
+// any other and leaves the screen as it is when nothing changes, so mounting
+// the same path again does not restamp it. Caller holds mu.
+func (p *Portal) recordMount(name, path string) error {
+	id := MountID(name)
+	i, ok := p.screen.NodeIndex()[id]
+	if path == "" && !ok {
+		return nil
+	}
+	if path != "" && ok {
+		n := p.screen.Nodes[i]
+		if n.Kind == MountKind && n.Name == name && len(n.Properties) == 2 && n.Properties["layer"] == name && n.Properties["path"] == path {
+			return nil
+		}
+	}
+	next, err := roundTrip(p.screen)
+	if err != nil {
+		return err
+	}
+	var nodes, edges []string
+	if path == "" {
+		next.Nodes = append(next.Nodes[:i], next.Nodes[i+1:]...)
+		kept := next.Edges[:0]
+		for _, e := range next.Edges {
+			if e.From != id && e.To != id {
+				kept = append(kept, e)
+			}
+		}
+		next.Edges = kept
+	} else {
+		n := graph.Node{ID: id, Kind: MountKind, Name: name, Properties: map[string]any{"layer": name, "path": path}}
+		if ok {
+			next.Nodes[i] = n
+		} else {
+			next.Nodes = append(next.Nodes, n)
+		}
+		nodes = []string{id}
+	}
+	if ps := p.check(next, nil, touch(nodes, edges)); len(ps) > 0 {
+		return &InvalidError{Message: "the screen refuses the Mount node " + id, Problems: ps}
+	}
+	return p.commit(next)
 }
 
 // resolveLayerPath takes a .graph.json file, or a directory whose newest

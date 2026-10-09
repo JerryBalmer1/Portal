@@ -2,7 +2,7 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.3.4, id prefix `ui:` (registered to Portal in the lifted Graph.Node id registry), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.3.5, id prefix `ui:` (registered to Portal in the lifted Graph.Node id registry), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 
@@ -20,7 +20,8 @@ Module `Portal`, version 0.3.4, id prefix `ui:` (registered to Portal in the lif
 | Theme | Kind. How a Container and what it holds look: `color` (accent, `#rrggbb`), `opacity` (glass surface, 0 to 1), `font` (CSS font-family). Joined by `themed-by`; a Container without one takes its parent's. A display Kind, and a node like any other, so a theme change is a changed node in a diff (docs/design.md 22). |
 | Display Kind | State or Theme: the only Kinds whose `properties` may hold display keys (docs/design.md 5). |
 | Ref | Kind. A stand-in on screen for one node of a mounted layer (`layer`, `node`), so `displays` stays inside the envelope (docs/design.md 9). |
-| Data layer | A Graph.Node envelope mounted read-only under a name (`POST /api/layers`); never written (docs/design.md 2). |
+| Data layer | A Graph.Node envelope mounted read-only under a name (`POST /api/layers`); never written (docs/design.md 2). The top bar shows the open view's layer: its name, node and edge counts and stamp (docs/design.md 33). |
+| Mount | Kind. A layer mounted by path through `POST /api/layers`, recorded on screen as `ui:mount:<layer>` (`layer`, `path` as given, made absolute), so an approved snap mounts it again at boot. A mount by envelope removes it; flag mounts are never recorded. No edges; it draws nothing (docs/design.md 33). |
 | Source | A Widget's `source`: a layer name and optional `?kind=&from=` query. |
 | Bounds | `{x, y, w, h}`: grid cells under grid, pixels under canvas. |
 | Snap | The screen graph written to `artifacts/snaps/<stamp>.graph.json`; `<stamp>` is UTC with milliseconds, `:` as `-`. The newest is what the next start boots from. |
@@ -39,6 +40,7 @@ Module `Portal`, version 0.3.4, id prefix `ui:` (registered to Portal in the lif
 | State | `collapsed`, `selected`, `scroll` | (target of `has-state`) |
 | Theme | `color`, `opacity`, `font` | (target of `themed-by`) |
 | Ref | **`layer`**, **`node`** | `has-state` → State |
+| Mount | **`layer`**, **`path`** | (none) |
 
 Finding Kinds: `absent` (info), set by the diff on an element in snap a and not in snap b; `approved` (info), set by Approve on the snap envelope, its message the note.
 
@@ -51,7 +53,7 @@ Graph.Node's: `schema`, `duplicate-node`, `duplicate-edge`, `dangling-edge`, `ed
 | `id-prefix` | A screen node id does not start `ui:`. |
 | `unknown-kind` | The Kind is not in `ontology.yaml`. |
 | `unknown-property` | A property the Kind does not declare. |
-| `property-type` | A property of the wrong type, a required one missing, `mode` not grid/flow/canvas, `bounds` or `scroll` malformed, a Theme `color` not `#rrggbb`, `opacity` outside 0 to 1, a blank `font`. Also a Category with no `properties` at all, which Graph.Node 0.2.0 lets through (docs/design.md 10). |
+| `property-type` | A property of the wrong type, a required one missing, `mode` not grid/flow/canvas, `bounds` or `scroll` malformed, a Theme `color` not `#rrggbb`, `opacity` outside 0 to 1, a blank `font`, a Mount whose `layer` is not a layer name or whose id is not `ui:mount:<layer>`. Also a Category with no `properties` at all, which Graph.Node 0.2.0 lets through (docs/design.md 10). |
 | `display` | A display property (`display`, `color`, `shape`, `icon`, `collapsed`, `selected`, `scroll`, `opacity`, `font`) on a node that is not a display Kind, or on an edge. |
 | `unknown-edge-kind` | The edge Kind is not in `ontology.yaml`. |
 | `edge-endpoints` | The edge's ends are not of the Kinds its edge Kind allows (an `opens` to a Layout, say). |
@@ -63,7 +65,6 @@ Graph.Node's: `schema`, `duplicate-node`, `duplicate-edge`, `dangling-edge`, `ed
 ## Not here yet
 
 - Edges across envelopes, which would retire Ref (docs/design.md 9).
-- Mounts that survive a restart (docs/design.md 14).
 - An edge deletion route (docs/design.md 15).
 - A drift check for `internal/gen` (docs/design.md 16).
 - Editing a Theme from the Designer (docs/design.md 22).

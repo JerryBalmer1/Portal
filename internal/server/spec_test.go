@@ -90,7 +90,7 @@ func newPortal(t *testing.T, production bool) (*httptest.Server, *store.Portal, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.MountLayer(store.Mount{Name: "filesystem", Path: fixtureDir}); err != nil {
+	if _, err := p.MountAtStart(store.Mount{Name: "filesystem", Path: fixtureDir}); err != nil {
 		t.Fatal(err)
 	}
 	h := New(p)
@@ -703,5 +703,39 @@ func TestServedDesignerHasTheSevenTitleCaseSections(t *testing.T) {
 		if strings.Contains(page, old) {
 			t.Errorf("designer.js still has %s", old)
 		}
+	}
+}
+
+// POST /api/layers by path puts the Mount node on GET /api/screen, and an
+// approved snap mounts the layer again at boot (docs/design.md 33).
+func TestPathMountSurvivesApproveAndRestart(t *testing.T) {
+	h := newHarness(t)
+	s, _, dir := newPortal(t, false)
+	path, _ := filepath.Abs(fixtureDir)
+	pj, _ := json.Marshal(path)
+	h.do(t, s.URL, "POST", "/api/layers", `{"name":"agent-runs","path":`+string(pj)+`}`, 201)
+	var env graph.Envelope
+	_ = json.Unmarshal(h.do(t, s.URL, "GET", "/api/screen", "", 200), &env)
+	i, ok := env.NodeIndex()[store.MountID("agent-runs")]
+	if !ok || env.Nodes[i].Properties["path"] != path {
+		t.Fatalf("screen has no ui:mount:agent-runs at %s", path)
+	}
+	snapStamp(t, h, s.URL)
+	p, err := store.New(store.Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, failed := p.Remount(); len(failed) != 0 {
+		t.Fatal(failed)
+	}
+	r := httptest.NewServer(New(p))
+	defer r.Close()
+	var layers []struct {
+		Name   string
+		Counts struct{ Nodes int }
+	}
+	_ = json.Unmarshal(h.do(t, r.URL, "GET", "/api/layers", "", 200), &layers)
+	if len(layers) != 1 || layers[0].Name != "agent-runs" || layers[0].Counts.Nodes == 0 {
+		t.Errorf("after restart the layers are %+v", layers)
 	}
 }

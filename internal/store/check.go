@@ -141,6 +141,14 @@ func (p *Portal) checkNode(env *graph.Envelope, at string, n graph.Node) []graph
 		if t, ok := n.Properties["type"].(string); ok && categoryByName(env, t) == "" {
 			add("unknown-category", "/properties/type", fmt.Sprintf("no Category named %q on screen", t))
 		}
+	case MountKind:
+		if layer, ok := n.Properties["layer"].(string); ok {
+			if !layerName.MatchString(layer) {
+				add("property-type", "/properties/layer", fmt.Sprintf("layer %q must match %s", layer, layerName))
+			} else if n.ID != MountID(layer) {
+				add("property-type", "/id", fmt.Sprintf("a Mount's id is %s, from its layer", MountID(layer)))
+			}
+		}
 	case "Ref":
 		layer, _ := n.Properties["layer"].(string)
 		node, _ := n.Properties["node"].(string)

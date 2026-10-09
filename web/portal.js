@@ -5,8 +5,10 @@
 // renderer of its own uses the one it is-a, so a new panel type is a Category
 // node and an is-a edge, never new code (docs/design.md 1). The top bar's
 // menu is nodes too: every Container that is-a the Category named Menu, each
-// showing what its opens edge points at (docs/design.md 25).
-import { createClient } from '/static/client.js';
+// showing what its opens edge points at (docs/design.md 25). The top bar's
+// stats are the open view's data layer: its counts and stamp from
+// GET /api/layers, the screen graph's own in a badge beside (docs/design.md 33).
+import { createClient, parseSource } from '/static/client.js';
 import * as canvas from '/static/canvas.js';
 import * as table from '/static/table.js';
 import * as detail from '/static/detail.js';
@@ -21,8 +23,12 @@ const client = createClient();
 const bus = new EventTarget();
 const screenEl = document.getElementById('screen');
 const statsEl = document.getElementById('stats');
+const screenStatsEl = document.getElementById('screen-stats');
 const menuEl = document.getElementById('menu');
 let mounted = [];
+// The node the viewer last chose in the top bar: a pointer, like a Canvas
+// selection, never written. Until a choice, the first menu entry's.
+let opened = null;
 
 // index builds the lookups the page draws from.
 export function index(screen) {
@@ -87,21 +93,23 @@ export function index(screen) {
 
 async function refresh() {
   try {
-    const [screen, ontology] = await Promise.all([client.getScreen(), client.getOntology()]);
-    draw(screen, ontology);
+    const [screen, ontology, layers] = await Promise.all([client.getScreen(), client.getOntology(), client.listLayers()]);
+    draw(screen, ontology, layers);
   } catch (err) {
     showError(screenEl, err);
   }
 }
 
-function draw(screen, ontology) {
+function draw(screen, ontology, layers) {
   for (const m of mounted) if (m.mod.destroy) m.mod.destroy(m.handle);
   mounted = [];
   screenEl.replaceChildren();
-  statsEl.textContent = `${screen.nodes.length} nodes · ${screen.edges.length} edges · ${screen.layer}`;
+  screenStatsEl.textContent = `screen ${screen.nodes.length} · ${screen.edges.length} · ${screen.layer}`;
+  screenStatsEl.title = 'the screen graph: nodes, edges, stamp';
   const ix = index(screen);
-  const ctx = { client, bus, screen, ontology, ix, refresh };
+  const ctx = { client, bus, screen, ontology, layers, ix, refresh };
   drawMenu(ctx);
+  drawStats(ctx);
   const root = ix.root();
   if (!root) {
     const p = document.createElement('p');
@@ -138,7 +146,42 @@ function drawMenu(ctx) {
   }
 }
 
+// sourceLayer is the layer a node draws: a Widget's source, else the first
+// source among what a Container holds, depth first in drawing order.
+export function sourceLayer(ix, node, seen = new Set()) {
+  if (!node || seen.has(node.id)) return null;
+  seen.add(node.id);
+  const src = node.properties && node.properties.source;
+  if (src) return parseSource(src).layer;
+  for (const k of ix.children(node.id).filter(visible)) {
+    const l = sourceLayer(ix, k, seen);
+    if (l) return l;
+  }
+  return null;
+}
+
+// drawStats shows the open view's layer: what the chosen menu entry opens,
+// else the first entry's, else the root's. Its counts and stamp are the
+// layer's whole envelope, as GET /api/layers reports it.
+function drawStats(ctx) {
+  const { ix } = ctx;
+  const first = ix.menu().find((m) => m.opens);
+  const node = (opened && ix.nodes.get(opened)) || (first && first.opens) || ix.root();
+  const name = sourceLayer(ix, node);
+  const layer = name && ctx.layers.find((l) => l.name === name);
+  statsEl.dataset.layer = name || '';
+  if (layer) {
+    statsEl.textContent = `${name} · ${layer.counts.nodes} nodes · ${layer.counts.edges} edges · ${layer.stamp}`;
+    statsEl.title = `layer ${name}${layer.path ? ` from ${layer.path}` : ''}`;
+  } else {
+    statsEl.textContent = name ? `${name} · not mounted` : 'no layer';
+    statsEl.title = name ? `no layer ${name} is mounted (GET /api/layers)` : `${node ? node.id : 'the screen'} draws no layer`;
+  }
+}
+
 async function show(ctx, id) {
+  opened = id;
+  drawStats(ctx);
   try {
     if (ctx.ix.state(id).collapsed) {
       await ctx.client.patchNode(id, { state: { collapsed: false } });

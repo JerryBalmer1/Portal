@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.3.4
+  version: 0.3.5
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
-    Containers, Widgets, Layouts, Categories, States, Themes and Refs joined by contains, laid-out-by, is-a,
+    Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
     displays, has-state, themed-by and opens edges (ontology.yaml, module Portal). Data layers are mounted
     read-only and queried; nothing here ever writes to a data layer. Source of truth for the API
     surface: the Go server (cmd/portal) is generated from this file by oapi-codegen v2.8.0 and the
@@ -153,7 +153,7 @@ paths:
     post:
       operationId: mountLayer
       tags: [layers]
-      summary: Mount a layer from a path on disk (a .graph.json file, or a directory whose newest *.graph.json is taken) or from an envelope in the body. Refused with the Graph.Node problem codes when graphnode validate would fail. Mounting an existing name replaces it.
+      summary: Mount a layer from a path on disk (a .graph.json file, or a directory whose newest *.graph.json is taken) or from an envelope in the body. Refused with the Graph.Node problem codes when graphnode validate would fail. Mounting an existing name replaces it. A mount by path also records itself on the screen as the Mount node ui:mount:<name> holding the path as given (made absolute), so an approved snap mounts it again at boot; a mount by envelope removes that node. Mounts are otherwise held in memory.
       requestBody:
         required: true
         content:

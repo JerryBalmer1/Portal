@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.3.4 on 2026-10-09, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: for 0.3.4 item 3.4 was run, and item 0.2's Generate, Build, Test and Pester (60 passed) were run, Smoke was not (0.3.4 changed only Up, its private helpers, versions and tests; Up on 8200 was run twice by hand, the second printing `replaced <stamp> with <stamp>`); for 0.3.3 the same parts of 0.2 were run (55 passed); item 0.2 was run in full for 0.3.2; 0.3 was not run by hand (an agent's shell cannot quote the denied commands) but Pester feeds the hook six commands and checks the exit codes; 1.1, 1.4, 2.1 were run for 0.3.1 and 0.1, 1.2, 1.3, 1.5, 1.6, 3.1, 3.2, 3.3 for 0.3.0, not re-run (0.3.2 changed no code they exercise). Item 2.1 was checked by a headless capture (Invoke-Build Screenshot), not by a person at a browser. Items 2.2, 2.3 and 2.4 were not run: they need a person at a browser. 2.4's seeded look is pinned by Pester's headless `--dump-dom` check, but no one clicked a section toggle.
+Verified for: 0.3.5 on 2026-10-09, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: for 0.3.5 items 1.7, 2.1 (headless capture, which shows the new top bar) and 0.2 in full (Go 35 tests, Pester 61 passed) were run; the other items were not re-run, since 0.3.5 changes only mounts by path and the top bar; for 0.3.4 item 3.4 was run, and item 0.2's Generate, Build, Test and Pester (60 passed) were run, Smoke was not (0.3.4 changed only Up, its private helpers, versions and tests; Up on 8200 was run twice by hand, the second printing `replaced <stamp> with <stamp>`); for 0.3.3 the same parts of 0.2 were run (55 passed); item 0.2 was run in full for 0.3.2; 0.3 was not run by hand (an agent's shell cannot quote the denied commands) but Pester feeds the hook six commands and checks the exit codes; 1.1, 1.4, 2.1 were run for 0.3.1 and 0.1, 1.2, 1.3, 1.5, 1.6, 3.1, 3.2, 3.3 for 0.3.0, not re-run (0.3.2 changed no code they exercise). Item 2.1 was checked by a headless capture (Invoke-Build Screenshot), not by a person at a browser. Items 2.2, 2.3 and 2.4 were not run: they need a person at a browser. 2.4's seeded look is pinned by Pester's headless `--dump-dom` check, but no one clicked a section toggle.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -18,7 +18,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `internal/server` and `internal/store` (30 tests); Smoke prints `smoke: seed 18 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"ratio":<r>}` with `<g>` above half of `<p>` (662 of 903 here), and `artifacts/smoke-report.json` has `checks.menu.restart.topBar` `ui:menu:graph`, `ui:menu:smoke`; Pester ends `Tests Passed: 60, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
+Expect: go test ends `ok` for `internal/server` and `internal/store` (35 tests); Smoke prints `smoke: seed 18 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"ratio":<r>}` with `<g>` above half of `<p>` (662 of 903 here), and `artifacts/smoke-report.json` has `checks.menu.restart.topBar` `ui:menu:graph`, `ui:menu:smoke`; Pester ends `Tests Passed: 61, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -163,6 +163,26 @@ finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAc
 ```
 Expect: `201`, `201`, `201`, `422 edge-endpoints`, then the four menu edges `ui:menu:graph|ui:category:Menu|is-a`, `ui:menu:graph|ui:canvas|opens`, `ui:menu:designer|ui:category:Menu|is-a`, `ui:menu:designer|ui:designer|opens`.
 
+### 1.7 A layer mounted by path is a Mount node, and an approval brings it back after a restart
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$dir = Join-Path $env:TEMP 'portal-check-1.7'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+try {
+    $l = Mount-PortalLayer -Name agent-runs -Path .	estsixtures\layersilesystem -Url $p.Url
+    "mounted: $($l.name) $($l.counts.nodes) nodes"
+    $m = (Get-PortalScreen -Url $p.Url).nodes | Where-Object id -EQ 'ui:mount:agent-runs'
+    "recorded: $($m.kind) $($m.properties.layer) $($m.properties.path)"
+    $null = New-PortalSnap -Url $p.Url -Note 'agent-runs'
+}
+finally { Stop-Portal -Artifacts $dir }
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+try { "after restart: $((Invoke-RestMethod "$($p.Url)/api/layers").name -join ',')" }
+finally { Stop-Portal -Artifacts $dir }
+```
+Expect: `mounted: agent-runs 52 nodes`, `recorded: Mount agent-runs C:\__Code\Portal	estsixtures\layersilesystem` (the directory as given, made absolute), then `after restart: agent-runs`, with no flag mounting anything.
+
 ## 2. Page
 
 ### 2.1 The FileSystem layer draws in colour
@@ -170,7 +190,7 @@ Expect: `201`, `201`, `201`, `422 edge-endpoints`, then the four menu edges `ui:
 # needs C:\__Code\Graph.Emitter.FileSystem\artifacts\layers (falls back to the fixture)
 Invoke-Build Screenshot
 ```
-Expect: `captured ...\docs\screenshots\portal.png; canvas coloured from ontology: 52/52`. The top bar holds the title, the menu (one entry, `Graph`) and the counts. The PNG shows the filesystem Canvas on the left (with the sibling's layer, whose ontology uses Graph.Node 0.2.0 display: Directories as blue rounded squares labelled `name/`, larger than Files, which are grey circles; with the fixture, Directories are amber rounded boxes and Files blue squares), and the Designer panel on the right in seven sections, each a heading with an `expand` or `collapse` button at its right: Approve (open: its note field and `Approve` button), Kinds (ontology.yaml) (collapsed), Categories (open, five Categories), then Add Panel, Add Container, Add Category and Add Menu Entry, collapsed. The graph fills most of its panel. No snap button in the top bar.
+Expect: `captured ...\docs\screenshots\portal.png; canvas coloured from ontology: 52/52`. The top bar holds the title, the menu (one entry, `Graph`), the open view's layer (`filesystem · <n> nodes · <m> edges · <stamp>`) and the badge `screen <n> · <m> · <stamp>`. The PNG shows the filesystem Canvas on the left (with the sibling's layer, whose ontology uses Graph.Node 0.2.0 display: Directories as blue rounded squares labelled `name/`, larger than Files, which are grey circles; with the fixture, Directories are amber rounded boxes and Files blue squares), and the Designer panel on the right in seven sections, each a heading with an `expand` or `collapse` button at its right: Approve (open: its note field and `Approve` button), Kinds (ontology.yaml) (collapsed), Categories (open, five Categories), then Add Panel, Add Container, Add Category and Add Menu Entry, collapsed. The graph fills most of its panel. No snap button in the top bar.
 
 ### 2.2 Approve from the Designer
 ```powershell

@@ -1,5 +1,5 @@
 module: Portal
-version: 0.3.4
+version: 0.3.5
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -50,6 +50,12 @@ kinds:
     properties:
       - { name: layer, type: string, required: true, description: "Mounted layer name." }
       - { name: node, type: string, required: true, description: "Node id in that layer." }
+  Mount:
+    description: A data layer mounted by path through POST /api/layers, recorded on screen so an approved snap mounts it again at boot. Written by the mount, removed by a mount of the same name from an inline envelope; it draws nothing and has no edges.
+    idRule: "ui:mount:<layer name>"
+    properties:
+      - { name: layer, type: string, required: true, description: "The layer name, as POST /api/layers took it." }
+      - { name: path, type: string, required: true, description: "The path as given, made absolute: a .graph.json file, or a directory whose newest *.graph.json is mounted at boot." }
 edgeKinds:
   contains:
     description: A Container holds a Container or a Widget.
