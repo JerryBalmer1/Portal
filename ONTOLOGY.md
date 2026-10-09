@@ -2,7 +2,7 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.3.0, id prefix `ui:` (registered to Portal in the lifted Graph.Node id registry), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.3.1, id prefix `ui:` (registered to Portal in the lifted Graph.Node id registry), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 
@@ -16,6 +16,7 @@ Module `Portal`, version 0.3.0, id prefix `ui:` (registered to Portal in the lif
 | Layout | Kind. `mode` grid, flow or canvas; `columns` for grid (12 when absent). Joined by `laid-out-by`. |
 | Category | Graph.Node base Kind used as a panel type. `name`, `properties.label` (required by Graph.Node), `description`. The base Categories Canvas, Table, Detail and Designer have renderers; any other draws with the base it `is-a`. The seeded Category Menu has no renderer: its Containers are the top bar's entries. |
 | State | Kind. Per-node display state: `collapsed`, `selected`, `scroll`. Id `ui:state:<id without ui:>`, joined by `has-state`. A display Kind. |
+| Designer section | One collapsible block of the Designer: Approve, Kinds (ontology.yaml), Categories, Add Panel, Add Container, Add Category, Add Menu Entry. Whether it is collapsed is a State node `ui:state:<Designer id without ui:>:<slug>` (`ui:state:designer:add-panel` for the seed's), joined from the Designer by `has-state`; seeded with Approve and Categories open, and added with those defaults to a booted snap that lacks them (docs/design.md 28). |
 | Theme | Kind. How a Container and what it holds look: `color` (accent, `#rrggbb`), `opacity` (glass surface, 0 to 1), `font` (CSS font-family). Joined by `themed-by`; a Container without one takes its parent's. A display Kind, and a node like any other, so a theme change is a changed node in a diff (docs/design.md 22). |
 | Display Kind | State or Theme: the only Kinds whose `properties` may hold display keys (docs/design.md 5). |
 | Ref | Kind. A stand-in on screen for one node of a mounted layer (`layer`, `node`), so `displays` stays inside the envelope (docs/design.md 9). |

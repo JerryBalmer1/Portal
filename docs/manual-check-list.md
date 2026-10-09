@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.3.0 on 2026-10-09, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: items 0.1, 0.2, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 2.1, 3.1, 3.2, 3.3. Item 2.1 was checked by a headless capture (Invoke-Build Screenshot), not by a person at a browser. Item 2.3's forms and menu were driven by script in Chrome (docs/design.md 26), not by a person, so its block was not run as written. Item 2.2 was not run: it needs a person to click Approve in a browser.
+Verified for: 0.3.1 on 2026-10-09, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: items 0.2, 1.1, 1.4, 2.1 were run for 0.3.1; 0.1, 1.2, 1.3, 1.5, 1.6, 3.1, 3.2, 3.3 were verified for 0.3.0 and not re-run. Item 2.1 was checked by a headless capture (Invoke-Build Screenshot), not by a person at a browser. Items 2.2, 2.3 and 2.4 were not run: they need a person at a browser. 2.4's seeded look is pinned by Pester's headless `--dump-dom` check, but no one clicked a section toggle.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -18,7 +18,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `internal/server` and `internal/store`; Smoke prints `smoke: seed 11 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>` and `artifacts/smoke-report.json` has `checks.menu.restart.topBar` `ui:menu:graph`, `ui:menu:smoke`; Pester ends `Tests Passed: 42, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
+Expect: go test ends `ok` for `internal/server` and `internal/store` (30 tests); Smoke prints `smoke: seed 18 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"ratio":<r>}` with `<g>` above half of `<p>` (662 of 903 here), and `artifacts/smoke-report.json` has `checks.menu.restart.topBar` `ui:menu:graph`, `ui:menu:smoke`; Pester ends `Tests Passed: 46, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
 
 ## 1. API
 
@@ -32,12 +32,13 @@ try {
     $s = Get-PortalScreen -Url $p.Url
     "boot: $($p.Boot); nodes: $($s.nodes.Count), edges: $($s.edges.Count), root: $($s.root)"
     $s.nodes | Group-Object kind | Sort-Object Name | ForEach-Object { "$($_.Name): $($_.Count)" }
+    $s.nodes | Where-Object id -Like 'ui:state:designer:*' | ForEach-Object { "$($_.id) collapsed $($_.properties.collapsed)" }
     $l = Invoke-RestMethod "$($p.Url)/api/layers"
     "layer: $($l[0].name) $($l[0].counts.nodes) nodes, ontology $($l[0].hasOntology)"
 }
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: `boot: seed; nodes: 11, edges: 8, root: ui:root`, then `Category: 5`, `Container: 3`, `Layout: 1`, `Theme: 1`, `Widget: 1`, then `layer: filesystem 52 nodes, ontology True`.
+Expect: `boot: seed; nodes: 18, edges: 15, root: ui:root`, then `Category: 5`, `Container: 3`, `Layout: 1`, `State: 7`, `Theme: 1`, `Widget: 1`, then the seven section States in order, `ui:state:designer:approve collapsed False`, `...kinds collapsed True`, `...categories collapsed False`, and `add-panel`, `add-container`, `add-category`, `add-menu-entry` all `collapsed True`, then `layer: filesystem 52 nodes, ontology True`.
 
 ### 1.2 Display, Graph.Node shape and Category refusals
 ```powershell
@@ -96,7 +97,7 @@ finally {
     Remove-Item $dev, $prod -Recurse -Force -ErrorAction SilentlyContinue
 }
 ```
-Expect: `hidden: ui:designer`.
+Expect: `hidden: ui:designer` (its section States stay, as every hidden node's State does; docs/design.md 3).
 
 ### 1.5 Approve, boot from the newest snap, PORTAL_SNAP
 ```powershell
@@ -161,7 +162,7 @@ Expect: `201`, `201`, `201`, `422 edge-endpoints`, then the four menu edges `ui:
 # needs C:\__Code\Graph.Emitter.FileSystem\artifacts\layers (falls back to the fixture)
 Invoke-Build Screenshot
 ```
-Expect: `captured ...\docs\screenshots\portal.png; canvas coloured from ontology: 52/52`. The top bar holds the title, the menu (one entry, `Graph`) and the counts. The PNG shows the filesystem Canvas on the left (with the sibling's layer, whose ontology uses Graph.Node 0.2.0 display: Directories as blue rounded squares labelled `name/`, larger than Files, which are grey circles; with the fixture, Directories are amber rounded boxes and Files blue squares), and the Designer panel on the right with the Approve form at the top, then seven Kinds and five Categories. No snap button in the top bar.
+Expect: `captured ...\docs\screenshots\portal.png; canvas coloured from ontology: 52/52`. The top bar holds the title, the menu (one entry, `Graph`) and the counts. The PNG shows the filesystem Canvas on the left (with the sibling's layer, whose ontology uses Graph.Node 0.2.0 display: Directories as blue rounded squares labelled `name/`, larger than Files, which are grey circles; with the fixture, Directories are amber rounded boxes and Files blue squares), and the Designer panel on the right in seven sections, each a heading with an `expand` or `collapse` button at its right: Approve (open: its note field and `Approve` button), Kinds (ontology.yaml) (collapsed), Categories (open, five Categories), then Add Panel, Add Container, Add Category and Add Menu Entry, collapsed. The graph fills most of its panel. No snap button in the top bar.
 
 ### 2.2 Approve from the Designer
 ```powershell
@@ -175,17 +176,36 @@ Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction Silen
 ```
 Expect: the first approve shows `approved <stamp> · <note>` and `first snap: nothing to compare`; after the PATCH and a reload the panels are more opaque, and the second shows `against <first stamp>:` and `changed 1 nodes, 0 edges: ui:theme:default`.
 
-### 2.3 Menu, Add Category and Add menu entry in the Designer
+### 2.3 Menu, Add Category and Add Menu Entry in the Designer
 ```powershell
 Import-Module .\src\Portal\Portal.psd1 -Force
 $dir = Join-Path $env:TEMP 'portal-check-2.3'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
 Start-Process $p.Url
-Read-Host 'Collapse the Canvas, then press Graph in the top bar; Add Category Tree refining Canvas; Add menu entry Designer opening designer; press Enter here to stop'
+Read-Host 'Collapse the Canvas, then press Graph in the top bar; expand Add Category and add Tree refining Canvas; expand Add Menu Entry and add Designer opening designer; press Enter here to stop'
 Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 ```
 Expect: Graph expands the Canvas and outlines it; after Add Category the Categories list shows `└ Tree (refines Canvas)` under Canvas and the category and refines dropdowns offer `· Tree`; after Add menu entry the top bar shows `Graph` then `Designer`; neither add reloads the page.
+
+### 2.4 Designer sections collapse, and stay as left across Approve and a restart
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$dir = Join-Path $env:TEMP 'portal-check-2.4'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
+Start-Process $p.Url
+Read-Host 'Press expand on Add Panel and collapse on Categories, then Approve; press Enter here to restart'
+Stop-Portal -Artifacts $dir
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
+try {
+    (Get-PortalScreen -Url $p.Url).nodes | Where-Object id -In 'ui:state:designer:add-panel', 'ui:state:designer:categories' | ForEach-Object { "$($_.id) collapsed $($_.properties.collapsed)" }
+    Start-Process $p.Url
+    Read-Host 'Reload the page; press Enter here to stop'
+}
+finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: the seeded page shows Approve and Categories open and the other five collapsed, every heading and button in Title Case and the field labels lower case; each toggle hides or shows only its section's body and the Canvas does not redraw; Approve's result is `first snap: nothing to compare`; after the restart the block prints `ui:state:designer:add-panel collapsed False` and `ui:state:designer:categories collapsed True`, and the reloaded page shows Add Panel open and Categories collapsed.
 
 ## 3. PowerShell
 

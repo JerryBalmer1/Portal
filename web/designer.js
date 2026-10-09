@@ -6,7 +6,21 @@
 // from the screen the page has just read from GET /api/screen; after each add
 // the page re-reads it and mounts the Designer again (docs/design.md 26).
 // PORTAL_MODE=production leaves it out of GET /api/screen, so it is never
-// drawn there.
+// drawn there. Each section is a collapsible block whose open or closed is a
+// State node, ui:state:designer:<slug> for the seed's (docs/design.md 28).
+
+// SECTIONS are the Designer's blocks in order: slug, heading, open by
+// default. internal/store's DesignerSections seeds the same seven, and a Go
+// test reads this list off the served page.
+export const SECTIONS = Object.freeze([
+  { slug: 'approve', title: 'Approve', open: true },
+  { slug: 'kinds', title: 'Kinds (ontology.yaml)', open: false },
+  { slug: 'categories', title: 'Categories', open: true },
+  { slug: 'add-panel', title: 'Add Panel', open: false },
+  { slug: 'add-container', title: 'Add Container', open: false },
+  { slug: 'add-category', title: 'Add Category', open: false },
+  { slug: 'add-menu-entry', title: 'Add Menu Entry', open: false },
+]);
 
 const slug = (s) => String(s).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -25,7 +39,6 @@ export function mount(el, ctx) {
 
   // Kinds from the portal ontology.
   const kinds = document.createElement('div');
-  kinds.innerHTML = '<h4>Kinds (ontology.yaml)</h4>';
   const ul = document.createElement('ul');
   for (const [name, def] of Object.entries(ontology.portal.kinds || {})) {
     const li = document.createElement('li');
@@ -35,7 +48,6 @@ export function mount(el, ctx) {
   }
   kinds.appendChild(ul);
   const cats = document.createElement('div');
-  cats.innerHTML = '<h4>Categories</h4>';
   const cl = document.createElement('ul');
   cl.className = 'pt-categories';
   for (const { cat: c, depth } of categoryTree(categories, ix)) {
@@ -87,7 +99,7 @@ export function mount(el, ctx) {
     .filter((n) => (n.kind === 'Container' || n.kind === 'Widget') && !ix.isMenuEntry(n.id) && n.id !== screen.root)
     .map((n) => [n.id, `${n.name || n.id} (${n.kind})`]);
 
-  const panel = form('Add panel', [
+  const panel = form('Add Panel', [
     ['name', 'text', 'tree'],
     ['category', panelOptions],
     ['parent', containerOptions],
@@ -102,7 +114,7 @@ export function mount(el, ctx) {
     );
   }));
 
-  const container = form('Add container', [
+  const container = form('Add Container', [
     ['name', 'text', 'group'],
     ['parent', containerOptions],
     ['mode', [['grid', 'grid'], ['flow', 'flow'], ['canvas', 'canvas']]],
@@ -151,7 +163,7 @@ export function mount(el, ctx) {
   // A menu entry is a Container that is-a Menu and opens what it shows: one
   // node add and two edge adds through the same POSTs (docs/design.md 25).
   const entries = ix.menu();
-  const menu = form('Add menu entry', [
+  const menu = form('Add Menu Entry', [
     ['name', 'text', 'Designer'],
     ['opens', shownOptions],
   ], run(async (f) => {
@@ -165,8 +177,57 @@ export function mount(el, ctx) {
     );
   }));
 
-  wrap.append(approve, kinds, cats, panel, container, category, menu, status);
+  const bodies = { approve, kinds, categories: cats, 'add-panel': panel, 'add-container': container, 'add-category': category, 'add-menu-entry': menu };
+  wrap.append(...SECTIONS.map((s) => section(ctx, s, bodies[s.slug], status)), status);
   return { wrap };
+}
+
+// section wraps one block in a head (heading left, the panels' collapse
+// control right) and a body that collapsing hides. Toggling writes the
+// section's State node: PATCH its collapsed when it is on screen, else POST
+// it and its has-state edge. The block then follows the written State in
+// place rather than redrawing the page, so a Canvas is not laid out again.
+function section(ctx, s, body, status) {
+  const sid = `ui:state:${ctx.node.id.replace(/^ui:/, '')}:${s.slug}`;
+  const node = ctx.ix.nodes.get(sid);
+  let exists = !!node;
+  let collapsed = node && typeof node.properties?.collapsed === 'boolean' ? node.properties.collapsed : !s.open;
+  const box = document.createElement('section');
+  box.className = 'pt-section';
+  box.dataset.section = s.slug;
+  const head = document.createElement('div');
+  head.className = 'pt-section-head';
+  const h = document.createElement('h4');
+  h.textContent = s.title;
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'gr-btn';
+  body.classList.add('pt-section-body');
+  const paint = () => {
+    box.classList.toggle('pt-collapsed', collapsed);
+    toggle.textContent = collapsed ? 'expand' : 'collapse';
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+  };
+  toggle.addEventListener('click', async () => {
+    const next = !collapsed;
+    try {
+      if (exists) {
+        await ctx.client.patchNode(sid, { properties: { collapsed: next } });
+      } else {
+        await ctx.client.postNode({ id: sid, kind: 'State', name: `state of ${ctx.node.id} · ${s.title}`, properties: { collapsed: next } });
+        exists = true;
+        await ctx.client.postEdge({ kind: 'has-state', from: ctx.node.id, to: sid });
+      }
+      collapsed = next;
+      paint();
+    } catch (err) {
+      status.textContent = `${err.message}${(err.problems || []).map((p) => `\n${p.code} ${p.path}: ${p.message}`).join('')}`;
+    }
+  });
+  paint();
+  head.append(h, toggle);
+  box.append(head, body);
+  return box;
 }
 
 // approval says what a snap holds against the one before it.
@@ -224,13 +285,11 @@ function drawable(c, ix) {
 }
 
 // form builds a small labelled form; a field is [name, type, default] or
-// [name, [[value, label], ...]] for a select.
+// [name, [[value, label], ...]] for a select. Its button says the section's
+// title; the heading is the section's.
 function form(title, fields, onSubmit) {
   const f = document.createElement('form');
   f.className = 'gr-form';
-  const h = document.createElement('h4');
-  h.textContent = title;
-  f.appendChild(h);
   for (const [name, type, def] of fields) {
     const row = document.createElement('label');
     row.className = 'gr-form-row';
@@ -252,7 +311,7 @@ function form(title, fields, onSubmit) {
   const btn = document.createElement('button');
   btn.className = 'gr-btn';
   btn.type = 'submit';
-  btn.textContent = title.toLowerCase();
+  btn.textContent = title;
   f.appendChild(btn);
   f.addEventListener('submit', onSubmit);
   return f;

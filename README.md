@@ -27,8 +27,8 @@ Nothing edits below its own row.
 | `internal/graphnode/` | Graph.Node's schemas and `graph` package, lifted at tag v0.2.0 with `ui:` registered to Portal (docs/design.md 4). |
 | `cmd/portal/` | The server: `portal [-port 8200] [-artifacts artifacts] [-mount name=path]... [-filesystem <dir or file>] [-no-seed]`, on 127.0.0.1; `-port 0` is refused; `PORTAL_SNAP=<stamp>` boots from that snap; `PORTAL_MODE=production` hides the Designer. |
 | `cmd/graphnode/` | Graph.Node's validator CLI, lifted: `graphnode validate <graph.json> [--ontology <ontology.yaml>]`, `validate-ontology <ontology.yaml>`, `prefixes`, `check-id <prefix> <id>`, `schema [name]`, `version`. |
-| `web/` | The page: `index.html`, `portal.js`, `client.js`, renderers `canvas.js`, `table.js`, `detail.js`, `designer.js` (with Approve), `base.css`, vendored Cytoscape. |
-| `ontology.yaml` | Module `Portal` 0.3.0: Kinds Container, Widget, Layout, Category, State, Theme, Ref; edges contains, laid-out-by, is-a, opens, displays, has-state, themed-by; findings absent, approved. |
+| `web/` | The page: `index.html`, `portal.js`, `client.js`, renderers `canvas.js`, `table.js`, `detail.js`, `designer.js` (with Approve; collapsible sections, each a State node), `base.css`, vendored Cytoscape. |
+| `ontology.yaml` | Module `Portal` 0.3.1: Kinds Container, Widget, Layout, Category, State, Theme, Ref; edges contains, laid-out-by, is-a, opens, displays, has-state, themed-by; findings absent, approved. |
 | `src/Portal/` | PowerShell module: `Start-Portal`, `Stop-Portal`, `Get-PortalStatus`, `Get-PortalScreen`, `New-PortalSnap`, `Compare-PortalSnap`, `Mount-PortalLayer`. |
 | `tests/` | Pester (`Invoke-Tests.ps1`, `Portal.Tests.ps1`) and fixtures: `layers/filesystem/` (a FileSystem layer and its ontology), `invalid.graph.json` (Graph.Node's at v0.2.0). |
 | `docs/` | `design.md` (decisions, numbered), `manual-check-list.md`, `screenshots/portal.png`. |
@@ -44,7 +44,7 @@ Nothing edits below its own row.
 | PowerShell 7.4+ | |
 | Pester 5.5+ | `Install-Module Pester -Scope CurrentUser` |
 | InvokeBuild | `Install-Module InvokeBuild -Scope CurrentUser` |
-| Edge or Chrome | Only for `Invoke-Build Screenshot`. |
+| Edge or Chrome | `Invoke-Build Screenshot`; Chrome for Smoke's top-bar and Canvas-fit checks and Pester's Designer check (each skips without it). |
 
 ## Build
 
@@ -52,7 +52,7 @@ Nothing edits below its own row.
 Invoke-Build              # Modules, Build, Test, Smoke, Pester
 Invoke-Build Build        # portal.exe and graphnode.exe into build/win-x64/
 Invoke-Build Test         # go vet, go test
-Invoke-Build Smoke        # on artifacts/smoke, port 18200: seed, menu entry, approve, Theme opacity, approve, restart, entry in the top bar; artifacts/smoke-report.json
+Invoke-Build Smoke        # on artifacts/smoke, port 18200: seed, menu entry, approve, Theme opacity, approve, restart, entry in the top bar, Canvas fits its panel; artifacts/smoke-report.json
 Invoke-Build Up           # portal on http://127.0.0.1:8200 over artifacts/ (-Port, else PORTAL_PORT from .env, else the environment)
 Invoke-Build Status       # port, URL and boot stamp
 Invoke-Build Down         # stop it
@@ -77,7 +77,7 @@ $b.diff.changed.nodes                                               # ui:theme:d
 Stop-Portal -Artifacts $env:TEMP\portal-demo
 $p = Start-Portal -Port 18200 -Artifacts $env:TEMP\portal-demo -Filesystem .\tests\fixtures\layers\filesystem
 $p.Boot -eq $b.stamp                                                # True
-(Get-PortalScreen -Url $p.Url).nodes.Count                          # 11
+(Get-PortalScreen -Url $p.Url).nodes.Count                          # 18
 Stop-Portal -Artifacts $env:TEMP\portal-demo
 ```
 
@@ -110,4 +110,4 @@ A refused write answers 422 with `problems`, each `{code, path, message, severit
 
 ## Status
 
-0.3.0: fixed port 8200, Menu as nodes, Designer lists refreshed from the API. Decisions and what was deferred: docs/design.md (entries 24 to 27 are 0.3.0's, 18 to 23 0.2.0's; 9, 14, 15, 16 and 22 name the next questions).
+0.3.1: Designer sections collapsible, each a State node (`ui:state:designer:<slug>`), Title Case headings and buttons, the Canvas fits its panel after load. Decisions and what was deferred: docs/design.md (entries 28 and 29 are 0.3.1's, 24 to 27 0.3.0's, 18 to 23 0.2.0's; 9, 14, 15, 16 and 22 name the next questions).

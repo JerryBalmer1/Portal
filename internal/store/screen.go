@@ -34,6 +34,33 @@ const MenuCategory = "Menu"
 // SeedMenuEntry is the dev seed's one menu entry, "Graph", opening ui:canvas.
 const SeedMenuEntry = "ui:menu:graph"
 
+// SeedDesigner is the dev seed's Designer Container.
+const SeedDesigner = "ui:designer"
+
+// DesignerSection is one collapsible block of the Designer: its slug, the
+// heading the page draws, and whether it is open by default. web/designer.js
+// lists the same seven; a Go test holds the two in step (docs/design.md 28).
+type DesignerSection struct {
+	Slug  string
+	Title string
+	Open  bool
+}
+
+// DesignerSections are the Designer's sections in the order drawn.
+var DesignerSections = []DesignerSection{
+	{"approve", "Approve", true},
+	{"kinds", "Kinds (ontology.yaml)", false},
+	{"categories", "Categories", true},
+	{"add-panel", "Add Panel", false},
+	{"add-container", "Add Container", false},
+	{"add-category", "Add Category", false},
+	{"add-menu-entry", "Add Menu Entry", false},
+}
+
+// SectionStateID is the id of the State node holding whether one section of
+// the Designer node id is collapsed: ui:state:designer:<slug> for the seed's.
+func SectionStateID(id, slug string) string { return StateID(id) + ":" + slug }
+
 var (
 	// ErrNotFound: no such node, layer or snap.
 	ErrNotFound = errors.New("not found")
@@ -141,11 +168,40 @@ func New(o Options) (*Portal, error) {
 	if t, err := time.Parse(time.RFC3339Nano, env.Layer); err == nil {
 		p.lastStamp = t.UTC()
 	}
+	// A snap from before 0.3.1 has no section States: the seed Designer gets
+	// the defaults, checked like any write (docs/design.md 28).
+	if nodes, edges := addSections(env); len(nodes) > 0 {
+		if ps := p.check(env, nil, touch(nodes, edges)); len(ps) > 0 {
+			return nil, &InvalidError{Message: "the Designer's section States do not validate on " + s.Path, Problems: ps}
+		}
+	}
 	env.Layer = p.stamp()
 	env.Recount()
 	p.screen = env
 	p.boot = s.Stamp
 	return p, nil
+}
+
+// addSections gives the seed Designer, when it is on screen as a Container, a
+// State node per section it lacks, collapsed or open by DesignerSections,
+// joined by has-state. It returns the ids it added.
+func addSections(env *graph.Envelope) (nodes, edges []string) {
+	idx := env.NodeIndex()
+	if i, ok := idx[SeedDesigner]; !ok || env.Nodes[i].Kind != "Container" {
+		return nil, nil
+	}
+	for _, s := range DesignerSections {
+		sid := SectionStateID(SeedDesigner, s.Slug)
+		if _, ok := idx[sid]; ok {
+			continue
+		}
+		env.Nodes = append(env.Nodes, graph.Node{ID: sid, Kind: "State", Name: "state of " + SeedDesigner + " · " + s.Title,
+			Properties: map[string]any{"collapsed": !s.Open}})
+		e := graph.NewEdge(SeedDesigner, sid, "has-state")
+		env.Edges = append(env.Edges, e)
+		nodes, edges = append(nodes, sid), append(edges, e.ID)
+	}
+	return nodes, edges
 }
 
 // Boot is what the screen booted from: a snap stamp, BootSeed or BootEmpty.
@@ -178,8 +234,8 @@ const StampLayout = "2006-01-02T15:04:05.000Z"
 
 // seed builds the dev screen: one root Container, its grid Layout and Theme,
 // the four base Categories and Menu, one Canvas Widget on the filesystem
-// layer, the Designer panel and one menu entry opening the Canvas
-// (docs/design.md 7 and 25). The Theme's values are base.css's own,
+// layer, the Designer panel with a State per section, and one menu entry
+// opening the Canvas (docs/design.md 7, 25 and 28). The Theme's values are base.css's own,
 // so a seeded page looks as it did before Themes.
 func (p *Portal) seed() error {
 	env := p.screen
@@ -199,7 +255,7 @@ func (p *Portal) seed() error {
 		cat(MenuCategory, "The top bar's entries: every Container that is-a Menu, in order, each showing the Container or Widget its opens edge points at."),
 		graph.Node{ID: "ui:canvas", Kind: "Widget", Name: "filesystem", Properties: map[string]any{
 			"type": "Canvas", "source": "filesystem", "bounds": map[string]any{"x": 0, "y": 0, "w": 8, "h": 9}}},
-		graph.Node{ID: "ui:designer", Kind: "Container", Name: "designer", Properties: map[string]any{
+		graph.Node{ID: SeedDesigner, Kind: "Container", Name: "designer", Properties: map[string]any{
 			"order": 1, "parent": Root, "bounds": map[string]any{"x": 8, "y": 0, "w": 4, "h": 9}}},
 		graph.Node{ID: SeedMenuEntry, Kind: "Container", Name: "Graph", Properties: map[string]any{"order": 0}},
 	)
@@ -208,11 +264,12 @@ func (p *Portal) seed() error {
 		graph.NewEdge(Root, SeedTheme, "themed-by"),
 		graph.NewEdge(Root, "ui:canvas", "contains"),
 		graph.NewEdge("ui:canvas", "ui:category:Canvas", "is-a"),
-		graph.NewEdge(Root, "ui:designer", "contains"),
-		graph.NewEdge("ui:designer", "ui:category:"+DesignerCategory, "is-a"),
+		graph.NewEdge(Root, SeedDesigner, "contains"),
+		graph.NewEdge(SeedDesigner, "ui:category:"+DesignerCategory, "is-a"),
 		graph.NewEdge(SeedMenuEntry, "ui:category:"+MenuCategory, "is-a"),
 		graph.NewEdge(SeedMenuEntry, "ui:canvas", "opens"),
 	)
+	addSections(env)
 	all := make([]string, 0, len(env.Nodes))
 	for _, n := range env.Nodes {
 		all = append(all, n.ID)

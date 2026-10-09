@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -424,7 +425,8 @@ func TestProductionHidesDesignerAndOnlyDesigner(t *testing.T) {
 			hidden = append(hidden, n.ID)
 		}
 	}
-	if len(hidden) != 1 || hidden[0] != "ui:designer" {
+	// State nodes stay, the section States too (docs/design.md 3, 28).
+	if !slices.Equal(hidden, []string{"ui:designer"}) {
 		t.Errorf("production hid %v, want exactly [ui:designer]", hidden)
 	}
 	for _, e := range shown.Edges {
@@ -490,7 +492,9 @@ func TestDiff(t *testing.T) {
 	c := snapStamp(t, h, s.URL)
 	var gone result
 	_ = json.Unmarshal(h.do(t, s.URL, "GET", "/api/diff?a="+b+"&b="+c, "", 200), &gone)
-	if len(gone.Removed.Nodes) != 1 || len(gone.Removed.Edges) != 2 {
+	// Its contains and is-a edges, and a has-state edge per section; the
+	// section States stay, as any node's State does when the node goes.
+	if len(gone.Removed.Nodes) != 1 || len(gone.Removed.Edges) != 2+len(store.DesignerSections) {
 		t.Errorf("delete of ui:designer: removed %d nodes, %d edges", len(gone.Removed.Nodes), len(gone.Removed.Edges))
 	}
 	// Design 11: the merge keeps what b dropped, marked absent, and validates.
@@ -671,5 +675,33 @@ func TestMenuEntryAddedThroughPostSurvivesApproveAndRestart(t *testing.T) {
 	}
 	if len(want) > 0 {
 		t.Errorf("after restart the screen lacks %v", want)
+	}
+}
+
+// The served Designer draws the seven sections Go seeds, in the same order,
+// with the same Title Case headings and the same defaults.
+func TestServedDesignerHasTheSevenTitleCaseSections(t *testing.T) {
+	h := newHarness(t)
+	s, _, _ := newPortal(t, false)
+	page := string(h.do(t, s.URL, "GET", "/static/designer.js", "", 200))
+	re := regexp.MustCompile(`\{ slug: '([^']+)', title: '([^']+)', open: (true|false) \}`)
+	var got []store.DesignerSection
+	for _, m := range re.FindAllStringSubmatch(page, -1) {
+		got = append(got, store.DesignerSection{Slug: m[1], Title: m[2], Open: m[3] == "true"})
+	}
+	if !slices.Equal(got, store.DesignerSections) {
+		t.Errorf("designer.js SECTIONS %v, want %v", got, store.DesignerSections)
+	}
+	titles := []string{"Approve", "Kinds (ontology.yaml)", "Categories", "Add Panel", "Add Container", "Add Category", "Add Menu Entry"}
+	for i, sec := range got {
+		if i >= len(titles) || sec.Title != titles[i] {
+			t.Errorf("section %d is %q, want %q", i, sec.Title, titles[i])
+		}
+	}
+	// Buttons say their section's title: no lower-cased label survives.
+	for _, old := range []string{"title.toLowerCase()", "'Add panel'", "'Add container'", "'Add menu entry'"} {
+		if strings.Contains(page, old) {
+			t.Errorf("designer.js still has %s", old)
+		}
 	}
 }

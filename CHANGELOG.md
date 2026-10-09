@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 — 2026-10-09
+
+- Designer sections collapsible: Approve, Kinds (ontology.yaml), Categories, Add Panel, Add Container, Add Category and Add Menu Entry each have a head row (heading left, the panels' `collapse`/`expand` button right) and a body that collapsing hides. Open or closed is a State node per section, `ui:state:designer:<slug>`, joined from `ui:designer` by `has-state`, so it is in the graph and in snaps. The seed has all seven, Approve and Categories open, the rest collapsed (18 nodes, 15 edges). A snap without them boots with them added at those defaults. A toggle writes the State and updates the section in place without redrawing the page. The page reads a node's own State by id, since the Designer now holds eight (docs/design.md 28).
+- Title Case in the Designer: every heading and button, each button saying its section (`Approve`, `Add Panel`, `Add Container`, `Add Category`, `Add Menu Entry`); field labels stay lower case.
+- Canvas fit: `cy.resize()` and `cy.fit()` on the next frame after layout and from a debounced `ResizeObserver` on the panel body (which also fires when a collapsed panel expands), only once the container has a size. Smoke loads the page in headless Chrome and fails unless the drawn graph is wider than half its panel: 662 of 903 px on the fixture (docs/design.md 29).
+- `ontology.yaml` 0.3.1: State's description and idRule name the section States (prose only). Go tests 30, Pester 46. Screenshot refreshed.
+
 ## 0.3.0 — 2026-10-09
 
 - Fixed port 8200: `Start-Portal` and `Invoke-Build Up` take `-Port`, else `PORTAL_PORT` from `.env` (`.env.example` at the root; `.env` gitignored), else the environment, else 8200. Port 0 is refused by the wrappers and by the binary (`-port` now defaults to 8200); a busy port fails naming the port and its owning process, and another is never picked. Tests, Smoke and Screenshot use 18200. New `Invoke-Build Status` and `Get-PortalStatus`: port, URL and boot stamp (docs/design.md 24).

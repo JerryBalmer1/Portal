@@ -82,7 +82,8 @@ task Down {
 # The approve-and-reboot loop on a fresh artifacts/smoke over the FileSystem fixture, on port 18200: boot from the seed,
 # add a menu entry through the existing POSTs, approve, change the seed Theme's opacity, approve, restart, and assert the
 # restart booted from the second stamp with that opacity and the menu entry, that the top bar draws the entry (Chrome's
-# --dump-dom; skipped and said so without Chrome) and that the second approval's diff is exactly the Theme node.
+# --dump-dom; skipped and said so without Chrome), that the Canvas fits its panel after load (the drawn graph wider than
+# half the panel, docs/design.md 29) and that the second approval's diff is exactly the Theme node.
 # Writes artifacts/smoke-report.json.
 task Smoke Build, {
     Import-Module $module -Force
@@ -139,9 +140,10 @@ task Smoke Build, {
         if (@($d.changed.nodes).Count -ne 1 -or $d.changed.nodes[0].id -ne 'ui:theme:default') { throw 'GET /api/diff disagrees with the approval' }
         foreach ($id in $report.checks.menu.edges) { if ($id -notin @($after.edges.id)) { throw "the restart lacks the menu edge $id" } }
         $report.checks.menu.restart = Test-TopBarMenu -Url $p.Url -Entries @('ui:menu:graph', $entry)
+        $report.checks.canvasFit = Test-CanvasFit -Url $p.Url
 
         $report.result = 'passed'
-        print Green "smoke: seed $($report.checks.seed.nodes) nodes; approved $($a.stamp), then $($b.stamp) changing $($changed -join ', '); restart booted from $($p.Boot)"
+        print Green "smoke: seed $($report.checks.seed.nodes) nodes; approved $($a.stamp), then $($b.stamp) changing $($changed -join ', '); restart booted from $($p.Boot); canvas fit $($report.checks.canvasFit | ConvertTo-Json -Compress)"
     }
     catch {
         $report.error = "$_"
@@ -212,6 +214,30 @@ function Test-TopBarMenu {
         $seen = @([regex]::Matches($bar, 'data-entry="([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
         if (($seen -join ',') -ne ($Entries -join ',')) { throw "the top bar draws [$($seen -join ', ')], not [$($Entries -join ', ')]" }
         [ordered]@{ topBar = $seen }
+    }
+    finally { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# Loads the page in headless Chrome at 1400x900 and throws unless the Canvas's drawn graph (Cytoscape's rendered bounding
+# box, which canvas.js records as data-fit="<graph>/<panel>" after each fit) is wider than half its panel. Returns the
+# numbers, or that it skipped and why when there is no Chrome (docs/design.md 29).
+function Test-CanvasFit {
+    param([Parameter(Mandatory)] [string] $Url)
+    $chrome = @(Find-HeadlessBrowser -Prefer chrome) | Where-Object { $_ -match 'chrome' } | Select-Object -First 1
+    if (-not $chrome) { return [ordered]@{ canvasFit = 'skipped: no Chrome for --dump-dom' } }
+    $work = Join-Path ([IO.Path]::GetTempPath()) "Portal-fit-$([guid]::NewGuid())"
+    $null = New-Item -ItemType Directory -Force -Path $work
+    try {
+        $dom = Join-Path $work 'dom.html'
+        $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--virtual-time-budget=8000', '--window-size=1400,900', '--dump-dom', "$Url/")
+        $null = Start-Process -FilePath $chrome -ArgumentList $argv -Wait -NoNewWindow -PassThru `
+            -RedirectStandardOutput $dom -RedirectStandardError (Join-Path $work 'd.err')
+        $text = [string](Get-Content -LiteralPath $dom -Raw -ErrorAction SilentlyContinue)
+        $m = [regex]::Match($text, 'data-fit="(\d+)/(\d+)"')
+        if (-not $m.Success) { throw 'the Canvas recorded no fit (data-fit): it never had a size' }
+        $graph, $panel = [int]$m.Groups[1].Value, [int]$m.Groups[2].Value
+        if ($graph -le $panel / 2) { throw "the Canvas draws its graph $graph px wide in a $panel px panel: not above half" }
+        [ordered]@{ graphWidth = $graph; panelWidth = $panel; ratio = [math]::Round($graph / $panel, 3) }
     }
     finally { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
 }

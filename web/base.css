@@ -243,7 +243,14 @@ body { display: flex; flex-direction: column; }
 .pt-detail dt { color: var(--gr-text-muted); }
 .pt-detail dd { margin: 0 0 6px 0; word-break: break-all; }
 .pt-designer { padding: 4px 14px 12px; font-size: 12px; display: grid; gap: 10px; }
-.pt-designer h4 { margin: 4px 0 0; font-size: 12px; font-weight: 500; color: var(--gr-text-muted); }
+.pt-designer h4 { margin: 0; font-size: 12px; font-weight: 500; color: var(--gr-text-muted); }
+/* A Designer section: heading left, the panels' collapse control right. */
+.pt-section { display: grid; gap: 6px; }
+.pt-section-head { display: flex; align-items: center; gap: 6px; }
+.pt-section-head h4 { margin-right: auto; }
+.pt-section-head .gr-btn { font-size: 11px; color: var(--gr-text-muted); }
+.pt-section-head .gr-btn:hover { color: var(--gr-text); }
+.pt-section.pt-collapsed > .pt-section-body { display: none; }
 .pt-designer ul { margin: 0; padding-left: 16px; }
 .pt-designer .gr-form { padding: 0; }
 .pt-designer .gr-form-row { grid-template-columns: 6em 1fr; }

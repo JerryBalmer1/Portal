@@ -41,7 +41,15 @@ export function index(screen) {
     targets,
     children: (id) => targets(id, 'contains').sort((a, b) => order(a) - order(b) || a.id.localeCompare(b.id)),
     layout: (id) => targets(id, 'laid-out-by')[0] || null,
-    state: (id) => (targets(id, 'has-state')[0] || {}).properties || {},
+    // state is the node's own State, ui:state:<id without ui:>. A node may
+    // hold more (the Designer's per section, ui:state:designer:<slug>), so
+    // the first has-state edge is the fallback only for an id of another
+    // shape, never a section's (docs/design.md 28).
+    state(id) {
+      const own = `ui:state:${id.replace(/^ui:/, '')}`;
+      const all = targets(id, 'has-state');
+      return (all.find((s) => s.id === own) || all.find((s) => !s.id.startsWith(`${own}:`)) || {}).properties || {};
+    },
     theme: (id) => (targets(id, 'themed-by')[0] || {}).properties || null,
     category: (id) => targets(id, 'is-a')[0] || null,
     // menu is the top bar: the Containers that is-a Menu, by order, each

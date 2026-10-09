@@ -1,5 +1,5 @@
 module: Portal
-version: 0.3.0
+version: 0.3.1
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -31,8 +31,8 @@ kinds:
       - { name: label, type: string, required: true, description: "Required by Graph.Node's Category schema; equals the node name." }
       - { name: description, type: string }
   State:
-    description: Per-node display state. With Theme, the only Kinds that may carry display properties. Joined from its node by has-state.
-    idRule: "ui:state:<id of the node without ui:>"
+    description: Per-node display state. With Theme, the only Kinds that may carry display properties. Joined from its node by has-state. The Designer also holds one per section, whether that section is collapsed.
+    idRule: "ui:state:<id of the node without ui:>; a Designer section's is ui:state:<id of the Designer without ui:>:<section slug>, ui:state:designer:add-panel for the seed's"
     properties:
       - { name: collapsed, type: boolean }
       - { name: selected, type: boolean }

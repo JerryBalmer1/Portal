@@ -30,12 +30,33 @@ export function mount(el, ctx) {
   el.appendChild(root);
   const src = parseSource(ctx.node.properties && ctx.node.properties.source);
   const ont = (ctx.ontology.layers && ctx.ontology.layers[src.layer]) || { kinds: {}, edgeKinds: {} };
-  const h = { root, cy: null, gone: false };
+  const h = { root, cy: null, gone: false, ro: null, timer: 0 };
+  // Cytoscape measures its container once, when made; on first load that
+  // can be before the panel has a size, and the graph is drawn a few pixels
+  // wide. fit measures again and fits whenever the container has a size:
+  // once on the next frame, then from a ResizeObserver on the panel body,
+  // debounced, which also fires when a collapsed panel expands
+  // (docs/design.md 29). data-fit records the drawn graph's width against
+  // the panel's, for the smoke.
+  const body = el.closest('.gr-box-body') || el;
+  const fit = () => {
+    if (h.gone || !h.cy || !root.clientWidth || !root.clientHeight) return;
+    h.cy.resize();
+    h.cy.fit(undefined, 24);
+    const panel = el.closest('.gr-box') || el;
+    el.dataset.fit = `${Math.round(h.cy.elements().renderedBoundingBox().w)}/${Math.round(panel.getBoundingClientRect().width)}`;
+  };
+  h.ro = new ResizeObserver(() => {
+    clearTimeout(h.timer);
+    h.timer = setTimeout(fit, 100);
+  });
+  h.ro.observe(body);
   ctx.client.getLayerNodes(src.layer, { kind: src.kind, from: src.from }).then((graph) => {
     if (h.gone) return;
     h.cy = cytoscape({ container: root, elements: elements(ont, graph), wheelSensitivity: 0.2, maxZoom: 2.2 });
     restyle(h, ont);
     h.cy.layout({ name: 'cose', animate: false, fit: true }).run();
+    requestAnimationFrame(fit);
     h.cy.on('tap', 'node', (ev) => {
       ctx.bus.dispatchEvent(new CustomEvent('select', { detail: { layer: src.layer, id: ev.target.id() } }));
     });
@@ -56,6 +77,8 @@ export function mount(el, ctx) {
 
 export function destroy(h) {
   h.gone = true;
+  h.ro.disconnect();
+  clearTimeout(h.timer);
   if (h.cy) h.cy.destroy();
   h.root.remove();
 }

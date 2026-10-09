@@ -110,6 +110,9 @@ func TestSeedValidatesAndBootsFromSeed(t *testing.T) {
 	want := map[string]string{Root: "Container", "ui:layout:root": "Layout", SeedTheme: "Theme", "ui:canvas": "Widget", "ui:designer": "Container",
 		"ui:category:Canvas": "Category", "ui:category:Table": "Category", "ui:category:Detail": "Category", "ui:category:Designer": "Category",
 		"ui:category:Menu": "Category", SeedMenuEntry: "Container"}
+	for _, sec := range DesignerSections {
+		want[SectionStateID(SeedDesigner, sec.Slug)] = "State"
+	}
 	idx := env.NodeIndex()
 	for id, kind := range want {
 		if i, ok := idx[id]; !ok || env.Nodes[i].Kind != kind {
@@ -309,4 +312,148 @@ func TestSeedMenuEntryIsAContainerThatIsAMenuAndOpensTheCanvas(t *testing.T) {
 	if _, err := p.AddEdge([]byte(`{"kind":"opens","from":"ui:menu:graph","to":"ui:theme:default"}`)); err == nil {
 		t.Error("opens to a Theme accepted")
 	}
+}
+
+// sectionStates returns collapsed per section of the seed Designer, and
+// fails on a section whose State is missing or not joined by has-state.
+func sectionStates(t *testing.T, env *graph.Envelope) map[string]bool {
+	t.Helper()
+	joined := map[string]bool{}
+	for _, e := range env.Edges {
+		if e.Kind == "has-state" && e.From == SeedDesigner {
+			joined[e.To] = true
+		}
+	}
+	idx := env.NodeIndex()
+	out := map[string]bool{}
+	for _, sec := range DesignerSections {
+		sid := SectionStateID(SeedDesigner, sec.Slug)
+		i, ok := idx[sid]
+		if !ok || env.Nodes[i].Kind != "State" || !joined[sid] {
+			t.Fatalf("no State %s joined from %s", sid, SeedDesigner)
+		}
+		c, ok := env.Nodes[i].Properties["collapsed"].(bool)
+		if !ok {
+			t.Fatalf("%s collapsed is %v", sid, env.Nodes[i].Properties["collapsed"])
+		}
+		out[sec.Slug] = c
+	}
+	return out
+}
+
+// The seed gives the Designer one State per section, ui:state:designer:<slug>:
+// Approve and Categories open, the other five collapsed.
+func TestSeedGivesEachDesignerSectionAState(t *testing.T) {
+	p, err := New(Options{Artifacts: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, _ := p.Screen()
+	got := sectionStates(t, env)
+	want := map[string]bool{"approve": false, "kinds": true, "categories": false, "add-panel": true,
+		"add-container": true, "add-category": true, "add-menu-entry": true}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("seeded collapsed %v, want %v", got, want)
+	}
+	if SectionStateID(SeedDesigner, "add-panel") != "ui:state:designer:add-panel" {
+		t.Errorf("section State id %s", SectionStateID(SeedDesigner, "add-panel"))
+	}
+}
+
+// A section toggled through PATCH survives approve and restart.
+func TestSectionStateRoundTripsThroughSnap(t *testing.T) {
+	dir := t.TempDir()
+	p, err := New(Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, body := range map[string]string{
+		"ui:state:designer:kinds":   `{"properties":{"collapsed":false}}`,
+		"ui:state:designer:approve": `{"properties":{"collapsed":true}}`,
+	} {
+		if _, _, err := p.PatchNode(id, []byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snap, err := p.TakeSnap("sections")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sectionStates(t, snap.Snap.Env); got["kinds"] || !got["approve"] {
+		t.Errorf("snap holds %v", got)
+	}
+	q, err := New(Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, _ := q.Screen()
+	if got := sectionStates(t, env); got["kinds"] || !got["approve"] || got["categories"] || !got["add-panel"] {
+		t.Errorf("restart holds %v", got)
+	}
+	// Reboot adds nothing: the snap had every section.
+	if len(env.Nodes) != len(snap.Snap.Env.Nodes) || len(env.Edges) != len(snap.Snap.Env.Edges) {
+		t.Errorf("restart has %d nodes %d edges, snap %d %d", len(env.Nodes), len(env.Edges), len(snap.Snap.Env.Nodes), len(snap.Snap.Env.Edges))
+	}
+}
+
+// A snap from before section States (0.3.0) boots with the defaults; one
+// without the seed Designer gets none.
+func TestSnapWithoutSectionStatesBootsWithTheDefaults(t *testing.T) {
+	dir := t.TempDir()
+	p, err := New(Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sec := range DesignerSections {
+		if _, _, err := p.DeleteNode(SectionStateID(SeedDesigner, sec.Slug)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old, err := p.TakeSnap("0.3.0 shape")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(mustRead(t, old.Snap.Path)), "ui:state:designer:") {
+		t.Fatal("the old-shape snap still holds section States")
+	}
+	q, err := New(Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, _ := q.Screen()
+	if got := sectionStates(t, env); !got["kinds"] || got["approve"] || got["categories"] {
+		t.Errorf("defaults %v", got)
+	}
+	if ps := graph.Validate(env); graph.HasErrors(ps) {
+		t.Errorf("booted screen: %v", ps)
+	}
+
+	if _, _, err := q.DeleteNode(SeedDesigner); err != nil {
+		t.Fatal(err)
+	}
+	for _, sec := range DesignerSections {
+		if _, _, err := q.DeleteNode(SectionStateID(SeedDesigner, sec.Slug)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := q.TakeSnap("no designer"); err != nil {
+		t.Fatal(err)
+	}
+	r, err := New(Options{Artifacts: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, _ = r.Screen()
+	if strings.Contains(fmt.Sprint(env.Nodes), "ui:state:designer:") {
+		t.Error("section States added with no Designer on screen")
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

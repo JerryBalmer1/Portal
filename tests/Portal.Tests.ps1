@@ -53,12 +53,33 @@ BeforeAll {
         $r = Invoke-WebRequest @req
         [pscustomobject]@{ Status = [int]$r.StatusCode; Headers = $r.Headers; Body = ([string]$r.Content | ConvertFrom-Json -Depth 64) }
     }
+    # The Designer's sections in order: slug, heading, open on seed (docs/design.md 28).
+    $script:Sections = @(
+        @{ Slug = 'approve'; Title = 'Approve'; Open = $true }
+        @{ Slug = 'kinds'; Title = 'Kinds (ontology.yaml)'; Open = $false }
+        @{ Slug = 'categories'; Title = 'Categories'; Open = $true }
+        @{ Slug = 'add-panel'; Title = 'Add Panel'; Open = $false }
+        @{ Slug = 'add-container'; Title = 'Add Container'; Open = $false }
+        @{ Slug = 'add-category'; Title = 'Add Category'; Open = $false }
+        @{ Slug = 'add-menu-entry'; Title = 'Add Menu Entry'; Open = $false }
+    )
+    # The page as headless Chrome draws it (--dump-dom; Edge's new headless prints none on Windows), or $null without Chrome.
+    function Get-PageDom([string] $Url) {
+        $chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+        if (-not $chrome) { return $null }
+        $work = Join-Path $TestDrive "dom-$([guid]::NewGuid())"
+        $null = New-Item -ItemType Directory -Force -Path $work
+        $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--virtual-time-budget=8000', '--window-size=1400,900', '--dump-dom', "$Url/")
+        $null = Start-Process -FilePath $chrome -ArgumentList $argv -Wait -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $work 'dom.html') -RedirectStandardError (Join-Path $work 'err.txt')
+        [string](Get-Content -LiteralPath (Join-Path $work 'dom.html') -Raw -ErrorAction SilentlyContinue)
+    }
 }
 
 Describe 'Module' {
-    It 'is version 0.3.0 and needs PowerShell 7.4' {
+    It 'is version 0.3.1 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.3.0'
+        $m.ModuleVersion | Should -Be '0.3.1'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -170,10 +191,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.3.0, the seven Kinds, the seven edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.3.1, the seven Kinds, the seven edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.3\.0$'
+        $text | Should -Match '(?m)^version: 0\.3\.1$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -271,7 +292,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.3.0'
+        $s.version | Should -Be '0.3.1'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -292,6 +313,39 @@ Describe 'Live portal' {
         $s.edges.id | Should -Contain 'ui:menu:graph|ui:canvas|opens'
         @($s.edges | Where-Object { $_.kind -eq 'contains' -and $_.to -eq 'ui:menu:graph' }) | Should -BeNullOrEmpty
         (Send $Url POST '/api/edges' @{ kind = 'opens'; from = 'ui:menu:graph'; to = 'ui:layout:root' }).Body.problems.code | Should -Contain 'edge-endpoints'
+    }
+    It 'seeds a State per Designer section, joined by has-state: Approve and Categories open, the rest collapsed' {
+        $s = Get-PortalScreen -Url $Url
+        foreach ($sec in $Sections) {
+            $id = "ui:state:designer:$($sec.Slug)"
+            $n = $s.nodes | Where-Object id -EQ $id
+            $n.kind | Should -Be 'State'
+            $n.properties.collapsed | Should -Be (-not $sec.Open) -Because $id
+            $s.edges.id | Should -Contain "ui:designer|$id|has-state"
+        }
+    }
+    It 'draws the seven Designer sections with Title Case headings and buttons, collapsed as their States say' {
+        $dom = Get-PageDom $Url
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $designer = [regex]::Match($dom, '<div class="pt-designer">.*', 'Singleline').Value
+        @([regex]::Matches($designer, '<h4>([^<]*)</h4>') | ForEach-Object { $_.Groups[1].Value }) | Should -Be @($Sections.Title)
+        @([regex]::Matches($designer, '<button class="gr-btn" type="submit">([^<]*)</button>') | ForEach-Object { $_.Groups[1].Value }) |
+            Should -Be @('Approve', 'Add Panel', 'Add Container', 'Add Category', 'Add Menu Entry')
+        foreach ($sec in $Sections) {
+            $tag = [regex]::Match($designer, "<section class=""([^""]*)"" data-section=""$($sec.Slug)"">").Groups[1].Value
+            ($tag -split ' ') -contains 'pt-collapsed' | Should -Be (-not $sec.Open) -Because $sec.Slug
+        }
+        # Field labels stay lower case.
+        $designer | Should -Match '<label class="gr-form-row">name<'
+    }
+    It 'a section State PATCH round-trips through New-PortalSnap and back' {
+        $null = New-PortalSnap -Url $Url
+        (Send $Url PATCH '/api/nodes/ui:state:designer:kinds' @{ properties = @{ collapsed = $false } }).Status | Should -Be 200
+        $snap = New-PortalSnap -Url $Url -Note 'kinds open'
+        @($snap.diff.changed.nodes) | Should -Be @('ui:state:designer:kinds')
+        $onDisk = Get-Content -LiteralPath $snap.path -Raw | ConvertFrom-Json -Depth 64
+        ($onDisk.nodes | Where-Object id -EQ 'ui:state:designer:kinds').properties.collapsed | Should -BeFalse
+        (Send $Url PATCH '/api/nodes/ui:state:designer:kinds' @{ properties = @{ collapsed = $true } }).Status | Should -Be 200
     }
     It 'refuses a POST with display properties on a plain node (display lives in State and Theme nodes only)' {
         $r = Send $Url POST '/api/nodes' @{ id = 'ui:w1'; kind = 'Widget'; properties = @{ color = '#ff0000' } }
@@ -404,6 +458,29 @@ Describe 'Boot order' {
     }
     It 'a PORTAL_SNAP that names no snap stops the binary' {
         { Start-Portal -Port 18200 -Artifacts $BootWork -Filesystem '' -Snap '2000-01-01T00-00-00.000Z' -TimeoutSec 5 } | Should -Throw '*no snap 2000-01-01T00-00-00.000Z*'
+    }
+}
+
+Describe 'Section States on an old snap' {
+    BeforeAll {
+        $script:OldWork = Join-Path $TestDrive 'old'
+        $p = Start-Portal -Port 18200 -Artifacts $OldWork -Filesystem ''
+        try {
+            foreach ($sec in $Sections) { $null = Invoke-RestMethod -Method Delete -Uri "$($p.Url)/api/nodes/ui:state:designer:$($sec.Slug)" }
+            $script:Old = New-PortalSnap -Url $p.Url -Note '0.3.0 shape'
+        }
+        finally { Stop-Portal -Artifacts $OldWork }
+    }
+    AfterAll { Stop-Portal -Artifacts $OldWork }
+    It 'a snap without the Designer''s section States (0.3.0''s shape) boots with the defaults, visible in the graph' {
+        $old = $Old
+        (Get-Content -LiteralPath $old.path -Raw) | Should -Not -Match 'ui:state:designer:'
+        $p = Start-Portal -Port 18200 -Artifacts $OldWork -Filesystem ''
+        $p.Boot | Should -Be $old.stamp
+        $s = Get-PortalScreen -Url $p.Url
+        foreach ($sec in $Sections) {
+            ($s.nodes | Where-Object id -EQ "ui:state:designer:$($sec.Slug)").properties.collapsed | Should -Be (-not $sec.Open)
+        }
     }
 }
 
