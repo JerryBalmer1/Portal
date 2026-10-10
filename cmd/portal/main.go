@@ -1,8 +1,14 @@
 // Command portal serves the portal: the one API (api/openapi.yaml) and the
 // page that draws the screen graph.
 //
-//	portal [-port 8200] [-artifacts artifacts] [-mount name=path]...
-//	       [-filesystem <dir|file>] [-no-seed]
+//	portal [-port 8200] [-artifacts artifacts] [-tenants tenants]
+//	       [-mount name=path]... [-filesystem <dir|file>] [-no-seed]
+//
+// It serves one tenant, PORTAL_TENANT (default "default"): portal.base.yaml
+// (embedded) with <tenants>/<tenant>/portal.yaml merged over it, both
+// validated against schema/portal.schema.json, plus that tenant's
+// tokens.yaml and connections.yaml when present. A tenant file that fails
+// stops the binary (docs/design.md 36).
 //
 // The screen boots from the newest snap under <artifacts>/snaps, or from the
 // one PORTAL_SNAP=<stamp> names, else from the dev seed; the layers its Mount
@@ -20,9 +26,12 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
+	portal "github.com/JerryBalmer1/Portal"
 	"github.com/JerryBalmer1/Portal/internal/server"
 	"github.com/JerryBalmer1/Portal/internal/store"
+	"github.com/JerryBalmer1/Portal/internal/tenant"
 )
 
 // defaultFilesystem is where Graph.Emitter.FileSystem writes its layers.
@@ -52,6 +61,7 @@ func main() {
 	port := flag.Int("port", DefaultPort, "TCP port on 127.0.0.1, 1-65535; never picked for you")
 	artifacts := flag.String("artifacts", "artifacts", "directory for snaps/; the screen boots from the newest")
 	filesystem := flag.String("filesystem", defaultFilesystem, "mounted as layer \"filesystem\" at startup when present (a directory's newest *.graph.json); empty skips it")
+	tenants := flag.String("tenants", "tenants", "directory holding <tenant>/portal.yaml (and tokens.yaml, connections.yaml) for PORTAL_TENANT")
 	noSeed := flag.Bool("no-seed", false, "with no snap to boot from, start empty instead of seeding the dev screen")
 	var ms mounts
 	flag.Var(&ms, "mount", "name=path of a layer to mount at startup; repeatable")
@@ -69,6 +79,12 @@ func main() {
 		log.Fatalf("portal: %v", err)
 	}
 	fmt.Printf("booted from %s\n", p.Boot())
+	t, err := tenant.Load(tenant.Options{Name: os.Getenv("PORTAL_TENANT"), Dir: *tenants, Base: portal.BaseYAML, Schema: portal.ConfigSchema,
+		Stamp: time.Now().UTC().Format(store.StampLayout), Check: p.CheckEnvelope})
+	if err != nil {
+		log.Fatalf("portal: %v", err)
+	}
+	fmt.Printf("tenant %s from %s (%d menu nodes, %d tokens, %d connections)\n", t.Name, *tenants, len(t.Menu.Nodes), t.Tokens(), len(t.Connections))
 	// The screen's Mount nodes first, so a flag naming the same layer wins
 	// (docs/design.md 33). A recorded layer that cannot be read is reported
 	// and left unmounted; it never stops the boot.
@@ -100,7 +116,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := server.Serve(ctx, host, *port, server.New(p)); err != nil {
+	if err := server.Serve(ctx, host, *port, server.New(p, t, server.Options{})); err != nil {
 		log.Fatalf("portal: port %d: %v; free it, or set PORTAL_PORT in .env or pass -port", *port, err)
 	}
 }

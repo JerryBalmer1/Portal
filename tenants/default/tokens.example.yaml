@@ -1,0 +1,8 @@
+# Copy to tokens.yaml (gitignored) to let a bearer token write. Each token is
+# stored as the SHA-256 of the token text, lower-case hex; the token itself is
+# never on disk. New-PortalToken -Name <name> makes one, adds it here and
+# prints the token once. A request with no token reads only; a request whose
+# token matches none is refused with 401.
+tokens:
+  - name: example
+    sha256: 0000000000000000000000000000000000000000000000000000000000000000

@@ -1,14 +1,20 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.3.6
+  version: 0.4.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
-    displays, has-state, themed-by and opens edges (ontology.yaml, module Portal). Data layers are mounted
-    read-only and queried; nothing here ever writes to a data layer. Source of truth for the API
-    surface: the Go server (cmd/portal) is generated from this file by oapi-codegen v2.8.0 and the
-    JS client in web/client.js is checked against it by the Go spec tests.
+    displays, has-state, themed-by and opens edges (ontology.yaml, module Portal); the shell's menu is an envelope
+    too, of Service and Page nodes. Every API path names the tenant (/api/tenants/{tenant}/...); one process serves
+    the one tenant PORTAL_TENANT names, and any other tenant is 404. A request without a bearer token reads only;
+    a write needs a token the tenant's tokens.yaml holds, and a token it does not hold is refused on any request
+    (401). Data layers are mounted read-only and queried; nothing here ever writes to a data layer. Source of
+    truth for the API surface: the Go server (cmd/portal) is generated from this file by oapi-codegen v2.8.0 and
+    the JS client in web/client.js is checked against it by the Go spec tests.
+security:
+  - {}
+  - bearerAuth: []
 tags:
   - name: screen
     description: The screen graph and its writes. Every write validates the whole next screen with Graph.Node and the portal ontology before it is accepted.
@@ -17,19 +23,58 @@ tags:
   - name: snaps
     description: Snapshots of the screen graph on disk and the diff between two.
   - name: page
-    description: The static page and its assets.
+    description: The shell page, its routes and its assets.
+  - name: tenant
+    description: The tenant's merged config, its menu, who is calling, and its service connections.
 paths:
   /:
     get:
       operationId: getIndex
       tags: [page]
-      summary: The portal page. Boots blank and draws GET /api/screen.
+      summary: Redirects to the first page of the first service of the tenant this process serves, /<tenant>/<service>/<page>.
+      responses:
+        "302":
+          description: To the shell's first page.
+          headers:
+            Location:
+              required: true
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /{tenant}/{service}/{page}:
+    get:
+      operationId: getShellPage
+      tags: [page]
+      summary: The shell page (index.html) at a page route. The page reads the route from the URL, so a deep link survives a refresh. 404 when tenant is not this process's tenant.
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+        - { name: service, in: path, required: true, schema: { type: string } }
+        - { name: page, in: path, required: true, schema: { type: string } }
       responses:
         "200":
           description: index.html
           content:
             text/html:
               schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/{service}/{page}/{id}:
+    get:
+      operationId: getShellItem
+      tags: [page]
+      summary: The shell page (index.html) at an item route, one node of a page. As getShellPage.
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+        - { name: service, in: path, required: true, schema: { type: string } }
+        - { name: page, in: path, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /static/{file}:
     get:
       operationId: getStatic
@@ -49,7 +94,10 @@ paths:
             text/css:
               schema: { type: string }
         "404": { $ref: "#/components/responses/NotFound" }
-  /api/screen:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/tenants/{tenant}/screen:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
     get:
       operationId: getScreen
       tags: [screen]
@@ -65,7 +113,109 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
-  /api/nodes:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/config:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: getConfig
+      tags: [tenant]
+      summary: The tenant's config, portal.base.yaml with tenants/<tenant>/portal.yaml deep-merged over it, as decoded from YAML. Both files pass schema/portal.schema.json at boot or the binary stops.
+      responses:
+        "200":
+          description: The merged config.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Config" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/menu:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: getMenu
+      tags: [tenant]
+      summary: The left rail as an envelope built from the merged config's menu. One Service node per service (ui:rail:<service>), one Page per page below it (ui:rail:<service>:<page>, and so on for an item page's tabs), has-page from parent to child, and an icon State (ui:state:rail:...) joined by has-state. order sorts siblings. Validated with Graph.Node and the portal ontology at boot.
+      responses:
+        "200":
+          description: The menu envelope (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/auth/whoami:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: getWhoami
+      tags: [tenant]
+      summary: Who the request is. No Authorization header is anonymous and reads only; a bearer token the tenant holds is that token's name and may write. A token it does not hold is 401.
+      responses:
+        "200":
+          description: The principal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Principal" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/connections:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listConnections
+      tags: [tenant]
+      summary: The tenant's service connections (tenants/<tenant>/connections.yaml), without secrets. token_env is the name of the variable holding the secret; tokenSet says whether this process has it.
+      responses:
+        "200":
+          description: One summary per connection, in file order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConnectionSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/connections/{name}/repos:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+      - { name: name, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getConnectionRepos
+      tags: [tenant]
+      summary: For a connection of type github, the repositories its token can see (GET <url>/user/repos, every page up to 1000), as an envelope of git.repository nodes, id ui:conn:<connection>/<owner>/<repo>. Read only; nothing is stored. Needs a bearer token though it is a GET, since it spends the tenant's secret (401 without one). 422 when the token variable is not set; 502 when GitHub fails or refuses.
+      responses:
+        "200":
+          description: The repositories (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Invalid" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+  /api/tenants/{tenant}/nodes:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listNodes
+      tags: [screen, layers]
+      summary: Every node of one Kind on the screen (as getScreen shows it) and in every mounted layer, read-only, first id wins. A node with no stamp gets stamp.layer from the envelope it came from. Nodes only.
+      parameters:
+        - name: kind
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: An envelope of the matching nodes (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
     post:
       operationId: postNode
       tags: [screen]
@@ -84,7 +234,11 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Invalid" }
-  /api/nodes/{id}:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/nodes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
     patch:
       operationId: patchNode
       tags: [screen]
@@ -105,6 +259,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     delete:
       operationId: deleteNode
       tags: [screen]
@@ -118,7 +273,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/DeleteResult" }
         "404": { $ref: "#/components/responses/NotFound" }
-  /api/edges:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/tenants/{tenant}/edges:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
     post:
       operationId: postEdge
       tags: [screen]
@@ -137,7 +295,11 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Invalid" }
-  /api/layers:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/layers:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
     get:
       operationId: listLayers
       tags: [layers]
@@ -150,6 +312,8 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/LayerSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
     post:
       operationId: mountLayer
       tags: [layers]
@@ -168,7 +332,31 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Invalid" }
-  /api/layers/{name}/nodes:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/layers:
+    post:
+      operationId: mountLayerUnscoped
+      deprecated: true
+      tags: [layers]
+      summary: mountLayer for the tenant this process serves, at the path it had before 0.4.0, kept so Claude.Agent's Up keeps mounting until it moves to /api/tenants/{tenant}/layers. Needs a token like any write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MountRequest" }
+      responses:
+        "201":
+          description: The mounted layer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LayerSummary" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/tenants/{tenant}/layers/{name}/nodes:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
     get:
       operationId: getLayerNodes
       tags: [layers]
@@ -193,7 +381,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
         "404": { $ref: "#/components/responses/NotFound" }
-  /api/snap:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/tenants/{tenant}/snap:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
     post:
       operationId: postSnap
       tags: [snaps]
@@ -211,7 +402,11 @@ paths:
               schema: { $ref: "#/components/schemas/SnapResult" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "500": { $ref: "#/components/responses/InternalError" }
-  /api/diff:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/diff:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
     get:
       operationId: getDiff
       tags: [snaps]
@@ -233,7 +428,10 @@ paths:
               schema: { $ref: "#/components/schemas/Diff" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
-  /api/ontology:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/tenants/{tenant}/ontology:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
     get:
       operationId: getOntology
       tags: [screen, layers]
@@ -244,8 +442,21 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OntologySet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: A token whose SHA-256 is in tenants/<tenant>/tokens.yaml. Needed to write; optional to read.
   parameters:
+    Tenant:
+      name: tenant
+      in: path
+      required: true
+      description: The tenant this process serves (PORTAL_TENANT, default "default"). Any other is 404.
+      schema: { type: string }
     NodeId:
       name: id
       in: path
@@ -273,12 +484,70 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: A write without a bearer token, or any request with a token the tenant does not hold.
+      headers:
+        WWW-Authenticate:
+          required: true
+          schema: { type: string }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadGateway:
+      description: The service a connection names failed or answered with an error; message carries its status and message.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     InternalError:
       description: Unexpected failure.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
   schemas:
+    Config:
+      type: object
+      description: The merged config; schema/portal.schema.json is authoritative.
+      required: [product, menu]
+      additionalProperties: true
+      properties:
+        product:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string }
+            help: { type: string }
+        menu:
+          type: array
+          items: { type: object, additionalProperties: true }
+    Principal:
+      type: object
+      required: [name, anonymous, writes, tenant]
+      properties:
+        name:
+          type: string
+          description: The token's name in tokens.yaml, or anonymous.
+        anonymous: { type: boolean }
+        writes:
+          type: boolean
+          description: Whether this principal may write (any but anonymous).
+        tenant: { type: string }
+        marker:
+          type: string
+          nullable: true
+          description: Who holds the tenant's marker. Nothing issues markers yet, so always null.
+    ConnectionSummary:
+      type: object
+      required: [name, type, url, token_env, tokenSet]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [github] }
+        url: { type: string }
+        token_env:
+          type: string
+          description: The name of the environment variable holding the secret; never the secret.
+        tokenSet:
+          type: boolean
+          description: Whether that variable is set in the portal's environment.
     Error:
       type: object
       required: [code, message]

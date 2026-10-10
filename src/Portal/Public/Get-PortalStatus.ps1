@@ -1,7 +1,7 @@
 function Get-PortalStatus {
     <#
     .SYNOPSIS
-        The portal recorded in <Artifacts>/portal.json: Running, Port, Url, Boot (the stamp GET /api/screen's
+        The portal recorded in <Artifacts>/portal.json: Running, Port, Url, Boot (the stamp GET /api/tenants/{tenant}/screen's
         X-Portal-Boot header reports now, else the recorded one), ProcessId, Mode. With no record, Running is
         false and Port and Url are the fixed port Start-Portal would use.
     .EXAMPLE
@@ -25,7 +25,9 @@ function Get-PortalStatus {
         }
     }
     $boot = $record.Boot
-    try { $boot = [string](Invoke-WebRequest -Uri "$($record.Url)/api/screen" -TimeoutSec 5).Headers['X-Portal-Boot'] } catch { }
+    # A record from before 0.4.0 has no Tenant; that portal had none either.
+    $tenant = if ($record.PSObject.Properties['Tenant']) { $record.Tenant } else { Get-PortalTenant }
+    try { $boot = [string](Invoke-WebRequest -Uri "$($record.Url)/api/tenants/$tenant/screen" -TimeoutSec 5).Headers['X-Portal-Boot'] } catch { }
     [pscustomobject]@{
         PSTypeName = 'Portal.Status'
         Running    = $true

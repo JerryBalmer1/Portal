@@ -21,6 +21,7 @@ import (
 	"github.com/JerryBalmer1/Portal/internal/gen/api"
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 	"github.com/JerryBalmer1/Portal/internal/store"
+	"github.com/JerryBalmer1/Portal/internal/tenant"
 	"github.com/JerryBalmer1/Portal/web"
 )
 
@@ -30,17 +31,28 @@ const maxBody = 64 << 20
 // Server serves api/openapi.yaml.
 type Server struct {
 	p   *store.Portal
+	t   *tenant.Tenant
+	gh  tenant.GitHub
 	web fs.FS
 }
 
 var _ api.ServerInterface = (*Server)(nil)
 
-// New returns the handler serving p and the embedded page.
-func New(p *store.Portal) http.Handler {
-	s := &Server{p: p, web: web.FS}
+// Options configures New beyond the store and the tenant.
+type Options struct {
+	// GitHub calls github connections; its zero value uses the network and
+	// os.Getenv. Tests inject a client and an environment.
+	GitHub tenant.GitHub
+}
+
+// New returns the handler serving p for tenant t, and the embedded page.
+// Every request passes the bearer-token middleware first.
+func New(p *store.Portal, t *tenant.Tenant, o Options) http.Handler {
+	s := &Server{p: p, t: t, gh: o.GitHub, web: web.FS}
 	r := chi.NewRouter()
 	r.NotFound(notFound)
 	r.MethodNotAllowed(methodNotAllowed)
+	r.Use(s.auth)
 	return api.HandlerWithOptions(s, api.ChiServerOptions{BaseRouter: r, ErrorHandlerFunc: paramError})
 }
 
@@ -65,15 +77,6 @@ func Serve(ctx context.Context, host string, port int, h http.Handler) error {
 	return nil
 }
 
-func (s *Server) GetIndex(w http.ResponseWriter, r *http.Request) {
-	data, err := fs.ReadFile(s.web, "index.html")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal", err.Error(), nil)
-		return
-	}
-	writeAsset(w, "text/html", data)
-}
-
 func (s *Server) GetStatic(w http.ResponseWriter, r *http.Request, file string) {
 	data, ctype, err := web.Static(s.web, file)
 	if err != nil {
@@ -83,7 +86,10 @@ func (s *Server) GetStatic(w http.ResponseWriter, r *http.Request, file string) 
 	writeAsset(w, ctype, data)
 }
 
-func (s *Server) GetScreen(w http.ResponseWriter, r *http.Request) {
+func (s *Server) GetScreen(w http.ResponseWriter, r *http.Request, tenant api.Tenant) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	env, err := s.p.Screen()
 	if err != nil {
 		writeStoreError(w, err)
@@ -93,7 +99,10 @@ func (s *Server) GetScreen(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, env)
 }
 
-func (s *Server) PostNode(w http.ResponseWriter, r *http.Request) {
+func (s *Server) PostNode(w http.ResponseWriter, r *http.Request, tenant api.Tenant) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	body, ok := readBody(w, r)
 	if !ok {
 		return
@@ -106,7 +115,10 @@ func (s *Server) PostNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, n)
 }
 
-func (s *Server) PostEdge(w http.ResponseWriter, r *http.Request) {
+func (s *Server) PostEdge(w http.ResponseWriter, r *http.Request, tenant api.Tenant) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	body, ok := readBody(w, r)
 	if !ok {
 		return
@@ -119,7 +131,10 @@ func (s *Server) PostEdge(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, e)
 }
 
-func (s *Server) PatchNode(w http.ResponseWriter, r *http.Request, id api.NodeId) {
+func (s *Server) PatchNode(w http.ResponseWriter, r *http.Request, tenant api.Tenant, id api.NodeId) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	body, ok := readBody(w, r)
 	if !ok {
 		return
@@ -136,7 +151,10 @@ func (s *Server) PatchNode(w http.ResponseWriter, r *http.Request, id api.NodeId
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (s *Server) DeleteNode(w http.ResponseWriter, r *http.Request, id api.NodeId) {
+func (s *Server) DeleteNode(w http.ResponseWriter, r *http.Request, tenant api.Tenant, id api.NodeId) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	n, edges, err := s.p.DeleteNode(id)
 	if err != nil {
 		writeStoreError(w, err)
@@ -148,7 +166,10 @@ func (s *Server) DeleteNode(w http.ResponseWriter, r *http.Request, id api.NodeI
 	}{n, edges})
 }
 
-func (s *Server) ListLayers(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ListLayers(w http.ResponseWriter, r *http.Request, tenant api.Tenant) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	out := []api.LayerSummary{}
 	for _, l := range s.p.Layers() {
 		out = append(out, summary(l))
@@ -156,7 +177,10 @@ func (s *Server) ListLayers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (s *Server) MountLayer(w http.ResponseWriter, r *http.Request) {
+func (s *Server) MountLayer(w http.ResponseWriter, r *http.Request, tenant api.Tenant) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	body, ok := readBody(w, r)
 	if !ok {
 		return
@@ -176,7 +200,10 @@ func (s *Server) MountLayer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, summary(l))
 }
 
-func (s *Server) GetLayerNodes(w http.ResponseWriter, r *http.Request, name string, params api.GetLayerNodesParams) {
+func (s *Server) GetLayerNodes(w http.ResponseWriter, r *http.Request, tenant api.Tenant, name string, params api.GetLayerNodesParams) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	env, err := s.p.Query(name, params.Kind, params.From)
 	if err != nil {
 		writeStoreError(w, err)
@@ -185,7 +212,10 @@ func (s *Server) GetLayerNodes(w http.ResponseWriter, r *http.Request, name stri
 	writeJSON(w, http.StatusOK, env)
 }
 
-func (s *Server) PostSnap(w http.ResponseWriter, r *http.Request) {
+func (s *Server) PostSnap(w http.ResponseWriter, r *http.Request, tenant api.Tenant) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	body, ok := readBody(w, r)
 	if !ok {
 		return
@@ -244,7 +274,10 @@ func summarise(d *store.Diff) *api.DiffSummary {
 	}
 }
 
-func (s *Server) GetDiff(w http.ResponseWriter, r *http.Request, params api.GetDiffParams) {
+func (s *Server) GetDiff(w http.ResponseWriter, r *http.Request, tenant api.Tenant, params api.GetDiffParams) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	a, err := s.p.LoadSnap(params.A)
 	if err != nil {
 		writeStoreError(w, err)
@@ -279,7 +312,10 @@ func (s *Server) GetDiff(w http.ResponseWriter, r *http.Request, params api.GetD
 		changes{d.ChangedNodes, d.ChangedEdges}, d.Merged})
 }
 
-func (s *Server) GetOntology(w http.ResponseWriter, r *http.Request) {
+func (s *Server) GetOntology(w http.ResponseWriter, r *http.Request, tenant api.Tenant) {
+	if !s.tenantOK(w, tenant) {
+		return
+	}
 	layers := map[string]*map[string]interface{}{}
 	for name, doc := range s.p.LayerOntologies() {
 		if doc == nil {

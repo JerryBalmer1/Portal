@@ -1,19 +1,21 @@
-> Terms used here (screen graph, boot, Container, Widget, Layout, Category, State, Theme, Ref, menu entry, layer, snap, approve) are defined in [ONTOLOGY.md](ONTOLOGY.md).
+> Terms used here (screen graph, boot, tenant, base config, overlay, menu, Service, Page, token, principal, service connection, Container, Widget, Layout, Category, State, Theme, Ref, menu entry, layer, snap, approve) are defined in [ONTOLOGY.md](ONTOLOGY.md).
 
 # Portal
 
-The portal of the graph family: a blank page plus one API. Every panel on the page is a node in a Graph.Node envelope; the API reads and changes that graph, mounts data layers read-only, approves the screen as a snap and diffs two snaps. Widgets are modules, one renderer per base Category; the graph widget (Canvas) is one of them. No UI model of its own (docs/design.md 1); the first data it draws is Graph.Emitter.FileSystem's layer, and the seed's Runs entry opens a Canvas on Claude.Agent's `agent-runs` layer (docs/design.md 35). A start boots from the newest approved snap, else from the dev seed (docs/design.md 20). The portal serves on one fixed port, 8200 (docs/design.md 24); the top bar's menu is graph too: Containers that `is-a` Menu, each `opens` what it shows (docs/design.md 25), and its stats are the open view's data layer (docs/design.md 33).
+The portal of the graph family: a DevOps-style shell plus one API. A top banner (product, breadcrumb, search, marker, help, avatar), a left rail of services whose pages open in place, and a main pane. The rail is the tenant's menu, served as a Graph.Node envelope built from config (`portal.base.yaml` with the tenant's overlay merged over it); each page lists nodes of its Kind, or draws a screen node (the Canvas on Graph/Explore, the Designer on Designer/Sections), or lists the service connections (docs/design.md 36). Everything a page draws is a node in a Graph.Node envelope. The API reads and changes the screen graph, mounts data layers read-only, approves the screen as a snap and diffs two snaps (docs/design.md 1). Every API path names the tenant, `/api/tenants/<tenant>/...`. A request without a bearer token reads only; writing needs a token the tenant's `tokens.yaml` holds. A start boots from the newest approved snap, else from the dev seed (docs/design.md 20). The portal serves on one fixed port, 8200 (docs/design.md 24).
 
 Rows, bottom to top:
 
 ```
 Graph.Node           the shape: schemas, validator (lifted here at v0.2.3, internal/graphnode)
 emitters             write layers: Graph.Emitter.FileSystem, ...
-Portal               mounts layers read-only; its own screen is a graph/1 envelope
+Portal               mounts layers read-only; its own screen and menu are graph/1 envelopes
 Graph                orchestrates; calls the PowerShell wrappers here
 ```
 
 Nothing edits below its own row.
+
+![Overview/Summary](docs/screenshots/summary.png)
 
 ## What is here
 
@@ -22,16 +24,20 @@ Nothing edits below its own row.
 | `api/openapi.yaml` | The one API, OpenAPI 3.0.3. Source of truth for routes, handlers and `web/client.js`. |
 | `api/codegen/` | oapi-codegen v2.8.0 config and the `go:generate` directive. |
 | `internal/gen/api/` | Generated from the spec: models, chi server interface, embedded spec. Read-only. |
-| `internal/server/` | The handlers; Go spec tests (every operation against the spec, route and client parity). |
-| `internal/store/` | Screen graph and its boot, validation, layers, snaps and approval, diff. |
+| `internal/server/` | The handlers and the bearer-token middleware; Go spec tests (every operation against the spec, route and client parity) and the tenant tests (auth, menu, connections, GitHub mocked, shell routes). |
+| `internal/store/` | Screen graph and its boot, validation, layers, snaps and approval, diff, nodes of a Kind across screen and layers. |
+| `internal/tenant/` | One tenant: base config plus overlay, merged and validated; the menu envelope; tokens; service connections and the GitHub call. |
 | `internal/graphnode/` | Graph.Node's schemas and `graph` package, lifted at tag v0.2.3, unchanged but for the import path; upstream registers `ui:` to Portal (docs/design.md 4, 34). |
-| `cmd/portal/` | The server: `portal [-port 8200] [-artifacts artifacts] [-mount name=path]... [-filesystem <dir or file>] [-no-seed]`, on 127.0.0.1; `-port 0` is refused; `PORTAL_SNAP=<stamp>` boots from that snap; `PORTAL_MODE=production` hides the Designer. |
+| `cmd/portal/` | The server: `portal [-port 8200] [-artifacts artifacts] [-tenants tenants] [-mount name=path]... [-filesystem <dir or file>] [-no-seed]`, on 127.0.0.1; `-port 0` is refused; `PORTAL_TENANT` names the tenant (default `default`); `PORTAL_SNAP=<stamp>` boots from that snap; `PORTAL_MODE=production` hides the Designer. A tenant file that fails its check stops it. |
 | `cmd/graphnode/` | Graph.Node's validator CLI, lifted: `graphnode validate <graph.json> [--ontology <ontology.yaml>]`, `validate-ontology <ontology.yaml>`, `prefixes`, `check-id <prefix> <id>`, `schema [name]`, `version`. |
-| `web/` | The page: `index.html`, `portal.js`, `client.js`, renderers `canvas.js`, `table.js`, `detail.js`, `designer.js` (with Approve; collapsible sections, each a State node), `base.css`, vendored Cytoscape. |
-| `ontology.yaml` | Module `Portal` 0.3.6: Kinds Container, Widget, Layout, Category, State, Theme, Ref, Mount; edges contains, laid-out-by, is-a, opens, displays, has-state, themed-by; findings absent, approved. |
-| `src/Portal/` | PowerShell module: `Start-Portal`, `Stop-Portal`, `Get-PortalStatus`, `Get-PortalScreen`, `New-PortalSnap`, `Compare-PortalSnap`, `Mount-PortalLayer`. |
+| `portal.base.yaml` | Product defaults: product name and help link, and the menu tree (services, pages, item tabs). Embedded in the binary; never edited by a tenant. |
+| `schema/portal.schema.json` | The one schema for the base and every overlay. |
+| `tenants/default/` | The default tenant: `portal.yaml` (an empty overlay), `tokens.example.yaml` and `connections.example.yaml`. `tokens.yaml` and `connections.yaml` are the tenant's own and gitignored. |
+| `web/` | The page: `index.html`, `portal.js` (the shell), `client.js`, `screen.js` (draws screen nodes), page renderers `nodes.js` and `connections.js`, `icons.js`, Category renderers `canvas.js`, `table.js`, `detail.js`, `designer.js` (with Approve; collapsible sections, each a State node), `base.css` (dark), vendored Cytoscape. |
+| `ontology.yaml` | Module `Portal` 0.4.0: Kinds Container, Widget, Layout, Category, State, Theme, Ref, Mount, Service, Page; edges contains, laid-out-by, is-a, opens, displays, has-page, has-state, themed-by; findings absent, approved. |
+| `src/Portal/` | PowerShell module: `Start-Portal`, `Stop-Portal`, `Get-PortalStatus`, `Get-PortalScreen`, `New-PortalSnap`, `Compare-PortalSnap`, `Mount-PortalLayer`, `New-PortalToken`. |
 | `tests/` | Pester (`Invoke-Tests.ps1`, `Portal.Tests.ps1`) and fixtures: `layers/filesystem/` (a FileSystem layer and its ontology), `invalid.graph.json` (Graph.Node's at v0.2.3). |
-| `docs/` | `design.md` (decisions, numbered), `manual-check-list.md`, `screenshots/portal.png`. |
+| `docs/` | `design.md` (decisions, numbered), `manual-check-list.md`, `screenshots/` (`summary.png`, `service-connections.png`, `explore.png`), `prompts/` (task reports). |
 | `.claude/skills/` | `manual-check-list`, `ontology-doc`, `readme` (this repo's docs); `graph-node` (0.2.3, copied read-only from Graph.Node v0.2.3); `run-report` 0.2.2 and `git-guard` 0.1.0 (copied read-only from Graph's committed HEAD, 0.2.8). |
 | `.claude/settings.json` | Wires `git-guard` as a PreToolUse hook on the Bash and PowerShell tools: an agent's `git commit`, `git push`, `git tag`, `--amend`, `gh pr merge` and `gh release create` are refused. |
 | `.env.example` | `PORTAL_PORT=8200`; copy to `.env` (gitignored) to move the portal. |
@@ -45,7 +51,7 @@ Nothing edits below its own row.
 | PowerShell 7.4+ | |
 | Pester 5.5+ | `Install-Module Pester -Scope CurrentUser` |
 | InvokeBuild | `Install-Module InvokeBuild -Scope CurrentUser` |
-| Edge or Chrome | `Invoke-Build Screenshot`; Chrome for Smoke's top-bar and Canvas-fit checks and Pester's Designer check (each skips without it). |
+| Edge or Chrome | `Invoke-Build Screenshot`; Chrome for Smoke's rail and Canvas-fit checks and Pester's page checks (each skips without it). |
 
 ## Build
 
@@ -53,28 +59,37 @@ Nothing edits below its own row.
 Invoke-Build              # Modules, Build, Test, Smoke, Pester
 Invoke-Build Build        # portal.exe and graphnode.exe into build/win-x64/
 Invoke-Build Test         # go vet, go test
-Invoke-Build Smoke        # on artifacts/smoke, port 18200: seed, menu entry, approve, Theme opacity, approve, restart, entry in the top bar, Canvas fits its panel; artifacts/smoke-report.json
-Invoke-Build Up           # portal on http://127.0.0.1:8200 over artifacts/ (-Port, else PORTAL_PORT from .env, else the environment); replaces a running one, -NoReplace throws instead
+Invoke-Build Smoke        # on artifacts/smoke, port 18200, its own tenant and token: anonymous write refused, seed, menu entry, approve, Theme opacity, approve, restart, rail drawn from the menu, Canvas fits its panel; artifacts/smoke-report.json
+Invoke-Build Up           # portal on http://127.0.0.1:8200 over artifacts/ and tenants/ (-Port, else PORTAL_PORT from .env, else the environment); replaces a running one, -NoReplace throws instead
 Invoke-Build Status       # port, URL and boot stamp
 Invoke-Build Down         # stop it
 Invoke-Build Generate     # internal/gen from api/openapi.yaml
-Invoke-Build Screenshot   # docs/screenshots/portal.png; mounts Claude.Agent's newest agent-runs layer when present
+Invoke-Build Screenshot   # docs/screenshots/summary.png, service-connections.png, explore.png; mounts Claude.Agent's newest agent-runs layer when present
 ```
 
 Pester runs only as `pwsh -NoProfile -File .\tests\Invoke-Tests.ps1`.
 
 ## Use from PowerShell
 
+The tenant here is a copy of `tenants/default` in a temp directory, so the repo's own `tokens.yaml` is never touched. `New-PortalToken` adds a token's hash to the tenant's `tokens.yaml` and returns the token once; the module sends `PORTAL_TOKEN` as the bearer token.
+
 ```powershell
 Import-Module .\src\Portal\Portal.psd1
+$env:PORTAL_TENANTS = "$env:TEMP\portal-demo-tenants"
+New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default" | Out-Null
+Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default"
+$env:PORTAL_TOKEN = (New-PortalToken -Name demo).Token
 $p = Start-Portal -Port 18200 -Artifacts $env:TEMP\portal-demo -Filesystem .\tests\fixtures\layers\filesystem
 $p.Boot                                                             # seed
+$p.Tenant                                                           # default
 (Get-PortalStatus -Artifacts $env:TEMP\portal-demo).Url             # http://127.0.0.1:18200
 $a = New-PortalSnap -Note 'first layout' -Url $p.Url
-Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/nodes/ui:theme:default" -ContentType application/json -Body '{"properties":{"opacity":0.2}}' | Out-Null
+$auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/tenants/default/nodes/ui:theme:default" -Headers $auth -ContentType application/json -Body '{"properties":{"opacity":0.2}}' | Out-Null
 $b = New-PortalSnap -Note 'lighter glass' -Url $p.Url
 $b.diff.changed.nodes                                               # ui:theme:default
 (Compare-PortalSnap $a $b -Url $p.Url).changed.nodes.id             # ui:theme:default
+(Invoke-RestMethod "$($p.Url)/api/tenants/default/auth/whoami" -Headers $auth).name   # demo
 Stop-Portal -Artifacts $env:TEMP\portal-demo
 $p = Start-Portal -Port 18200 -Artifacts $env:TEMP\portal-demo -Filesystem .\tests\fixtures\layers\filesystem
 $p.Boot -eq $b.stamp                                                # True
@@ -82,33 +97,32 @@ $p.Boot -eq $b.stamp                                                # True
 Stop-Portal -Artifacts $env:TEMP\portal-demo
 ```
 
-`Start-Portal -Snap <stamp>` boots from an older snap instead of the newest. Without `-Port` it serves on 8200, or `PORTAL_PORT` from `.env` or the environment; a busy port throws naming its owner.
-
-A menu entry is three writes through the same POSTs the Designer uses:
-
-```powershell
-$entry = @{ id = 'ui:menu:designer'; kind = 'Container'; name = 'Designer'; properties = @{ order = 2 } } | ConvertTo-Json -Compress
-Invoke-RestMethod -Method Post -Uri "$url/api/nodes" -ContentType application/json -Body $entry
-Invoke-RestMethod -Method Post -Uri "$url/api/edges" -ContentType application/json -Body '{"kind":"is-a","from":"ui:menu:designer","to":"ui:category:Menu"}'
-Invoke-RestMethod -Method Post -Uri "$url/api/edges" -ContentType application/json -Body '{"kind":"opens","from":"ui:menu:designer","to":"ui:designer"}'
-```
+`Start-Portal -Snap <stamp>` boots from an older snap instead of the newest. `-Tenant` (else `PORTAL_TENANT`, else `default`) and `-Tenants` (else `PORTAL_TENANTS`, else the repo's `tenants/`) say which tenant it serves. Without `-Port` it serves on 8200, or `PORTAL_PORT` from `.env` or the environment; a busy port throws naming its owner. On the page, the avatar menu takes a token for the browser tab.
 
 ## Use the API
 
+Every path below starts `/api/tenants/{tenant}`. The process serves one tenant; any other is 404. Writes, and `/connections/{name}/repos`, which spends the tenant's GitHub token, need `Authorization: Bearer <token>` (401 without it); a token the tenant does not hold is 401 on any request.
+
 ```
-GET    /api/screen                          the screen graph (envelope); header X-Portal-Boot: <stamp>, seed or empty
-POST   /api/nodes      POST /api/edges      add; Graph.Node shape; validated before accept
-PATCH  /api/nodes/{id}                      properties and display State only
-DELETE /api/nodes/{id}                      the node and its edges
-GET    /api/layers     POST /api/layers     mounted layers; mount from a path (recorded as ui:mount:<name>) or an envelope
-GET    /api/layers/{name}/nodes?kind=&from= query a layer
-POST   /api/snap       {"note": "..."}      approve: artifacts/snaps/<stamp>.graph.json, previous, diff summary
-GET    /api/diff?a=<stamp>&b=<stamp>        added, removed, changed, and the merge
-GET    /api/ontology                        portal ontology and every layer's
+GET    /config                              the merged config: portal.base.yaml with the tenant's portal.yaml over it
+GET    /menu                                the rail as an envelope: Service and Page nodes, has-page, icon States
+GET    /auth/whoami                         {name, anonymous, writes, tenant, marker}
+GET    /connections                         service connections, no secrets: name, type, url, token_env, tokenSet
+GET    /connections/{name}/repos            github: the token's repositories as git.repository nodes; needs a bearer token (401); 422 no GitHub token, 502 GitHub refused
+GET    /nodes?kind=                         every node of a Kind on the screen and in the mounted layers
+GET    /screen                              the screen graph (envelope); header X-Portal-Boot: <stamp>, seed or empty
+POST   /nodes          POST /edges          add; Graph.Node shape; validated before accept
+PATCH  /nodes/{id}                          properties and display State only
+DELETE /nodes/{id}                          the node and its edges
+GET    /layers         POST /layers         mounted layers; mount from a path (recorded as ui:mount:<name>) or an envelope
+GET    /layers/{name}/nodes?kind=&from=     query a layer
+POST   /snap           {"note": "..."}      approve: artifacts/snaps/<stamp>.graph.json, previous, diff summary
+GET    /diff?a=<stamp>&b=<stamp>            added, removed, changed, and the merge
+GET    /ontology                            portal ontology and every layer's
 ```
 
-A refused write answers 422 with `problems`, each `{code, path, message, severity}`; the codes are listed in [ONTOLOGY.md](ONTOLOGY.md).
+`POST /api/layers`, without the tenant, is kept (deprecated) as the mount for this process's tenant, so Claude.Agent's Up still finds it; it needs a token like any write. The page's routes are `/<tenant>/<service>/<page>[/<id>]`; `/` redirects to the first page. A refused write answers 422 with `problems`, each `{code, path, message, severity}`; the codes are listed in [ONTOLOGY.md](ONTOLOGY.md).
 
 ## Status
 
-0.3.6: the Graph.Node lift and `graph-node` skill at v0.2.3 (upstream now registers `ui:` to Portal, so the lift carries no edit); the dev seed has the Runs menu entry and its `agent-runs` Canvas (`ui:menu:runs`, `ui:canvas:agent-runs`), drawn once Claude.Agent mounts the layer. 0.3.5: a layer mounted by path is a Mount node on screen (`ui:mount:<name>`), so an approved snap mounts it again at boot; the top bar shows the open view's layer, its counts and stamp, with the screen graph's in a badge. 0.3.4: `Invoke-Build Up` stops a running portal, waits up to 10 s for its port and starts a new one, printing `replaced <old stamp> with <new stamp>`; `-NoReplace` keeps the old throw. 0.3.3: `graph-node` recopied at 0.2.1 and the Graph.Node lift moved to tag v0.2.1 (`ui:` still registered to Portal). 0.3.2: the `git-guard` hook wired in `.claude/settings.json`, `run-report` recopied at 0.2.2 (writes only to this repo's `artifacts/`). 0.3.1: Designer sections collapsible, each a State node (`ui:state:designer:<slug>`), Title Case headings and buttons, the Canvas fits its panel after load. Decisions and what was deferred: docs/design.md (34 and 35 are 0.3.6's, 33 0.3.5's, 32 0.3.4's, 31 0.3.3's, 30 0.3.2's, 28 and 29 0.3.1's, 24 to 27 0.3.0's, 18 to 23 0.2.0's; 9, 15, 16 and 22 name the next questions).
+0.4.0: the DevOps-style shell (banner, rail from the tenant's menu, main pane), dark theme, base and tenant config split, tenant in every API path, bearer-token writes, service connections with a first GitHub type (docs/design.md 36). 0.3.6: the Graph.Node lift and `graph-node` skill at v0.2.3; the dev seed has the Runs menu entry and its `agent-runs` Canvas. 0.3.5: a layer mounted by path is a Mount node on screen (`ui:mount:<name>`), so an approved snap mounts it again at boot. 0.3.4: `Invoke-Build Up` replaces a running portal. 0.3.3: `graph-node` and the lift at v0.2.1. 0.3.2: the `git-guard` hook, `run-report` 0.2.2. 0.3.1: Designer sections collapsible, each a State node; the Canvas fits its panel after load. Decisions and what was deferred: docs/design.md (36 is 0.4.0's, 34 and 35 0.3.6's, 33 0.3.5's, 32 0.3.4's, 31 0.3.3's, 30 0.3.2's, 28 and 29 0.3.1's, 24 to 27 0.3.0's, 18 to 23 0.2.0's; 9, 15, 16, 22 and 36 name the next questions).

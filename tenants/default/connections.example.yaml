@@ -1,0 +1,11 @@
+# Copy to connections.yaml (gitignored). Each connection names the
+# environment variable that holds its secret (token_env); the secret is
+# never in this file and never in an API response.
+# type github: url is the API root (https://api.github.com, or a GitHub
+# Enterprise /api/v3 root); GET /api/tenants/<tenant>/connections/<name>/repos
+# lists the repositories the token can see.
+connections:
+  - name: github
+    type: github
+    url: https://api.github.com
+    token_env: GITHUB_TOKEN

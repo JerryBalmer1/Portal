@@ -1,7 +1,7 @@
 function Compare-PortalSnap {
     <#
     .SYNOPSIS
-        GET /api/diff: what snap B added, removed and changed against snap A (nodes and edges), and the read-only
+        GET /api/tenants/{tenant}/diff: what snap B added, removed and changed against snap A (nodes and edges), and the read-only
         Graph.Node design 11 merge of the two. Takes stamps or the objects New-PortalSnap returns.
     .EXAMPLE
         $a = New-PortalSnap; <change something>; $b = New-PortalSnap
@@ -15,5 +15,5 @@ function Compare-PortalSnap {
     )
     $stamp = { param($s) if ($s -is [string]) { $s } else { [string]$s.stamp } }
     $query = 'a={0}&b={1}' -f [uri]::EscapeDataString((& $stamp $A)), [uri]::EscapeDataString((& $stamp $B))
-    Invoke-PortalApi -Url (Resolve-PortalUrl $Url) -Path "/api/diff?$query"
+    Invoke-PortalApi -Url (Resolve-PortalUrl $Url) -Path "/diff?$query"
 }

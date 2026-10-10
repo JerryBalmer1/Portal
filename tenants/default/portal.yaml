@@ -1,0 +1,4 @@
+# The default tenant's overlay on portal.base.yaml. Empty: the default tenant
+# runs the product as shipped. Same schema as the base
+# (schema/portal.schema.json); see portal.base.yaml for how it merges.
+{}

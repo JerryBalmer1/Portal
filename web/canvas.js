@@ -44,7 +44,12 @@ export function mount(el, ctx) {
     h.cy.resize();
     h.cy.fit(undefined, 24);
     const panel = el.closest('.gr-box') || el;
-    el.dataset.fit = `${Math.round(h.cy.elements().renderedBoundingBox().w)}/${Math.round(panel.getBoundingClientRect().width)}`;
+    const drawn = h.cy.elements().renderedBoundingBox();
+    const box = panel.getBoundingClientRect();
+    el.dataset.fit = `${Math.round(drawn.w)}/${Math.round(box.width)}`;
+    // A page-wide panel is fitted by its height first (docs/design.md 36),
+    // so the height is recorded too.
+    el.dataset.fitHeight = `${Math.round(drawn.h)}/${Math.round(box.height)}`;
   };
   h.ro = new ResizeObserver(() => {
     clearTimeout(h.timer);

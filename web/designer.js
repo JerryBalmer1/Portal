@@ -30,8 +30,8 @@ export function mount(el, ctx) {
   el.appendChild(wrap);
   const { screen, ontology, ix } = ctx;
   const categories = screen.nodes.filter((n) => n.kind === 'Category');
-  // Menu entries are drawn in the top bar, not on screen: no panel goes in
-  // one and none opens another.
+  // Menu entries are not drawn on screen: no panel goes in one and none
+  // opens another.
   const containers = screen.nodes.filter((n) => n.kind === 'Container' && !ix.isMenuEntry(n.id));
   const menuCat = categories.find((c) => c.name === 'Menu');
   const status = document.createElement('div');
@@ -178,7 +178,10 @@ export function mount(el, ctx) {
   }));
 
   const bodies = { approve, kinds, categories: cats, 'add-panel': panel, 'add-container': container, 'add-category': category, 'add-menu-entry': menu };
-  wrap.append(...SECTIONS.map((s) => section(ctx, s, bodies[s.slug], status)), status);
+  // A page may draw some sections only (Designer/Export: approve), by the
+  // slugs its Page node's sections property lists; absent draws all.
+  const shown = SECTIONS.filter((s) => !Array.isArray(ctx.sections) || ctx.sections.includes(s.slug));
+  wrap.append(...shown.map((s) => section(ctx, s, bodies[s.slug], status)), status);
   return { wrap };
 }
 

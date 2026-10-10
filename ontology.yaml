@@ -1,5 +1,5 @@
 module: Portal
-version: 0.3.6
+version: 0.4.0
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -37,6 +37,7 @@ kinds:
       - { name: collapsed, type: boolean }
       - { name: selected, type: boolean }
       - { name: scroll, type: object, description: "{x, y} in pixels." }
+      - { name: icon, type: string, description: "Icon name of a rail Service or Page (GET /api/tenants/{tenant}/menu), from the product's icon set." }
   Theme:
     description: How a Container and everything in it looks. Joined from the Container by themed-by; a Container without one takes its parent's. A display Kind, like State, and a node like any other, so a theme change is a changed node in a diff.
     idRule: "ui:theme:<name>; the dev seed's is ui:theme:default"
@@ -56,6 +57,24 @@ kinds:
     properties:
       - { name: layer, type: string, required: true, description: "The layer name, as POST /api/layers took it." }
       - { name: path, type: string, required: true, description: "The path as given, made absolute: a .graph.json file, or a directory whose newest *.graph.json is mounted at boot." }
+  Service:
+    description: One entry of the shell's left rail, built from the tenant's merged config (portal.base.yaml, then tenants/<tenant>/portal.yaml) and served by GET /api/tenants/{tenant}/menu. Never on the screen graph. Its pages hang off it by has-page; its icon is its State's.
+    idRule: "ui:rail:<service id>"
+    properties:
+      - { name: path, type: string, required: true, description: "Route segment under the tenant: /<tenant>/<path>." }
+      - { name: order, type: integer, description: "Position in the rail, ascending." }
+      - { name: dock, type: string, description: "top or bottom; bottom is pinned to the foot of the rail (Settings). Absent means top." }
+  Page:
+    description: One page of a rail Service, or a tab of an item page when it hangs off another Page. Served in the menu envelope only.
+    idRule: "ui:rail:<service id>:<page id>[:<child id>...]"
+    properties:
+      - { name: path, type: string, required: true, description: "Route under the tenant: <service>/<page>." }
+      - { name: order, type: integer, description: "Position among its siblings, ascending." }
+      - { name: nodeKind, type: string, description: "The Kind the page lists through GET /api/tenants/{tenant}/nodes?kind=." }
+      - { name: view, type: string, description: "table (absent means table), screen or connections: which page renderer draws it." }
+      - { name: screen, type: string, description: "With view screen: the screen node the page draws (ui:canvas, ui:designer)." }
+      - { name: sections, type: array, description: "With view screen on a Designer: the section slugs drawn; absent means all." }
+      - { name: filter, type: array, description: "Values of properties.kind the page offers as toolbar filters (Instances: container, compose, kubernetes, host)." }
 edgeKinds:
   contains:
     description: A Container holds a Container or a Widget.
@@ -77,9 +96,13 @@ edgeKinds:
     description: A Widget shows one node of a mounted data layer, through its Ref.
     from: [Widget]
     to: [Ref]
+  has-page:
+    description: A rail Service to its pages, or a Page to the tabs of its item page.
+    from: [Service, Page]
+    to: [Page]
   has-state:
-    description: Any screen node to its display State.
-    from: [Container, Widget, Layout, Category, Ref]
+    description: Any screen node, or a rail Service or Page, to its display State.
+    from: [Container, Widget, Layout, Category, Ref, Service, Page]
     to: [State]
   themed-by:
     description: A Container is drawn with a Theme, and so is everything it contains that has no Theme of its own.

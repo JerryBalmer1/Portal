@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portal.jerrybalmer.dev/schemas/portal.schema.json",
+  "title": "Portal config",
+  "description": "One schema for portal.base.yaml (product defaults) and tenants/<tenant>/portal.yaml (a tenant's overlay). Both are validated on boot; nothing is required here, so an overlay may name only what it changes. The merged config must also name product.name and a menu whose every entry has a label and a path, which the binary checks after the merge.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "help": { "type": "string", "description": "URL the banner's help opens." }
+      }
+    },
+    "menu": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "item": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "path": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$" },
+        "kind": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$", "description": "The node Kind the page lists (Graph.Node's kind pattern)." },
+        "view": { "enum": ["table", "screen", "connections"] },
+        "screen": { "type": "string", "pattern": "^ui:.+", "description": "With view screen: the screen node drawn." },
+        "sections": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "filter": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "dock": { "enum": ["top", "bottom"] },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/item" } }
+      }
+    }
+  }
+}

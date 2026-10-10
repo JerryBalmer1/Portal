@@ -20,6 +20,21 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for ConnectionSummaryType.
+const (
+	Github ConnectionSummaryType = "github"
+)
+
+// Valid indicates whether the value is a known member of the ConnectionSummaryType enum.
+func (e ConnectionSummaryType) Valid() bool {
+	switch e {
+	case Github:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EnvelopeSchema.
 const (
 	Graph1 EnvelopeSchema = "graph/1"
@@ -65,6 +80,32 @@ type Changes struct {
 	Edges []Change `json:"edges"`
 	Nodes []Change `json:"nodes"`
 }
+
+// Config The merged config; schema/portal.schema.json is authoritative.
+type Config struct {
+	Menu    []map[string]interface{} `json:"menu"`
+	Product struct {
+		Help string `json:"help,omitempty"`
+		Name string `json:"name"`
+	} `json:"product"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// ConnectionSummary defines model for ConnectionSummary.
+type ConnectionSummary struct {
+	Name string `json:"name"`
+
+	// TokenSet Whether that variable is set in the portal's environment.
+	TokenSet bool `json:"tokenSet"`
+
+	// TokenEnv The name of the environment variable holding the secret; never the secret.
+	TokenEnv string                `json:"token_env"`
+	Type     ConnectionSummaryType `json:"type"`
+	Url      string                `json:"url"`
+}
+
+// ConnectionSummaryType defines model for ConnectionSummary.Type.
+type ConnectionSummaryType string
 
 // Counts defines model for Counts.
 type Counts struct {
@@ -228,6 +269,21 @@ type PatchResult struct {
 	State Node `json:"state,omitempty"`
 }
 
+// Principal defines model for Principal.
+type Principal struct {
+	Anonymous bool `json:"anonymous"`
+
+	// Marker Who holds the tenant's marker. Nothing issues markers yet, so always null.
+	Marker string `json:"marker,omitempty"`
+
+	// Name The token's name in tokens.yaml, or anonymous.
+	Name   string `json:"name"`
+	Tenant string `json:"tenant"`
+
+	// Writes Whether this principal may write (any but anonymous).
+	Writes bool `json:"writes"`
+}
+
 // Problem One validation failure. Graph.Node codes (schema, duplicate-node, duplicate-edge, dangling-edge, edge-id, edgeid, counts, kind, stamp, display, action) and portal codes (id-prefix, unknown-kind, unknown-property, property-type, display, unknown-edge-kind, edge-endpoints, unknown-category, unknown-ref, unknown-field, ontology).
 type Problem struct {
 	Code    string `json:"code"`
@@ -300,6 +356,12 @@ type StateProperties struct {
 // NodeId defines model for NodeId.
 type NodeId = string
 
+// Tenant defines model for Tenant.
+type Tenant = string
+
+// BadGateway defines model for BadGateway.
+type BadGateway = Error
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
 
@@ -315,6 +377,9 @@ type Invalid = Error
 // NotFound defines model for NotFound.
 type NotFound = Error
 
+// Unauthorized defines model for Unauthorized.
+type Unauthorized = Error
+
 // GetDiffParams defines parameters for GetDiff.
 type GetDiffParams struct {
 	A string `form:"a" json:"a"`
@@ -326,6 +391,16 @@ type GetLayerNodesParams struct {
 	Kind string `form:"kind,omitempty" json:"kind,omitempty"`
 	From string `form:"from,omitempty" json:"from,omitempty"`
 }
+
+// ListNodesParams defines parameters for ListNodes.
+type ListNodesParams struct {
+	Kind string `form:"kind" json:"kind"`
+}
+
+// MountLayerUnscopedJSONRequestBody defines body for MountLayerUnscoped for application/json ContentType.
+//
+// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+type MountLayerUnscopedJSONRequestBody = MountRequest
 
 // PostEdgeJSONRequestBody defines body for PostEdge for application/json ContentType.
 type PostEdgeJSONRequestBody = EdgeInput
@@ -341,6 +416,87 @@ type PatchNodeJSONRequestBody = PatchRequest
 
 // PostSnapJSONRequestBody defines body for PostSnap for application/json ContentType.
 type PostSnapJSONRequestBody = SnapRequest
+
+// Getter for additional properties for Config. Returns the specified
+// element and whether it was found
+func (a Config) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for Config
+func (a *Config) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for Config to handle AdditionalProperties
+func (a *Config) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["menu"]; found {
+		err = json.Unmarshal(raw, &a.Menu)
+		if err != nil {
+			return fmt.Errorf("error reading 'menu': %w", err)
+		}
+		delete(object, "menu")
+	}
+
+	if raw, found := object["product"]; found {
+		err = json.Unmarshal(raw, &a.Product)
+		if err != nil {
+			return fmt.Errorf("error reading 'product': %w", err)
+		}
+		delete(object, "product")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for Config to handle AdditionalProperties
+func (a Config) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Menu != nil {
+		object["menu"], err = json.Marshal(a.Menu)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'menu': %w", err)
+		}
+	}
+
+	object["product"], err = json.Marshal(a.Product)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'product': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
 
 // Getter for additional properties for Finding. Returns the specified
 // element and whether it was found
@@ -449,126 +605,211 @@ func (a Finding) MarshalJSON() ([]byte, error) {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// GetIndex The portal page. Boots blank and draws GET /api/screen.
+	// GetIndex Redirects to the first page of the first service of the tenant this process serves, /<tenant>/<service>/<page>.
 	// (GET /)
 	GetIndex(w http.ResponseWriter, r *http.Request)
-	// GetDiff Merge snap a then snap b the Graph.Node design 11 way, read-only, and report what b added, removed and changed. Stamps are compared as given; nothing is written.
-	// (GET /api/diff)
-	GetDiff(w http.ResponseWriter, r *http.Request, params GetDiffParams)
-	// PostEdge Add one edge. The body is a Graph.Node edge; id may be left out and is then set to from|to|kind. Rejected unless the next screen validates.
-	// (POST /api/edges)
-	PostEdge(w http.ResponseWriter, r *http.Request)
-	// ListLayers The mounted data layers, in mount order.
-	// (GET /api/layers)
-	ListLayers(w http.ResponseWriter, r *http.Request)
-	// MountLayer Mount a layer from a path on disk (a .graph.json file, or a directory whose newest *.graph.json is taken) or from an envelope in the body. Refused with the Graph.Node problem codes when graphnode validate would fail. Mounting an existing name replaces it. A mount by path also records itself on the screen as the Mount node ui:mount:<name> holding the path as given (made absolute), so an approved snap mounts it again at boot; a mount by envelope removes that node. Mounts are otherwise held in memory.
+	// MountLayerUnscoped mountLayer for the tenant this process serves, at the path it had before 0.4.0, kept so Claude.Agent's Up keeps mounting until it moves to /api/tenants/{tenant}/layers. Needs a token like any write.
 	// (POST /api/layers)
-	MountLayer(w http.ResponseWriter, r *http.Request)
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	MountLayerUnscoped(w http.ResponseWriter, r *http.Request)
+	// GetWhoami Who the request is. No Authorization header is anonymous and reads only; a bearer token the tenant holds is that token's name and may write. A token it does not hold is 401.
+	// (GET /api/tenants/{tenant}/auth/whoami)
+	GetWhoami(w http.ResponseWriter, r *http.Request, tenant Tenant)
+	// GetConfig The tenant's config, portal.base.yaml with tenants/<tenant>/portal.yaml deep-merged over it, as decoded from YAML. Both files pass schema/portal.schema.json at boot or the binary stops.
+	// (GET /api/tenants/{tenant}/config)
+	GetConfig(w http.ResponseWriter, r *http.Request, tenant Tenant)
+	// ListConnections The tenant's service connections (tenants/<tenant>/connections.yaml), without secrets. token_env is the name of the variable holding the secret; tokenSet says whether this process has it.
+	// (GET /api/tenants/{tenant}/connections)
+	ListConnections(w http.ResponseWriter, r *http.Request, tenant Tenant)
+	// GetConnectionRepos For a connection of type github, the repositories its token can see (GET <url>/user/repos, every page up to 1000), as an envelope of git.repository nodes, id ui:conn:<connection>/<owner>/<repo>. Read only; nothing is stored. Needs a bearer token though it is a GET, since it spends the tenant's secret (401 without one). 422 when the token variable is not set; 502 when GitHub fails or refuses.
+	// (GET /api/tenants/{tenant}/connections/{name}/repos)
+	GetConnectionRepos(w http.ResponseWriter, r *http.Request, tenant Tenant, name string)
+	// GetDiff Merge snap a then snap b the Graph.Node design 11 way, read-only, and report what b added, removed and changed. Stamps are compared as given; nothing is written.
+	// (GET /api/tenants/{tenant}/diff)
+	GetDiff(w http.ResponseWriter, r *http.Request, tenant Tenant, params GetDiffParams)
+	// PostEdge Add one edge. The body is a Graph.Node edge; id may be left out and is then set to from|to|kind. Rejected unless the next screen validates.
+	// (POST /api/tenants/{tenant}/edges)
+	PostEdge(w http.ResponseWriter, r *http.Request, tenant Tenant)
+	// ListLayers The mounted data layers, in mount order.
+	// (GET /api/tenants/{tenant}/layers)
+	ListLayers(w http.ResponseWriter, r *http.Request, tenant Tenant)
+	// MountLayer Mount a layer from a path on disk (a .graph.json file, or a directory whose newest *.graph.json is taken) or from an envelope in the body. Refused with the Graph.Node problem codes when graphnode validate would fail. Mounting an existing name replaces it. A mount by path also records itself on the screen as the Mount node ui:mount:<name> holding the path as given (made absolute), so an approved snap mounts it again at boot; a mount by envelope removes that node. Mounts are otherwise held in memory.
+	// (POST /api/tenants/{tenant}/layers)
+	MountLayer(w http.ResponseWriter, r *http.Request, tenant Tenant)
 	// GetLayerNodes Query one mounted layer. kind keeps nodes of that Kind; from keeps the node with that id and every node reachable from it along edges in their direction. Edges are kept when both ends survive.
-	// (GET /api/layers/{name}/nodes)
-	GetLayerNodes(w http.ResponseWriter, r *http.Request, name string, params GetLayerNodesParams)
+	// (GET /api/tenants/{tenant}/layers/{name}/nodes)
+	GetLayerNodes(w http.ResponseWriter, r *http.Request, tenant Tenant, name string, params GetLayerNodesParams)
+	// GetMenu The left rail as an envelope built from the merged config's menu. One Service node per service (ui:rail:<service>), one Page per page below it (ui:rail:<service>:<page>, and so on for an item page's tabs), has-page from parent to child, and an icon State (ui:state:rail:...) joined by has-state. order sorts siblings. Validated with Graph.Node and the portal ontology at boot.
+	// (GET /api/tenants/{tenant}/menu)
+	GetMenu(w http.ResponseWriter, r *http.Request, tenant Tenant)
+	// ListNodes Every node of one Kind on the screen (as getScreen shows it) and in every mounted layer, read-only, first id wins. A node with no stamp gets stamp.layer from the envelope it came from. Nodes only.
+	// (GET /api/tenants/{tenant}/nodes)
+	ListNodes(w http.ResponseWriter, r *http.Request, tenant Tenant, params ListNodesParams)
 	// PostNode Add one node. The body is a Graph.Node node. Rejected unless the next screen passes Graph.Node validation and the portal ontology checks.
-	// (POST /api/nodes)
-	PostNode(w http.ResponseWriter, r *http.Request)
+	// (POST /api/tenants/{tenant}/nodes)
+	PostNode(w http.ResponseWriter, r *http.Request, tenant Tenant)
 	// DeleteNode Remove a node and every edge that touches it.
-	// (DELETE /api/nodes/{id})
-	DeleteNode(w http.ResponseWriter, r *http.Request, id NodeId)
+	// (DELETE /api/tenants/{tenant}/nodes/{id})
+	DeleteNode(w http.ResponseWriter, r *http.Request, tenant Tenant, id NodeId)
 	// PatchNode Change a node's properties and its display State, nothing else. A property set to null is removed. state upserts the node's State node (ui:state:<id without ui:>) and its has-state edge.
-	// (PATCH /api/nodes/{id})
-	PatchNode(w http.ResponseWriter, r *http.Request, id NodeId)
+	// (PATCH /api/tenants/{tenant}/nodes/{id})
+	PatchNode(w http.ResponseWriter, r *http.Request, tenant Tenant, id NodeId)
 	// GetOntology The portal ontology and the ontology of every mounted layer (null when a layer names none or it could not be read).
-	// (GET /api/ontology)
-	GetOntology(w http.ResponseWriter, r *http.Request)
+	// (GET /api/tenants/{tenant}/ontology)
+	GetOntology(w http.ResponseWriter, r *http.Request, tenant Tenant)
 	// GetScreen The current screen graph. With PORTAL_MODE=production, every node with an is-a edge to the Designer Category is left out, with the edges that touch it.
-	// (GET /api/screen)
-	GetScreen(w http.ResponseWriter, r *http.Request)
+	// (GET /api/tenants/{tenant}/screen)
+	GetScreen(w http.ResponseWriter, r *http.Request, tenant Tenant)
 	// PostSnap Approve the screen. Writes the screen graph to artifacts/snaps/<stamp>.graph.json, with ontology.yaml beside it and the note as the envelope's one finding of Kind approved, and reports what it added, removed and changed against the snap before it. The newest snap is what the next start boots from.
-	// (POST /api/snap)
-	PostSnap(w http.ResponseWriter, r *http.Request)
+	// (POST /api/tenants/{tenant}/snap)
+	PostSnap(w http.ResponseWriter, r *http.Request, tenant Tenant)
 	// GetStatic One static file by flat name (no subpaths), e.g. portal.js, client.js, cytoscape.min.js.
 	// (GET /static/{file})
 	GetStatic(w http.ResponseWriter, r *http.Request, file string)
+	// GetShellPage The shell page (index.html) at a page route. The page reads the route from the URL, so a deep link survives a refresh. 404 when tenant is not this process's tenant.
+	// (GET /{tenant}/{service}/{page})
+	GetShellPage(w http.ResponseWriter, r *http.Request, tenant Tenant, service string, page string)
+	// GetShellItem The shell page (index.html) at an item route, one node of a page. As getShellPage.
+	// (GET /{tenant}/{service}/{page}/{id})
+	GetShellItem(w http.ResponseWriter, r *http.Request, tenant Tenant, service string, page string, id string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
 
-// GetIndex The portal page. Boots blank and draws GET /api/screen.
+// GetIndex Redirects to the first page of the first service of the tenant this process serves, /<tenant>/<service>/<page>.
 // (GET /)
 func (_ Unimplemented) GetIndex(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// MountLayerUnscoped mountLayer for the tenant this process serves, at the path it had before 0.4.0, kept so Claude.Agent's Up keeps mounting until it moves to /api/tenants/{tenant}/layers. Needs a token like any write.
+// (POST /api/layers)
+//
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+func (_ Unimplemented) MountLayerUnscoped(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetWhoami Who the request is. No Authorization header is anonymous and reads only; a bearer token the tenant holds is that token's name and may write. A token it does not hold is 401.
+// (GET /api/tenants/{tenant}/auth/whoami)
+func (_ Unimplemented) GetWhoami(w http.ResponseWriter, r *http.Request, tenant Tenant) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetConfig The tenant's config, portal.base.yaml with tenants/<tenant>/portal.yaml deep-merged over it, as decoded from YAML. Both files pass schema/portal.schema.json at boot or the binary stops.
+// (GET /api/tenants/{tenant}/config)
+func (_ Unimplemented) GetConfig(w http.ResponseWriter, r *http.Request, tenant Tenant) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListConnections The tenant's service connections (tenants/<tenant>/connections.yaml), without secrets. token_env is the name of the variable holding the secret; tokenSet says whether this process has it.
+// (GET /api/tenants/{tenant}/connections)
+func (_ Unimplemented) ListConnections(w http.ResponseWriter, r *http.Request, tenant Tenant) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetConnectionRepos For a connection of type github, the repositories its token can see (GET <url>/user/repos, every page up to 1000), as an envelope of git.repository nodes, id ui:conn:<connection>/<owner>/<repo>. Read only; nothing is stored. Needs a bearer token though it is a GET, since it spends the tenant's secret (401 without one). 422 when the token variable is not set; 502 when GitHub fails or refuses.
+// (GET /api/tenants/{tenant}/connections/{name}/repos)
+func (_ Unimplemented) GetConnectionRepos(w http.ResponseWriter, r *http.Request, tenant Tenant, name string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetDiff Merge snap a then snap b the Graph.Node design 11 way, read-only, and report what b added, removed and changed. Stamps are compared as given; nothing is written.
-// (GET /api/diff)
-func (_ Unimplemented) GetDiff(w http.ResponseWriter, r *http.Request, params GetDiffParams) {
+// (GET /api/tenants/{tenant}/diff)
+func (_ Unimplemented) GetDiff(w http.ResponseWriter, r *http.Request, tenant Tenant, params GetDiffParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // PostEdge Add one edge. The body is a Graph.Node edge; id may be left out and is then set to from|to|kind. Rejected unless the next screen validates.
-// (POST /api/edges)
-func (_ Unimplemented) PostEdge(w http.ResponseWriter, r *http.Request) {
+// (POST /api/tenants/{tenant}/edges)
+func (_ Unimplemented) PostEdge(w http.ResponseWriter, r *http.Request, tenant Tenant) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // ListLayers The mounted data layers, in mount order.
-// (GET /api/layers)
-func (_ Unimplemented) ListLayers(w http.ResponseWriter, r *http.Request) {
+// (GET /api/tenants/{tenant}/layers)
+func (_ Unimplemented) ListLayers(w http.ResponseWriter, r *http.Request, tenant Tenant) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // MountLayer Mount a layer from a path on disk (a .graph.json file, or a directory whose newest *.graph.json is taken) or from an envelope in the body. Refused with the Graph.Node problem codes when graphnode validate would fail. Mounting an existing name replaces it. A mount by path also records itself on the screen as the Mount node ui:mount:<name> holding the path as given (made absolute), so an approved snap mounts it again at boot; a mount by envelope removes that node. Mounts are otherwise held in memory.
-// (POST /api/layers)
-func (_ Unimplemented) MountLayer(w http.ResponseWriter, r *http.Request) {
+// (POST /api/tenants/{tenant}/layers)
+func (_ Unimplemented) MountLayer(w http.ResponseWriter, r *http.Request, tenant Tenant) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetLayerNodes Query one mounted layer. kind keeps nodes of that Kind; from keeps the node with that id and every node reachable from it along edges in their direction. Edges are kept when both ends survive.
-// (GET /api/layers/{name}/nodes)
-func (_ Unimplemented) GetLayerNodes(w http.ResponseWriter, r *http.Request, name string, params GetLayerNodesParams) {
+// (GET /api/tenants/{tenant}/layers/{name}/nodes)
+func (_ Unimplemented) GetLayerNodes(w http.ResponseWriter, r *http.Request, tenant Tenant, name string, params GetLayerNodesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetMenu The left rail as an envelope built from the merged config's menu. One Service node per service (ui:rail:<service>), one Page per page below it (ui:rail:<service>:<page>, and so on for an item page's tabs), has-page from parent to child, and an icon State (ui:state:rail:...) joined by has-state. order sorts siblings. Validated with Graph.Node and the portal ontology at boot.
+// (GET /api/tenants/{tenant}/menu)
+func (_ Unimplemented) GetMenu(w http.ResponseWriter, r *http.Request, tenant Tenant) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListNodes Every node of one Kind on the screen (as getScreen shows it) and in every mounted layer, read-only, first id wins. A node with no stamp gets stamp.layer from the envelope it came from. Nodes only.
+// (GET /api/tenants/{tenant}/nodes)
+func (_ Unimplemented) ListNodes(w http.ResponseWriter, r *http.Request, tenant Tenant, params ListNodesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // PostNode Add one node. The body is a Graph.Node node. Rejected unless the next screen passes Graph.Node validation and the portal ontology checks.
-// (POST /api/nodes)
-func (_ Unimplemented) PostNode(w http.ResponseWriter, r *http.Request) {
+// (POST /api/tenants/{tenant}/nodes)
+func (_ Unimplemented) PostNode(w http.ResponseWriter, r *http.Request, tenant Tenant) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // DeleteNode Remove a node and every edge that touches it.
-// (DELETE /api/nodes/{id})
-func (_ Unimplemented) DeleteNode(w http.ResponseWriter, r *http.Request, id NodeId) {
+// (DELETE /api/tenants/{tenant}/nodes/{id})
+func (_ Unimplemented) DeleteNode(w http.ResponseWriter, r *http.Request, tenant Tenant, id NodeId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // PatchNode Change a node's properties and its display State, nothing else. A property set to null is removed. state upserts the node's State node (ui:state:<id without ui:>) and its has-state edge.
-// (PATCH /api/nodes/{id})
-func (_ Unimplemented) PatchNode(w http.ResponseWriter, r *http.Request, id NodeId) {
+// (PATCH /api/tenants/{tenant}/nodes/{id})
+func (_ Unimplemented) PatchNode(w http.ResponseWriter, r *http.Request, tenant Tenant, id NodeId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetOntology The portal ontology and the ontology of every mounted layer (null when a layer names none or it could not be read).
-// (GET /api/ontology)
-func (_ Unimplemented) GetOntology(w http.ResponseWriter, r *http.Request) {
+// (GET /api/tenants/{tenant}/ontology)
+func (_ Unimplemented) GetOntology(w http.ResponseWriter, r *http.Request, tenant Tenant) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetScreen The current screen graph. With PORTAL_MODE=production, every node with an is-a edge to the Designer Category is left out, with the edges that touch it.
-// (GET /api/screen)
-func (_ Unimplemented) GetScreen(w http.ResponseWriter, r *http.Request) {
+// (GET /api/tenants/{tenant}/screen)
+func (_ Unimplemented) GetScreen(w http.ResponseWriter, r *http.Request, tenant Tenant) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // PostSnap Approve the screen. Writes the screen graph to artifacts/snaps/<stamp>.graph.json, with ontology.yaml beside it and the note as the envelope's one finding of Kind approved, and reports what it added, removed and changed against the snap before it. The newest snap is what the next start boots from.
-// (POST /api/snap)
-func (_ Unimplemented) PostSnap(w http.ResponseWriter, r *http.Request) {
+// (POST /api/tenants/{tenant}/snap)
+func (_ Unimplemented) PostSnap(w http.ResponseWriter, r *http.Request, tenant Tenant) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetStatic One static file by flat name (no subpaths), e.g. portal.js, client.js, cytoscape.min.js.
 // (GET /static/{file})
 func (_ Unimplemented) GetStatic(w http.ResponseWriter, r *http.Request, file string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetShellPage The shell page (index.html) at a page route. The page reads the route from the URL, so a deep link survives a refresh. 404 when tenant is not this process's tenant.
+// (GET /{tenant}/{service}/{page})
+func (_ Unimplemented) GetShellPage(w http.ResponseWriter, r *http.Request, tenant Tenant, service string, page string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetShellItem The shell page (index.html) at an item route, one node of a page. As getShellPage.
+// (GET /{tenant}/{service}/{page}/{id})
+func (_ Unimplemented) GetShellItem(w http.ResponseWriter, r *http.Request, tenant Tenant, service string, page string, id string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -595,11 +836,147 @@ func (siw *ServerInterfaceWrapper) GetIndex(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// MountLayerUnscoped operation middleware
+func (siw *ServerInterfaceWrapper) MountLayerUnscoped(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MountLayerUnscoped(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWhoami operation middleware
+func (siw *ServerInterfaceWrapper) GetWhoami(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWhoami(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetConfig(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConfig(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListConnections operation middleware
+func (siw *ServerInterfaceWrapper) ListConnections(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListConnections(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConnectionRepos operation middleware
+func (siw *ServerInterfaceWrapper) GetConnectionRepos(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", chi.URLParam(r, "name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConnectionRepos(w, r, tenant, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetDiff operation middleware
 func (siw *ServerInterfaceWrapper) GetDiff(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetDiffParams
@@ -631,7 +1008,7 @@ func (siw *ServerInterfaceWrapper) GetDiff(w http.ResponseWriter, r *http.Reques
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetDiff(w, r, params)
+		siw.Handler.GetDiff(w, r, tenant, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -644,8 +1021,20 @@ func (siw *ServerInterfaceWrapper) GetDiff(w http.ResponseWriter, r *http.Reques
 // PostEdge operation middleware
 func (siw *ServerInterfaceWrapper) PostEdge(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostEdge(w, r)
+		siw.Handler.PostEdge(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -658,8 +1047,20 @@ func (siw *ServerInterfaceWrapper) PostEdge(w http.ResponseWriter, r *http.Reque
 // ListLayers operation middleware
 func (siw *ServerInterfaceWrapper) ListLayers(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListLayers(w, r)
+		siw.Handler.ListLayers(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -672,8 +1073,20 @@ func (siw *ServerInterfaceWrapper) ListLayers(w http.ResponseWriter, r *http.Req
 // MountLayer operation middleware
 func (siw *ServerInterfaceWrapper) MountLayer(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.MountLayer(w, r)
+		siw.Handler.MountLayer(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -688,6 +1101,15 @@ func (siw *ServerInterfaceWrapper) GetLayerNodes(w http.ResponseWriter, r *http.
 
 	var err error
 	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
 
 	// ------------- Path parameter "name" -------------
 	var name string
@@ -728,7 +1150,75 @@ func (siw *ServerInterfaceWrapper) GetLayerNodes(w http.ResponseWriter, r *http.
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetLayerNodes(w, r, name, params)
+		siw.Handler.GetLayerNodes(w, r, tenant, name, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMenu operation middleware
+func (siw *ServerInterfaceWrapper) GetMenu(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMenu(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNodes operation middleware
+func (siw *ServerInterfaceWrapper) ListNodes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListNodesParams
+
+	// ------------- Required query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNodes(w, r, tenant, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -741,8 +1231,20 @@ func (siw *ServerInterfaceWrapper) GetLayerNodes(w http.ResponseWriter, r *http.
 // PostNode operation middleware
 func (siw *ServerInterfaceWrapper) PostNode(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostNode(w, r)
+		siw.Handler.PostNode(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -758,6 +1260,15 @@ func (siw *ServerInterfaceWrapper) DeleteNode(w http.ResponseWriter, r *http.Req
 	var err error
 	_ = err
 
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
 	// ------------- Path parameter "id" -------------
 	var id NodeId
 
@@ -768,7 +1279,7 @@ func (siw *ServerInterfaceWrapper) DeleteNode(w http.ResponseWriter, r *http.Req
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteNode(w, r, id)
+		siw.Handler.DeleteNode(w, r, tenant, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -784,6 +1295,15 @@ func (siw *ServerInterfaceWrapper) PatchNode(w http.ResponseWriter, r *http.Requ
 	var err error
 	_ = err
 
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
 	// ------------- Path parameter "id" -------------
 	var id NodeId
 
@@ -794,7 +1314,7 @@ func (siw *ServerInterfaceWrapper) PatchNode(w http.ResponseWriter, r *http.Requ
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PatchNode(w, r, id)
+		siw.Handler.PatchNode(w, r, tenant, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -807,8 +1327,20 @@ func (siw *ServerInterfaceWrapper) PatchNode(w http.ResponseWriter, r *http.Requ
 // GetOntology operation middleware
 func (siw *ServerInterfaceWrapper) GetOntology(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetOntology(w, r)
+		siw.Handler.GetOntology(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -821,8 +1353,20 @@ func (siw *ServerInterfaceWrapper) GetOntology(w http.ResponseWriter, r *http.Re
 // GetScreen operation middleware
 func (siw *ServerInterfaceWrapper) GetScreen(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetScreen(w, r)
+		siw.Handler.GetScreen(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -835,8 +1379,20 @@ func (siw *ServerInterfaceWrapper) GetScreen(w http.ResponseWriter, r *http.Requ
 // PostSnap operation middleware
 func (siw *ServerInterfaceWrapper) PostSnap(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostSnap(w, r)
+		siw.Handler.PostSnap(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -863,6 +1419,103 @@ func (siw *ServerInterfaceWrapper) GetStatic(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetStatic(w, r, file)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetShellPage operation middleware
+func (siw *ServerInterfaceWrapper) GetShellPage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "service" -------------
+	var service string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "service", chi.URLParam(r, "service"), &service, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "service", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "page" -------------
+	var page string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page", chi.URLParam(r, "page"), &page, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetShellPage(w, r, tenant, service, page)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetShellItem operation middleware
+func (siw *ServerInterfaceWrapper) GetShellItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant Tenant
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", chi.URLParam(r, "tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "service" -------------
+	var service string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "service", chi.URLParam(r, "service"), &service, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "service", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "page" -------------
+	var page string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page", chi.URLParam(r, "page"), &page, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetShellItem(w, r, tenant, service, page, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -989,40 +1642,67 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/", wrapper.GetIndex)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/{tenant}/{service}/{page}", wrapper.GetShellPage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/{tenant}/{service}/{page}/{id}", wrapper.GetShellItem)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/static/{file}", wrapper.GetStatic)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/screen", wrapper.GetScreen)
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/screen", wrapper.GetScreen)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/nodes", wrapper.PostNode)
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/config", wrapper.GetConfig)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/api/nodes/{id}", wrapper.DeleteNode)
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/menu", wrapper.GetMenu)
 	})
 	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/api/nodes/{id}", wrapper.PatchNode)
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/auth/whoami", wrapper.GetWhoami)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/edges", wrapper.PostEdge)
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/connections", wrapper.ListConnections)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/layers", wrapper.ListLayers)
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/connections/{name}/repos", wrapper.GetConnectionRepos)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/layers", wrapper.MountLayer)
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/nodes", wrapper.ListNodes)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/layers/{name}/nodes", wrapper.GetLayerNodes)
+		r.Post(options.BaseURL+"/api/tenants/{tenant}/nodes", wrapper.PostNode)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/snap", wrapper.PostSnap)
+		r.Delete(options.BaseURL+"/api/tenants/{tenant}/nodes/{id}", wrapper.DeleteNode)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/diff", wrapper.GetDiff)
+		r.Patch(options.BaseURL+"/api/tenants/{tenant}/nodes/{id}", wrapper.PatchNode)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/ontology", wrapper.GetOntology)
+		r.Post(options.BaseURL+"/api/tenants/{tenant}/edges", wrapper.PostEdge)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/layers", wrapper.ListLayers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/tenants/{tenant}/layers", wrapper.MountLayer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/layers", wrapper.MountLayerUnscoped)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/layers/{name}/nodes", wrapper.GetLayerNodes)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/tenants/{tenant}/snap", wrapper.PostSnap)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/diff", wrapper.GetDiff)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/tenants/{tenant}/ontology", wrapper.GetOntology)
 	})
 
 	return r
@@ -1033,76 +1713,107 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"DGmkhTIbvJ73t0rc7/kpnEPvBgvQ02L1ZvXPAQA=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

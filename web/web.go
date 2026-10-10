@@ -20,6 +20,10 @@ var FS embed.FS
 var static = map[string]string{
 	"client.js":        "client.js",
 	"portal.js":        "portal.js",
+	"screen.js":        "screen.js",
+	"icons.js":         "icons.js",
+	"nodes.js":         "nodes.js",
+	"connections.js":   "connections.js",
 	"canvas.js":        "canvas.js",
 	"table.js":         "table.js",
 	"detail.js":        "detail.js",

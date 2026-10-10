@@ -1,0 +1,143 @@
+# Product defaults. Never edited by a tenant: a tenant changes what it needs in
+# tenants/<tenant>/portal.yaml, which the API deep-merges over this file
+# (schema/portal.schema.json validates both). Maps merge key by key; a list
+# whose items carry an id merges item by item on id (new ids are appended);
+# any other value in the overlay replaces the base's.
+#
+# menu is the shell's left rail: one entry per service, each with its pages.
+# GET /api/tenants/<tenant>/menu serves it as a Graph.Node envelope (Service
+# and Page nodes, has-page edges, icons in State nodes). A page lists the
+# nodes of its kind (GET /api/tenants/<tenant>/nodes?kind=) unless its view
+# says otherwise: screen draws a screen node, connections lists the tenant's
+# service connections. A page's children are the tabs of its item page,
+# /<tenant>/<service>/<page>/<id>.
+product:
+  name: Portal
+  help: https://github.com/JerryBalmer1/Portal#readme
+
+menu:
+  - id: overview
+    label: Overview
+    icon: home
+    path: overview
+    children:
+      - { id: summary, label: Summary, path: overview/summary, kind: portal.summary }
+      - { id: dashboards, label: Dashboards, path: overview/dashboards, kind: portal.dashboard }
+
+  - id: graph
+    label: Graph
+    icon: graph
+    path: graph
+    children:
+      - { id: explore, label: Explore, path: graph/explore, view: screen, screen: "ui:canvas" }
+      - { id: kinds, label: Kinds, path: graph/kinds, kind: graph.kind }
+      - { id: taxonomy, label: Taxonomy, path: graph/taxonomy, kind: graph.taxonomy }
+
+  - id: emitters
+    label: Emitters
+    icon: emitter
+    path: emitters
+    children:
+      - { id: catalogue, label: Catalogue, path: emitters/catalogue, kind: emitter }
+      - { id: sources, label: Sources, path: emitters/sources, kind: emitter.source }
+      - { id: runs, label: Runs, path: emitters/runs, kind: emitter.run }
+      - { id: schemas, label: Schemas, path: emitters/schemas, kind: emitter.schema }
+
+  - id: designer
+    label: Designer
+    icon: designer
+    path: designer
+    children:
+      - { id: sections, label: Sections, path: designer/sections, view: screen, screen: "ui:designer" }
+      - { id: themes, label: Themes, path: designer/themes, kind: Theme }
+      - { id: export, label: Export, path: designer/export, view: screen, screen: "ui:designer", sections: [approve] }
+
+  - id: workflows
+    label: Workflows
+    icon: workflow
+    path: workflows
+    children:
+      - id: all
+        label: All
+        path: workflows/all
+        kind: workflow
+        children:
+          - { id: plan, label: Plan, path: workflows/all/plan, kind: workflow.step }
+          - id: runs
+            label: Runs
+            path: workflows/all/runs
+            kind: workflow.run
+            children:
+              - { id: steps, label: Steps, path: workflows/all/runs/steps, kind: workflow.run.step }
+          - { id: history, label: History, path: workflows/all/history, kind: workflow.event }
+
+  - id: environments
+    label: Environments
+    icon: environment
+    path: environments
+    children:
+      - { id: instances, label: Instances, path: environments/instances, kind: environment.instance, filter: [container, compose, kubernetes, host] }
+      - { id: images, label: Images, path: environments/images, kind: environment.image }
+      - { id: networks, label: Networks, path: environments/networks, kind: environment.network }
+
+  - id: compliance
+    label: Compliance
+    icon: compliance
+    path: compliance
+    children:
+      - { id: rules, label: Rules, path: compliance/rules, kind: compliance.rule }
+      - { id: findings, label: Findings, path: compliance/findings, kind: compliance.finding }
+      - { id: reports, label: Reports, path: compliance/reports, kind: compliance.report }
+
+  - id: policy
+    label: Policy
+    icon: policy
+    path: policy
+    children:
+      - { id: rules, label: Rules, path: policy/rules, kind: policy.rule }
+      - { id: decisions, label: Decisions, path: policy/decisions, kind: policy.decision }
+
+  - id: ledger
+    label: Ledger
+    icon: ledger
+    path: ledger
+    children:
+      - { id: entries, label: Entries, path: ledger/entries, kind: ledger.entry }
+      - { id: verify, label: Verify, path: ledger/verify, kind: ledger.verification }
+      - { id: keys, label: Keys, path: ledger/keys, kind: ledger.key }
+
+  - id: identity
+    label: Identity
+    icon: identity
+    path: identity
+    children:
+      - { id: users, label: Users, path: identity/users, kind: identity.user }
+      - { id: agents, label: Agents, path: identity/agents, kind: identity.agent }
+      - { id: marker-holders, label: Marker holders, path: identity/marker-holders, kind: identity.marker }
+
+  - id: artifacts
+    label: Artifacts
+    icon: artifact
+    path: artifacts
+    children:
+      - { id: exports, label: Exports, path: artifacts/exports, kind: artifact.export }
+      - { id: bundles, label: Bundles, path: artifacts/bundles, kind: artifact.bundle }
+
+  - id: stack
+    label: Stack
+    icon: stack
+    path: stack
+    children:
+      - { id: services, label: Services, path: stack/services, kind: stack.service }
+      - { id: requests, label: Requests, path: stack/requests, kind: stack.request }
+      - { id: events, label: Events, path: stack/events, kind: stack.event }
+
+  - id: settings
+    label: Settings
+    icon: settings
+    path: settings
+    dock: bottom
+    children:
+      - { id: tenants, label: Tenants, path: settings/tenants, kind: portal.tenant }
+      - { id: tokens, label: Tokens, path: settings/tokens, kind: portal.token }
+      - { id: service-connections, label: Service connections, path: settings/service-connections, view: connections }

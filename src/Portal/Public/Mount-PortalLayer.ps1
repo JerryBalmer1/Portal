@@ -1,7 +1,7 @@
 function Mount-PortalLayer {
     <#
     .SYNOPSIS
-        POST /api/layers: mounts a data layer read-only, from a path (a .graph.json, or a directory whose newest
+        POST /api/tenants/{tenant}/layers: mounts a data layer read-only, from a path (a .graph.json, or a directory whose newest
         *.graph.json is taken) or from an envelope. Returns the layer summary; throws with the Graph.Node problem
         codes when the envelope fails graphnode validate (the error's TargetObject holds them).
     .EXAMPLE
@@ -31,5 +31,5 @@ function Mount-PortalLayer {
         $envJson = if ($Envelope -is [string]) { $Envelope } else { $Envelope | ConvertTo-Json -Depth 64 -Compress }
         $body = '{"name":' + ($Name | ConvertTo-Json) + ',"envelope":' + $envJson + '}'
     }
-    Invoke-PortalApi -Url (Resolve-PortalUrl $Url) -Path '/api/layers' -Method POST -Body $body
+    Invoke-PortalApi -Url (Resolve-PortalUrl $Url) -Path '/layers' -Method POST -Body $body
 }

@@ -43,9 +43,21 @@ BeforeAll {
     }
     function Get-GraphNodeAtTag([string] $RelativePath) { Get-SiblingAt 'Graph.Node' $GraphNodeTag $RelativePath }
     function Get-Lf([string] $Path) { (Get-Content -LiteralPath $Path -Raw -Encoding utf8) -replace "`r`n", "`n" }
-    # One raw call: status, headers and parsed body, never a throw.
+    # A tenant directory for every portal the tests start (PORTAL_TENANTS, which Start-Portal reads): the committed
+    # empty overlay and one token, "pester", whose text is PORTAL_TOKEN, which the module's calls send. Outside the
+    # repo, so the repo's own gitignored tokens.yaml is never touched.
+    $script:TenantsDir = Join-Path ([IO.Path]::GetTempPath()) "Portal-tenants-$([guid]::NewGuid())"
+    $null = New-Item -ItemType Directory -Force -Path (Join-Path $TenantsDir 'default')
+    Copy-Item -LiteralPath (Join-Path $Repo 'tenants' 'default' 'portal.yaml') -Destination (Join-Path $TenantsDir 'default')
+    $script:Saved = @{ PORTAL_TENANTS = $env:PORTAL_TENANTS; PORTAL_TOKEN = $env:PORTAL_TOKEN; PORTAL_TENANT = $env:PORTAL_TENANT }
+    $env:PORTAL_TENANTS = $TenantsDir
+    $env:PORTAL_TENANT = $null
+    $env:PORTAL_TOKEN = (New-PortalToken -Name pester).Token
+    $script:Auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+
+    # One raw call with the test token: status, headers and parsed body, never a throw.
     function Send([string] $Url, [string] $Method, [string] $Path, $Body) {
-        $req = @{ Uri = "$Url$Path"; Method = $Method; SkipHttpErrorCheck = $true }
+        $req = @{ Uri = "$Url$Path"; Method = $Method; SkipHttpErrorCheck = $true; Headers = $Auth }
         if ($null -ne $Body) { $req.ContentType = 'application/json'; $req.Body = ($Body -is [string]) ? $Body : ($Body | ConvertTo-Json -Depth 20 -Compress) }
         $r = Invoke-WebRequest @req
         [pscustomobject]@{ Status = [int]$r.StatusCode; Headers = $r.Headers; Body = ([string]$r.Content | ConvertFrom-Json -Depth 64) }
@@ -61,22 +73,27 @@ BeforeAll {
         @{ Slug = 'add-menu-entry'; Title = 'Add Menu Entry'; Open = $false }
     )
     # The page as headless Chrome draws it (--dump-dom; Edge's new headless prints none on Windows), or $null without Chrome.
-    function Get-PageDom([string] $Url) {
+    function Get-PageDom([string] $Url, [string] $Route = '/') {
         $chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
             "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
         if (-not $chrome) { return $null }
         $work = Join-Path $TestDrive "dom-$([guid]::NewGuid())"
         $null = New-Item -ItemType Directory -Force -Path $work
-        $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--virtual-time-budget=8000', '--window-size=1400,900', '--dump-dom', "$Url/")
+        $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--virtual-time-budget=8000', '--window-size=1400,900', '--dump-dom', "$Url$Route")
         $null = Start-Process -FilePath $chrome -ArgumentList $argv -Wait -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $work 'dom.html') -RedirectStandardError (Join-Path $work 'err.txt')
         [string](Get-Content -LiteralPath (Join-Path $work 'dom.html') -Raw -ErrorAction SilentlyContinue)
     }
 }
 
+AfterAll {
+    foreach ($k in $Saved.Keys) { [Environment]::SetEnvironmentVariable($k, $Saved[$k]) }
+    Remove-Item -LiteralPath $TenantsDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Describe 'Module' {
-    It 'is version 0.3.6 and needs PowerShell 7.4' {
+    It 'is version 0.4.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.3.6'
+        $m.ModuleVersion | Should -Be '0.4.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -221,12 +238,12 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.3.6, the eight Kinds, the seven edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.4.0, the ten Kinds, the eight edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.3\.6$'
-        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount') { $text | Should -Match "(?m)^  ${k}:" }
-        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens') { $text | Should -Match "(?m)^  ${e}:" }
+        $text | Should -Match '(?m)^version: 0\.4\.0$'
+        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page') { $text | Should -Match "(?m)^  ${k}:" }
+        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
     }
     It 'the FileSystem fixture passes graphnode validate and has its ontology beside it' {
@@ -372,11 +389,11 @@ Describe 'Live portal' {
     It 'Start-Portal records the process, boots from the seed and says so' {
         Join-Path $Work 'portal.json' | Should -Exist
         $P.Boot | Should -Be 'seed'
-        (Send $Url GET '/api/screen').Headers['X-Portal-Boot'] | Should -Be 'seed'
+        (Send $Url GET '/api/tenants/default/screen').Headers['X-Portal-Boot'] | Should -Be 'seed'
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.3.6'
+        $s.version | Should -Be '0.4.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -407,7 +424,7 @@ Describe 'Live portal' {
         }
         # The seed records no Mount: agent-runs is drawn once Claude.Agent mounts it (docs/design.md 35).
         @($s.nodes | Where-Object kind -EQ 'Mount') | Should -BeNullOrEmpty
-        (Send $Url POST '/api/edges' @{ kind = 'opens'; from = 'ui:menu:graph'; to = 'ui:layout:root' }).Body.problems.code | Should -Contain 'edge-endpoints'
+        (Send $Url POST '/api/tenants/default/edges' @{ kind = 'opens'; from = 'ui:menu:graph'; to = 'ui:layout:root' }).Body.problems.code | Should -Contain 'edge-endpoints'
     }
     It 'seeds a State per Designer section, joined by has-state: Approve and Categories open, the rest collapsed' {
         $s = Get-PortalScreen -Url $Url
@@ -420,7 +437,7 @@ Describe 'Live portal' {
         }
     }
     It 'draws the seven Designer sections with Title Case headings and buttons, collapsed as their States say' {
-        $dom = Get-PageDom $Url
+        $dom = Get-PageDom $Url '/default/designer/sections'
         if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
         $designer = [regex]::Match($dom, '<div class="pt-designer">.*', 'Singleline').Value
         @([regex]::Matches($designer, '<h4>([^<]*)</h4>') | ForEach-Object { $_.Groups[1].Value }) | Should -Be @($Sections.Title)
@@ -433,10 +450,10 @@ Describe 'Live portal' {
         # Field labels stay lower case.
         $designer | Should -Match '<label class="gr-form-row">name<'
     }
-    It 'heads the page with the open view''s layer, the screen graph''s counts in a badge beside' {
-        $dom = Get-PageDom $Url
+    It 'heads Graph/Explore with its Canvas''s layer, the screen graph''s counts in a badge beside' {
+        $dom = Get-PageDom $Url '/default/graph/explore'
         if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
-        $fs = (Invoke-WebRequest "$Url/api/layers").Content | ConvertFrom-Json -DateKind String | Where-Object name -EQ 'filesystem'
+        $fs = (Invoke-WebRequest "$Url/api/tenants/default/layers").Content | ConvertFrom-Json -DateKind String | Where-Object name -EQ 'filesystem'
         $s = Get-PortalScreen -Url $Url
         $stats = [regex]::Match($dom, '<span class="pt-mode" id="stats" data-layer="([^"]*)"[^>]*>([^<]*)</span>')
         $stats.Groups[1].Value | Should -Be 'filesystem'
@@ -445,42 +462,42 @@ Describe 'Live portal' {
     }
     It 'a section State PATCH round-trips through New-PortalSnap and back' {
         $null = New-PortalSnap -Url $Url
-        (Send $Url PATCH '/api/nodes/ui:state:designer:kinds' @{ properties = @{ collapsed = $false } }).Status | Should -Be 200
+        (Send $Url PATCH '/api/tenants/default/nodes/ui:state:designer:kinds' @{ properties = @{ collapsed = $false } }).Status | Should -Be 200
         $snap = New-PortalSnap -Url $Url -Note 'kinds open'
         @($snap.diff.changed.nodes) | Should -Be @('ui:state:designer:kinds')
         $onDisk = Get-Content -LiteralPath $snap.path -Raw | ConvertFrom-Json -Depth 64
         ($onDisk.nodes | Where-Object id -EQ 'ui:state:designer:kinds').properties.collapsed | Should -BeFalse
-        (Send $Url PATCH '/api/nodes/ui:state:designer:kinds' @{ properties = @{ collapsed = $true } }).Status | Should -Be 200
+        (Send $Url PATCH '/api/tenants/default/nodes/ui:state:designer:kinds' @{ properties = @{ collapsed = $true } }).Status | Should -Be 200
     }
     It 'refuses a POST with display properties on a plain node (display lives in State and Theme nodes only)' {
-        $r = Send $Url POST '/api/nodes' @{ id = 'ui:w1'; kind = 'Widget'; properties = @{ color = '#ff0000' } }
+        $r = Send $Url POST '/api/tenants/default/nodes' @{ id = 'ui:w1'; kind = 'Widget'; properties = @{ color = '#ff0000' } }
         $r.Status | Should -Be 422
         $r.Body.problems.code | Should -Contain 'display'
-        $r = Send $Url POST '/api/nodes' '{"id":"ui:w1","kind":"Widget","display":{"color":"#ff0000"}}'
+        $r = Send $Url POST '/api/tenants/default/nodes' '{"id":"ui:w1","kind":"Widget","display":{"color":"#ff0000"}}'
         $r.Status | Should -Be 422
         $r.Body.problems.code | Should -Contain 'schema'
-        (Send $Url POST '/api/nodes' @{ id = 'ui:theme:dark'; kind = 'Theme'; properties = @{ color = '#203040'; opacity = 0.2 } }).Status | Should -Be 201
-        $r = Send $Url POST '/api/nodes' @{ id = 'ui:theme:bad'; kind = 'Theme'; properties = @{ opacity = 2 } }
+        (Send $Url POST '/api/tenants/default/nodes' @{ id = 'ui:theme:dark'; kind = 'Theme'; properties = @{ color = '#203040'; opacity = 0.2 } }).Status | Should -Be 201
+        $r = Send $Url POST '/api/tenants/default/nodes' @{ id = 'ui:theme:bad'; kind = 'Theme'; properties = @{ opacity = 2 } }
         $r.Status | Should -Be 422
         $r.Body.problems.code | Should -Contain 'property-type'
     }
     It 'refuses an is-a edge to an unknown Category' {
-        (Send $Url POST '/api/nodes' @{ id = 'ui:w2'; kind = 'Widget' }).Status | Should -Be 201
-        $r = Send $Url POST '/api/edges' @{ kind = 'is-a'; from = 'ui:w2'; to = 'ui:category:Nope' }
+        (Send $Url POST '/api/tenants/default/nodes' @{ id = 'ui:w2'; kind = 'Widget' }).Status | Should -Be 201
+        $r = Send $Url POST '/api/tenants/default/edges' @{ kind = 'is-a'; from = 'ui:w2'; to = 'ui:category:Nope' }
         $r.Status | Should -Be 422
         $r.Body.problems.code | Should -Contain 'unknown-category'
         $r.Body.problems.severity | Should -Contain 'error'
     }
     It 'returns the validated node from every write path' {
-        $n = Send $Url POST '/api/nodes' @{ id = 'ui:w3'; kind = 'Widget'; name = 'w3'; properties = @{ type = 'Table'; source = 'filesystem?kind=File' } }
+        $n = Send $Url POST '/api/tenants/default/nodes' @{ id = 'ui:w3'; kind = 'Widget'; name = 'w3'; properties = @{ type = 'Table'; source = 'filesystem?kind=File' } }
         $n.Status | Should -Be 201
         $n.Body.id | Should -Be 'ui:w3'
-        $e = Send $Url POST '/api/edges' @{ kind = 'contains'; from = 'ui:root'; to = 'ui:w3' }
+        $e = Send $Url POST '/api/tenants/default/edges' @{ kind = 'contains'; from = 'ui:root'; to = 'ui:w3' }
         $e.Body.id | Should -Be 'ui:root|ui:w3|contains'
-        $p = Send $Url PATCH '/api/nodes/ui:w3' @{ state = @{ collapsed = $true } }
+        $p = Send $Url PATCH '/api/tenants/default/nodes/ui:w3' @{ state = @{ collapsed = $true } }
         $p.Body.node.id | Should -Be 'ui:w3'
         $p.Body.state.id | Should -Be 'ui:state:w3'
-        $d = Send $Url DELETE '/api/nodes/ui:w3'
+        $d = Send $Url DELETE '/api/tenants/default/nodes/ui:w3'
         $d.Body.node.id | Should -Be 'ui:w3'
         $d.Body.edges | Should -Contain 'ui:root|ui:w3|contains'
     }
@@ -502,7 +519,7 @@ Describe 'Live portal' {
     }
     It 'an approval after one Theme PATCH reports exactly the Theme node against the snap before it' {
         $a = New-PortalSnap -Url $Url
-        (Send $Url PATCH '/api/nodes/ui:theme:default' @{ properties = @{ opacity = 0.25 } }).Status | Should -Be 200
+        (Send $Url PATCH '/api/tenants/default/nodes/ui:theme:default' @{ properties = @{ opacity = 0.25 } }).Status | Should -Be 200
         $b = New-PortalSnap -Url $Url -Note 'lighter'
         $b.previous | Should -Be $a.stamp
         @($b.diff.changed.nodes) | Should -Be @('ui:theme:default')
@@ -517,7 +534,7 @@ Describe 'Live portal' {
         $err | Should -Not -BeNullOrEmpty
         $codes = @($err.TargetObject.problems.code)
         foreach ($c in 'schema', 'duplicate-node', 'dangling-edge', 'edge-id', 'edgeid', 'kind', 'stamp') { $codes | Should -Contain $c }
-        (Invoke-RestMethod "$Url/api/layers").name | Should -Not -Contain 'bad'
+        (Invoke-RestMethod "$Url/api/tenants/default/layers").name | Should -Not -Contain 'bad'
     }
     It 'Mount-PortalLayer mounts by path and by envelope; the layer ontology is served' {
         $l = Mount-PortalLayer -Name fs2 -Path $FsFixture -Url $Url
@@ -526,7 +543,7 @@ Describe 'Live portal' {
         $inline = Mount-PortalLayer -Name inline -Envelope '{"schema":"graph/1","module":"M","layer":"2026-10-09T00:00:00Z","nodes":[{"id":"a","kind":"K"}],"edges":[]}' -Url $Url
         $inline.counts.nodes | Should -Be 1
         $inline.hasOntology | Should -BeFalse
-        (Invoke-RestMethod "$Url/api/ontology").layers.fs2.kinds.Directory.display.color | Should -Not -BeNullOrEmpty
+        (Invoke-RestMethod "$Url/api/tenants/default/ontology").layers.fs2.kinds.Directory.display.color | Should -Not -BeNullOrEmpty
         # A mount by path is recorded on screen for the next approval; an inline one is not.
         $s = Get-PortalScreen -Url $Url
         $m = $s.nodes | Where-Object id -EQ 'ui:mount:fs2'
@@ -535,11 +552,144 @@ Describe 'Live portal' {
         $s.nodes.id | Should -Not -Contain 'ui:mount:inline'
         $s.nodes.id | Should -Not -Contain 'ui:mount:filesystem'
     }
+    It 'whoami names the token''s principal; without a token the module reads and a write is 401; a bad token is 401 on a read' {
+        $me = (Send $Url GET '/api/tenants/default/auth/whoami').Body
+        $me.name | Should -Be 'pester'
+        $me.writes | Should -BeTrue
+        $saved = $env:PORTAL_TOKEN
+        try {
+            $env:PORTAL_TOKEN = $null
+            (Get-PortalScreen -Url $Url).module | Should -Be 'Portal'
+            $err = $null
+            try { New-PortalSnap -Url $Url -Note 'anonymous' } catch { $err = $_ }
+            $err.TargetObject.code | Should -Be 'unauthorized'
+            $env:PORTAL_TOKEN = 'not-a-token'
+            $err = $null
+            try { Get-PortalScreen -Url $Url } catch { $err = $_ }
+            $err.TargetObject.code | Should -Be 'unauthorized'
+        }
+        finally { $env:PORTAL_TOKEN = $saved }
+    }
+    It 'serves the menu and the config under the tenant, and the shell at a deep link; / goes to the first page' {
+        $menu = (Send $Url GET '/api/tenants/default/menu').Body
+        @($menu.nodes | Where-Object kind -EQ 'Service').name | Should -Be @('Overview', 'Graph', 'Emitters', 'Designer', 'Workflows', 'Environments', 'Compliance', 'Policy', 'Ledger', 'Identity', 'Artifacts', 'Stack', 'Settings')
+        (Send $Url GET '/api/tenants/default/config').Body.product.name | Should -Be 'Portal'
+        $r = Invoke-WebRequest "$Url/" -MaximumRedirection 0 -SkipHttpErrorCheck -ErrorAction SilentlyContinue
+        [int]$r.StatusCode | Should -Be 302
+        [string]$r.Headers['Location'] | Should -Be '/default/overview/summary'
+        (Invoke-WebRequest "$Url/default/settings/service-connections").Content | Should -Match 'src="/static/portal\.js"'
+        [int](Invoke-WebRequest "$Url/other/overview/summary" -SkipHttpErrorCheck).StatusCode | Should -Be 404
+        [int](Invoke-WebRequest "$Url/api/tenants/other/screen" -SkipHttpErrorCheck).StatusCode | Should -Be 404
+    }
+    It 'draws the rail from the tenant''s menu, Settings docked at the foot, and the page''s empty state' {
+        $dom = Get-PageDom $Url '/default/overview/summary'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $top = [regex]::Match($dom, '<ul class="pt-services">(.*?)</ul>\s*<ul class="pt-services pt-docked">(.*?)</ul>\s*</nav>', 'Singleline')
+        $top.Success | Should -BeTrue
+        @([regex]::Matches($top.Groups[1].Value, 'data-service="ui:rail:([^"]+)"') | ForEach-Object { $_.Groups[1].Value }) |
+            Should -Be @('overview', 'graph', 'emitters', 'designer', 'workflows', 'environments', 'compliance', 'policy', 'ledger', 'identity', 'artifacts', 'stack')
+        $top.Groups[2].Value | Should -Match 'data-service="ui:rail:settings"'
+        $dom | Should -Match 'data-page="ui:rail:overview:summary"[^>]*aria-current="page"|aria-current="page"[^>]*data-page="ui:rail:overview:summary"'
+        $dom | Should -Match 'data-kind="portal\.summary"'
+        $dom | Should -Match 'No summary yet'
+        $dom | Should -Match 'data-principal="pester"|data-principal="anonymous"'
+    }
     It 'never writes to a mounted layer' {
         $before = Get-ChildItem $FsFixture -File | ForEach-Object { "$($_.Name) $((Get-FileHash $_.FullName).Hash)" }
-        $null = Invoke-RestMethod "$Url/api/layers/filesystem/nodes?kind=File"
+        $null = Invoke-RestMethod "$Url/api/tenants/default/layers/filesystem/nodes?kind=File"
         $null = New-PortalSnap -Url $Url
         Get-ChildItem $FsFixture -File | ForEach-Object { "$($_.Name) $((Get-FileHash $_.FullName).Hash)" } | Should -Be $before
+    }
+}
+
+Describe 'Tenants and tokens' {
+    It 'tokens.yaml and connections.yaml are gitignored and their examples committed' {
+        foreach ($f in 'tokens', 'connections') {
+            & git -C $Repo check-ignore -q "tenants/default/$f.yaml"
+            $LASTEXITCODE | Should -Be 0 -Because "$f.yaml holds a tenant's own"
+            Join-Path $Repo 'tenants' 'default' "$f.example.yaml" | Should -Exist
+        }
+        Join-Path $Repo 'tenants' 'default' 'portal.yaml' | Should -Exist
+        Join-Path $Repo 'portal.base.yaml' | Should -Exist
+        Join-Path $Repo 'schema' 'portal.schema.json' | Should -Exist
+    }
+    It 'New-PortalToken stores only the SHA-256, returns the token once and refuses a taken name' {
+        $dir = Join-Path $TestDrive 'tok'
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'acme')
+        Set-Content -LiteralPath (Join-Path $dir 'acme' 'portal.yaml') -Value '{}'
+        $t = New-PortalToken -Name ci -Tenant acme -Tenants $dir
+        $t.Token | Should -Match '^[0-9a-f]{64}$'
+        $text = Get-Content -LiteralPath $t.Path -Raw
+        $text | Should -Not -Match $t.Token
+        $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($t.Token))).ToLowerInvariant()
+        $text | Should -Match "sha256: $hash"
+        { New-PortalToken -Name ci -Tenant acme -Tenants $dir } | Should -Throw '*already holds a token named ci*'
+        { New-PortalToken -Name ci -Tenant nope -Tenants $dir } | Should -Throw '*No tenant nope*'
+        (New-PortalToken -Name second -Tenant acme -Tenants $dir).Token | Should -Not -Be $t.Token
+    }
+    It 'a tenant overlay that fails the schema stops the binary, naming the file' {
+        $dir = Join-Path $TestDrive 'badtenant'
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'default')
+        Set-Content -LiteralPath (Join-Path $dir 'default' 'portal.yaml') -Value 'theme: dark'
+        { Start-Portal -Port 18200 -Artifacts (Join-Path $TestDrive 'badtenant-art') -Filesystem '' -Tenants $dir -TimeoutSec 5 } |
+            Should -Throw "*portal.yaml*'theme' not allowed*"
+    }
+}
+
+Describe 'Service connections' {
+    # A fake GitHub on localhost answering GET /user/repos with two repos for the right token, and a tenant of its
+    # own whose github connection points at it, its token in PORTAL_PESTER_GH, which the portal inherits.
+    BeforeAll {
+        $script:FakePort = 18201
+        $script:Fake = Start-ThreadJob -ArgumentList $FakePort -ScriptBlock {
+            param($Port)
+            $l = [System.Net.HttpListener]::new()
+            $l.Prefixes.Add("http://localhost:$Port/")
+            $l.Start()
+            try {
+                while ($l.IsListening) {
+                    $c = $l.GetContext()
+                    if ($c.Request.Url.AbsolutePath -eq '/stop') { $c.Response.Close(); break }
+                    $ok = $c.Request.Url.AbsolutePath -eq '/user/repos' -and $c.Request.Headers['Authorization'] -eq 'Bearer gh-pester'
+                    $body = if ($ok) { '[{"full_name":"octo/one","default_branch":"main","updated_at":"2026-10-01T00:00:00Z"},{"full_name":"octo/two","default_branch":"main","updated_at":"2026-10-02T00:00:00Z"}]' } else { '{"message":"Bad credentials"}' }
+                    $c.Response.StatusCode = if ($ok) { 200 } else { 401 }
+                    $bytes = [Text.Encoding]::UTF8.GetBytes($body)
+                    $c.Response.ContentType = 'application/json'
+                    $c.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+                    $c.Response.Close()
+                }
+            }
+            finally { $l.Close() }
+        }
+        $script:ConnTenants = Join-Path $TestDrive 'conn-tenants'
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $ConnTenants 'default')
+        Copy-Item -LiteralPath (Join-Path $Repo 'tenants' 'default' 'portal.yaml') -Destination (Join-Path $ConnTenants 'default')
+        Set-Content -LiteralPath (Join-Path $ConnTenants 'default' 'connections.yaml') -Value "connections:`n  - { name: github, type: github, url: 'http://localhost:$FakePort', token_env: PORTAL_PESTER_GH }"
+        $script:ConnToken = (New-PortalToken -Name pester -Tenants $ConnTenants).Token
+        $script:SavedGh = $env:PORTAL_PESTER_GH
+        $env:PORTAL_PESTER_GH = 'gh-pester'
+        $script:ConnWork = Join-Path $TestDrive 'conn'
+        $script:ConnPortal = Start-Portal -Port 18200 -Artifacts $ConnWork -Filesystem '' -Tenants $ConnTenants
+    }
+    AfterAll {
+        Stop-Portal -Artifacts $ConnWork
+        $env:PORTAL_PESTER_GH = $SavedGh
+        # The listener blocks in GetContext, so Stop-Job would wait for ever: /stop ends its loop instead.
+        try { $null = Invoke-WebRequest "http://localhost:$FakePort/stop" -TimeoutSec 2 -SkipHttpErrorCheck } catch { }
+        $null = Wait-Job $Fake -Timeout 5
+        Remove-Job $Fake -Force -ErrorAction SilentlyContinue
+    }
+    It 'the repos endpoint needs a token though it is a GET: no token 401, good token 200 with the repositories' {
+        $uri = "$($ConnPortal.Url)/api/tenants/default/connections/github/repos"
+        $anon = Invoke-WebRequest $uri -SkipHttpErrorCheck
+        [int]$anon.StatusCode | Should -Be 401
+        ($anon.Content | ConvertFrom-Json).code | Should -Be 'unauthorized'
+        $good = Invoke-WebRequest $uri -Headers @{ Authorization = "Bearer $ConnToken" } -SkipHttpErrorCheck
+        [int]$good.StatusCode | Should -Be 200 -Because $good.Content
+        $env = $good.Content | ConvertFrom-Json
+        @($env.nodes.id) | Should -Be @('ui:conn:github/octo/one', 'ui:conn:github/octo/two')
+        @($env.nodes.kind | Sort-Object -Unique) | Should -Be @('git.repository')
+        $good.Content | Should -Not -Match 'gh-pester'
     }
 }
 
@@ -549,10 +699,10 @@ Describe 'Boot order' {
         $p = Start-Portal -Port 18200 -Artifacts $BootWork -Filesystem ''
         try {
             $script:First = New-PortalSnap -Url $p.Url -Note 'first'
-            $null = Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/nodes/ui:theme:default" -ContentType 'application/json' -Body '{"properties":{"color":"#336699"}}'
+            $null = Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/tenants/default/nodes/ui:theme:default" -Headers $Auth -ContentType 'application/json' -Body '{"properties":{"color":"#336699"}}'
             $script:Second = New-PortalSnap -Url $p.Url -Note 'second'
             # Not approved: gone after a restart.
-            $null = Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/nodes/ui:theme:default" -ContentType 'application/json' -Body '{"properties":{"color":"#000000"}}'
+            $null = Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/tenants/default/nodes/ui:theme:default" -Headers $Auth -ContentType 'application/json' -Body '{"properties":{"color":"#000000"}}'
         }
         finally { Stop-Portal -Artifacts $BootWork }
     }
@@ -578,7 +728,7 @@ Describe 'Section States on an old snap' {
         $script:OldWork = Join-Path $TestDrive 'old'
         $p = Start-Portal -Port 18200 -Artifacts $OldWork -Filesystem ''
         try {
-            foreach ($sec in $Sections) { $null = Invoke-RestMethod -Method Delete -Uri "$($p.Url)/api/nodes/ui:state:designer:$($sec.Slug)" }
+            foreach ($sec in $Sections) { $null = Invoke-RestMethod -Method Delete -Headers $Auth -Uri "$($p.Url)/api/tenants/default/nodes/ui:state:designer:$($sec.Slug)" }
             $script:Old = New-PortalSnap -Url $p.Url -Note '0.3.0 shape'
         }
         finally { Stop-Portal -Artifacts $OldWork }

@@ -6,7 +6,8 @@
 #                           Invoke-Build Status       (port, URL and boot stamp of the running portal)
 #                           Invoke-Build Down         (stop it)
 #                           Invoke-Build Generate     (regenerate internal/gen from api/openapi.yaml)
-#                           Invoke-Build Screenshot   (docs/screenshots/portal.png)
+#                           Invoke-Build Screenshot   (docs/screenshots/: summary.png, service-connections.png,
+#                                                      explore.png)
 param(
     # Up's port; absent means PORTAL_PORT from .env, else the environment, else 8200. 0 is refused.
     [int] $Port,
@@ -87,11 +88,12 @@ task Down {
     Stop-Portal -Verbose
 }
 
-# The approve-and-reboot loop on a fresh artifacts/smoke over the FileSystem fixture, on port 18200: boot from the seed,
-# add a menu entry through the existing POSTs, approve, change the seed Theme's opacity, approve, restart, and assert the
-# restart booted from the second stamp with that opacity and the menu entry, that the top bar draws the entry (Chrome's
-# --dump-dom; skipped and said so without Chrome), that the Canvas fits its panel after load (the drawn graph wider than
-# half the panel, docs/design.md 29) and that the second approval's diff is exactly the Theme node.
+# The approve-and-reboot loop on a fresh artifacts/smoke over the FileSystem fixture, on port 18200, as tenant default
+# from artifacts/smoke/tenants with one token, "smoke" (New-PortalToken): boot from the seed, check an anonymous write
+# is refused, add a menu entry through the existing POSTs, approve, change the seed Theme's opacity, approve, restart,
+# and assert the restart booted from the second stamp with that opacity and the menu entry, that the shell's rail draws
+# the tenant menu's services (Chrome's --dump-dom; skipped and said so without Chrome), that the Canvas on Graph/Explore
+# fits its panel after load (docs/design.md 29, 36) and that the second approval's diff is exactly the Theme node.
 # Writes artifacts/smoke-report.json.
 task Smoke Build, {
     Import-Module $module -Force
@@ -100,6 +102,15 @@ task Smoke Build, {
     Remove-Item -LiteralPath $artifacts -Recurse -Force -ErrorAction SilentlyContinue
     $report = [ordered]@{ startedAt = [datetime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'); result = 'failed'; checks = [ordered]@{} }
     $p = $null
+    $tenants = Join-Path $artifacts 'tenants'
+    $null = New-Item -ItemType Directory -Force -Path (Join-Path $tenants 'default')
+    Copy-Item -LiteralPath (Join-Path $repo 'tenants' 'default' 'portal.yaml') -Destination (Join-Path $tenants 'default')
+    $savedEnv = @{ PORTAL_TOKEN = $env:PORTAL_TOKEN; PORTAL_TENANT = $env:PORTAL_TENANT; PORTAL_TENANTS = $env:PORTAL_TENANTS }
+    $env:PORTAL_TENANT = $null
+    $env:PORTAL_TENANTS = $tenants
+    $env:PORTAL_TOKEN = (New-PortalToken -Name smoke -Tenants $tenants).Token
+    $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+    $api = '/api/tenants/default'
     try {
         $p = Start-Portal -Port $testPort -Artifacts $artifacts -Filesystem $fixture
         if ($p.Boot -ne 'seed') { throw "a fresh artifacts/smoke booted from $($p.Boot), not seed" }
@@ -109,22 +120,25 @@ task Smoke Build, {
             if ($id -notin $ids) { throw "seed lacks $id" }
         }
         $report.checks.seed = [ordered]@{ boot = $p.Boot; nodes = $screen.nodes.Count; edges = $screen.edges.Count }
-        $layers = Invoke-RestMethod "$($p.Url)/api/layers"
+        $anon = Invoke-WebRequest -Method Post -Uri "$($p.Url)$api/snap" -SkipHttpErrorCheck
+        if ([int]$anon.StatusCode -ne 401) { throw "an anonymous POST /snap answered $([int]$anon.StatusCode), not 401" }
+        $report.checks.auth = [ordered]@{ anonymousWrite = [int]$anon.StatusCode; principal = (Invoke-RestMethod "$($p.Url)$api/auth/whoami" -Headers $auth).name }
+        $layers = Invoke-RestMethod "$($p.Url)$api/layers"
         $layer = $layers | Where-Object name -EQ 'filesystem'
         if (-not $layer -or -not $layer.hasOntology) { throw 'layer filesystem not mounted with its ontology' }
         $report.checks.layer = [ordered]@{ name = $layer.name; nodes = $layer.counts.nodes; hasOntology = $layer.hasOntology }
 
         # A menu entry is a node and two edges through the existing POSTs, as the Designer's form writes it.
         $entry = 'ui:menu:smoke'
-        $null = Invoke-RestMethod -Method Post -Uri "$($p.Url)/api/nodes" -ContentType 'application/json' -Body (@{ id = $entry; kind = 'Container'; name = 'Smoke'; properties = @{ order = 2 } } | ConvertTo-Json -Compress)
-        $null = Invoke-RestMethod -Method Post -Uri "$($p.Url)/api/edges" -ContentType 'application/json' -Body (@{ kind = 'is-a'; from = $entry; to = 'ui:category:Menu' } | ConvertTo-Json -Compress)
-        $null = Invoke-RestMethod -Method Post -Uri "$($p.Url)/api/edges" -ContentType 'application/json' -Body (@{ kind = 'opens'; from = $entry; to = 'ui:designer' } | ConvertTo-Json -Compress)
+        $null = Invoke-RestMethod -Method Post -Headers $auth -Uri "$($p.Url)$api/nodes" -ContentType 'application/json' -Body (@{ id = $entry; kind = 'Container'; name = 'Smoke'; properties = @{ order = 2 } } | ConvertTo-Json -Compress)
+        $null = Invoke-RestMethod -Method Post -Headers $auth -Uri "$($p.Url)$api/edges" -ContentType 'application/json' -Body (@{ kind = 'is-a'; from = $entry; to = 'ui:category:Menu' } | ConvertTo-Json -Compress)
+        $null = Invoke-RestMethod -Method Post -Headers $auth -Uri "$($p.Url)$api/edges" -ContentType 'application/json' -Body (@{ kind = 'opens'; from = $entry; to = 'ui:designer' } | ConvertTo-Json -Compress)
         $report.checks.menu = [ordered]@{ added = $entry; edges = @("$entry|ui:category:Menu|is-a", "$entry|ui:designer|opens") }
 
         $a = New-PortalSnap -Url $p.Url -Note 'smoke: the seed and a menu entry'
         if ($a.PSObject.Properties['previous']) { throw "the first approval has a previous snap: $($a.previous)" }
         $patch = @{ properties = @{ opacity = 0.35 } } | ConvertTo-Json -Compress
-        $null = Invoke-RestMethod -Method Patch -Uri "$($p.Url)/api/nodes/ui:theme:default" -Body $patch -ContentType 'application/json'
+        $null = Invoke-RestMethod -Method Patch -Headers $auth -Uri "$($p.Url)$api/nodes/ui:theme:default" -Body $patch -ContentType 'application/json'
         $b = New-PortalSnap -Url $p.Url -Note 'smoke: lighter glass'
         $report.checks.approvals = @(
             [ordered]@{ stamp = $a.stamp; note = $a.note }
@@ -147,7 +161,8 @@ task Smoke Build, {
         $d = Compare-PortalSnap $a $b -Url $p.Url
         if (@($d.changed.nodes).Count -ne 1 -or $d.changed.nodes[0].id -ne 'ui:theme:default') { throw 'GET /api/diff disagrees with the approval' }
         foreach ($id in $report.checks.menu.edges) { if ($id -notin @($after.edges.id)) { throw "the restart lacks the menu edge $id" } }
-        $report.checks.menu.restart = Test-TopBarMenu -Url $p.Url -Entries @('ui:menu:graph', 'ui:menu:runs', $entry)
+        $services = @((Invoke-RestMethod "$($p.Url)$api/menu").nodes | Where-Object kind -EQ 'Service' | ForEach-Object id)
+        $report.checks.rail = Test-Rail -Url $p.Url -Services $services
         $report.checks.canvasFit = Test-CanvasFit -Url $p.Url
 
         $report.result = 'passed'
@@ -159,6 +174,7 @@ task Smoke Build, {
     }
     finally {
         if ($p) { Stop-Portal -Artifacts $artifacts }
+        foreach ($k in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($k, $savedEnv[$k]) }
         $report.finishedAt = [datetime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
         $null = New-Item -ItemType Directory -Force -Path (Join-Path $repo 'artifacts')
         $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $repo 'artifacts' 'smoke-report.json') -Encoding utf8NoBOM
@@ -170,9 +186,11 @@ task Pester Build, {
     if ($LASTEXITCODE -ne 0) { throw "Pester failed: $LASTEXITCODE test(s)" }
 }
 
-# A headless capture of the dev seed over the newest FileSystem layer (the fixture when the sibling has none) and, when
-# Claude.Agent has one, its newest agent-runs layer (docs/design.md 35), with reduced motion. Also prints how many Canvas
-# nodes took a colour from the layer ontology (data-coloured).
+# Headless captures of the shell at 1400x900 with reduced motion, over the newest FileSystem layer (the fixture when the
+# sibling has none) and, when Claude.Agent has one, its newest agent-runs layer (docs/design.md 35): Overview/Summary,
+# Settings/Service connections (the tenant holds connections.example.yaml's github connection) and Graph/Explore. The
+# tenant is a temporary copy of tenants/default, so the repo's own tokens.yaml and connections.yaml are never read.
+# Also prints how many Canvas nodes took a colour from the layer ontology (data-coloured).
 task Screenshot Build, {
     $browser = Find-HeadlessBrowser
     if (-not $browser) { print Yellow 'Screenshot skipped: neither msedge nor chrome found.'; return }
@@ -182,24 +200,34 @@ task Screenshot Build, {
     if (-not (Test-Path -LiteralPath $fs)) { $fs = Join-Path $repo 'tests' 'fixtures' 'layers' 'filesystem' }
     $outDir = Join-Path $repo 'docs' 'screenshots'
     $null = New-Item -ItemType Directory -Force -Path $outDir, $work
-    $png = Join-Path $outDir 'portal.png'
+    $tenants = Join-Path $work 'tenants'
+    $null = New-Item -ItemType Directory -Force -Path (Join-Path $tenants 'default')
+    Copy-Item -LiteralPath (Join-Path $repo 'tenants' 'default' 'portal.yaml') -Destination (Join-Path $tenants 'default')
+    Copy-Item -LiteralPath (Join-Path $repo 'tenants' 'default' 'connections.example.yaml') -Destination (Join-Path $tenants 'default' 'connections.yaml')
     try {
         $runs = 'C:\__Code\Claude.Agent\artifacts\layers'
         $mount = if (Test-Path -LiteralPath $runs) { @{ 'agent-runs' = $runs } } else { @{} }
-        $p = Start-Portal -Port $testPort -Artifacts (Join-Path $work 'artifacts') -Filesystem $fs -Mount $mount
+        $p = Start-Portal -Port $testPort -Artifacts (Join-Path $work 'artifacts') -Filesystem $fs -Mount $mount -Tenant default -Tenants $tenants
         $common = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--force-prefers-reduced-motion', '--virtual-time-budget=8000')
-        Remove-Item -LiteralPath $png -ErrorAction SilentlyContinue
-        $null = Start-Process -FilePath $browser -ArgumentList ($common + @("--screenshot=$png", '--window-size=1400,900', '--hide-scrollbars', "$($p.Url)/")) -Wait -NoNewWindow -PassThru `
-            -RedirectStandardError (Join-Path $work 'b.err') -RedirectStandardOutput (Join-Path $work 'b.out')
-        if (-not (Test-Path -LiteralPath $png)) { throw "Screenshot: $png not written; see $work" }
+        foreach ($shot in @(
+                @{ Name = 'summary.png'; Route = '/default/overview/summary' }
+                @{ Name = 'service-connections.png'; Route = '/default/settings/service-connections' }
+                @{ Name = 'explore.png'; Route = '/default/graph/explore' })) {
+            $png = Join-Path $outDir $shot.Name
+            Remove-Item -LiteralPath $png -ErrorAction SilentlyContinue
+            $null = Start-Process -FilePath $browser -ArgumentList ($common + @("--screenshot=$png", '--window-size=1400,900', '--hide-scrollbars', "$($p.Url)$($shot.Route)")) -Wait -NoNewWindow -PassThru `
+                -RedirectStandardError (Join-Path $work 'b.err') -RedirectStandardOutput (Join-Path $work 'b.out')
+            if (-not (Test-Path -LiteralPath $png)) { throw "Screenshot: $png not written; see $work" }
+            print Green "captured $png"
+        }
         # Edge's new headless mode prints no --dump-dom output on Windows; Chrome's does.
         $domBrowser = @(Find-HeadlessBrowser -Prefer chrome)[0]
         $dom = Join-Path $work 'dom.html'
-        $null = Start-Process -FilePath $domBrowser -ArgumentList ($common + @('--dump-dom', "$($p.Url)/")) -Wait -NoNewWindow -PassThru `
+        $null = Start-Process -FilePath $domBrowser -ArgumentList ($common + @('--dump-dom', "$($p.Url)/default/graph/explore")) -Wait -NoNewWindow -PassThru `
             -RedirectStandardOutput $dom -RedirectStandardError (Join-Path $work 'd.err')
         $text = Get-Content -LiteralPath $dom -Raw -ErrorAction SilentlyContinue
         $coloured = if ($text) { [regex]::Match($text, 'data-coloured="([^"]*)"').Groups[1].Value } else { 'unknown (the browser printed no DOM)' }
-        print Green "captured $png; canvas coloured from ontology: $coloured"
+        print Green "canvas coloured from ontology: $coloured"
     }
     finally {
         Stop-Portal -Artifacts (Join-Path $work 'artifacts')
@@ -207,31 +235,33 @@ task Screenshot Build, {
     }
 }
 
-# Loads the page in headless Chrome (--dump-dom; Edge's new headless prints none on Windows) and throws unless the top
-# bar draws exactly -Entries, in that order. Returns what it saw, or that it skipped and why when there is no Chrome.
-function Test-TopBarMenu {
-    param([Parameter(Mandatory)] [string] $Url, [Parameter(Mandatory)] [string[]] $Entries)
+# Loads Overview/Summary in headless Chrome (--dump-dom; Edge's new headless prints none on Windows) and throws unless
+# the rail draws exactly -Services (the menu's Service ids), in that order. Returns what it saw, or that it skipped and
+# why when there is no Chrome.
+function Test-Rail {
+    param([Parameter(Mandatory)] [string] $Url, [Parameter(Mandatory)] [string[]] $Services)
     $chrome = @(Find-HeadlessBrowser -Prefer chrome) | Where-Object { $_ -match 'chrome' } | Select-Object -First 1
-    if (-not $chrome) { return [ordered]@{ topBar = 'skipped: no Chrome for --dump-dom' } }
-    $work = Join-Path ([IO.Path]::GetTempPath()) "Portal-menu-$([guid]::NewGuid())"
+    if (-not $chrome) { return [ordered]@{ rail = 'skipped: no Chrome for --dump-dom' } }
+    $work = Join-Path ([IO.Path]::GetTempPath()) "Portal-rail-$([guid]::NewGuid())"
     $null = New-Item -ItemType Directory -Force -Path $work
     try {
         $dom = Join-Path $work 'dom.html'
-        $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--virtual-time-budget=8000', '--dump-dom', "$Url/")
+        $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--virtual-time-budget=8000', '--dump-dom', "$Url/default/overview/summary")
         $null = Start-Process -FilePath $chrome -ArgumentList $argv -Wait -NoNewWindow -PassThru `
             -RedirectStandardOutput $dom -RedirectStandardError (Join-Path $work 'd.err')
         $text = [string](Get-Content -LiteralPath $dom -Raw -ErrorAction SilentlyContinue)
-        $bar = [regex]::Match($text, '<nav[^>]*id="menu"[^>]*>(.*?)</nav>', 'Singleline').Groups[1].Value
-        $seen = @([regex]::Matches($bar, 'data-entry="([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
-        if (($seen -join ',') -ne ($Entries -join ',')) { throw "the top bar draws [$($seen -join ', ')], not [$($Entries -join ', ')]" }
-        [ordered]@{ topBar = $seen }
+        $rail = [regex]::Match($text, '<nav[^>]*id="rail"[^>]*>(.*?)</nav>', 'Singleline').Groups[1].Value
+        $seen = @([regex]::Matches($rail, 'data-service="([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+        if (($seen -join ',') -ne ($Services -join ',')) { throw "the rail draws [$($seen -join ', ')], not [$($Services -join ', ')]" }
+        [ordered]@{ rail = $seen }
     }
     finally { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-# Loads the page in headless Chrome at 1400x900 and throws unless the Canvas's drawn graph (Cytoscape's rendered bounding
-# box, which canvas.js records as data-fit="<graph>/<panel>" after each fit) is wider than half its panel. Returns the
-# numbers, or that it skipped and why when there is no Chrome (docs/design.md 29).
+# Loads Graph/Explore in headless Chrome at 1400x900 and throws unless the Canvas's drawn graph (Cytoscape's rendered
+# bounding box, which canvas.js records as data-fit="<graph>/<panel>" for width and data-fit-height for height after each
+# fit) fills more than half its panel one way: a page-wide panel is fitted by its height (docs/design.md 29, 36). Returns
+# the numbers, or that it skipped and why when there is no Chrome.
 function Test-CanvasFit {
     param([Parameter(Mandatory)] [string] $Url)
     $chrome = @(Find-HeadlessBrowser -Prefer chrome) | Where-Object { $_ -match 'chrome' } | Select-Object -First 1
@@ -240,15 +270,17 @@ function Test-CanvasFit {
     $null = New-Item -ItemType Directory -Force -Path $work
     try {
         $dom = Join-Path $work 'dom.html'
-        $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--virtual-time-budget=8000', '--window-size=1400,900', '--dump-dom', "$Url/")
+        $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--virtual-time-budget=8000', '--window-size=1400,900', '--dump-dom', "$Url/default/graph/explore")
         $null = Start-Process -FilePath $chrome -ArgumentList $argv -Wait -NoNewWindow -PassThru `
             -RedirectStandardOutput $dom -RedirectStandardError (Join-Path $work 'd.err')
         $text = [string](Get-Content -LiteralPath $dom -Raw -ErrorAction SilentlyContinue)
         $m = [regex]::Match($text, 'data-fit="(\d+)/(\d+)"')
-        if (-not $m.Success) { throw 'the Canvas recorded no fit (data-fit): it never had a size' }
+        $mh = [regex]::Match($text, 'data-fit-height="(\d+)/(\d+)"')
+        if (-not $m.Success -or -not $mh.Success) { throw 'the Canvas recorded no fit (data-fit): it never had a size' }
         $graph, $panel = [int]$m.Groups[1].Value, [int]$m.Groups[2].Value
-        if ($graph -le $panel / 2) { throw "the Canvas draws its graph $graph px wide in a $panel px panel: not above half" }
-        [ordered]@{ graphWidth = $graph; panelWidth = $panel; ratio = [math]::Round($graph / $panel, 3) }
+        $graphH, $panelH = [int]$mh.Groups[1].Value, [int]$mh.Groups[2].Value
+        if ($graph -le $panel / 2 -and $graphH -le $panelH / 2) { throw "the Canvas draws its graph $graph x $graphH px in a $panel x $panelH px panel: not above half either way" }
+        [ordered]@{ graphWidth = $graph; panelWidth = $panel; graphHeight = $graphH; panelHeight = $panelH; ratio = [math]::Round([math]::Max($graph / $panel, $graphH / $panelH), 3) }
     }
     finally { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
 }

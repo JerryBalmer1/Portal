@@ -1,336 +1,523 @@
-// The portal page. It has no UI model of its own: it fetches the screen graph
-// (GET /api/screen), draws Containers recursively from the root by their
-// contains edges and Layout, and mounts each Widget (and any Container that
-// is-a a Category with a renderer) by its Category. A Category without a
-// renderer of its own uses the one it is-a, so a new panel type is a Category
-// node and an is-a edge, never new code (docs/design.md 1). The top bar's
-// menu is nodes too: every Container that is-a the Category named Menu, each
-// showing what its opens edge points at (docs/design.md 25). The top bar's
-// stats are the open view's data layer: its counts and stamp from
-// GET /api/layers, the screen graph's own in a badge beside (docs/design.md 33).
-import { createClient, parseSource } from '/static/client.js';
-import * as canvas from '/static/canvas.js';
-import * as table from '/static/table.js';
-import * as detail from '/static/detail.js';
-import * as designer from '/static/designer.js';
+// The shell. A top banner (product, breadcrumb, search, marker, help,
+// avatar), a left rail of services whose pages open in place, and a main
+// pane (title, toolbar, content). Everything it draws comes from the API:
+// the rail from GET /api/tenants/{tenant}/menu (an envelope of Service and
+// Page nodes built from the tenant's config, icons in their States), the
+// product name and help from .../config, the avatar from .../auth/whoami,
+// and each page from its Page node: a table of nodes of its Kind, a screen
+// node drawn by screen.js, or the service connections (docs/design.md 36).
+// The route is the URL, /<tenant>/<service>/<page>[/<id>], so a deep link
+// survives a refresh. Which service is expanded, whether the rail is
+// collapsed and what the search box holds are the viewer's pointers, like a
+// Canvas selection (docs/design.md 11): never written.
+import { createClient, getToken, setToken } from '/static/client.js';
+import * as screenView from '/static/screen.js';
+import * as nodes from '/static/nodes.js';
+import * as connections from '/static/connections.js';
+import { icon } from '/static/icons.js';
 
-// The base Categories: the only names bound to code.
-const RENDERERS = { Canvas: canvas, Table: table, Detail: detail, Designer: designer };
-// The one name the top bar looks for.
-const MENU = 'Menu';
+// Page renderers by a Page's view; screen is drawn by screen.js.
+const VIEWS = { table: nodes, connections };
 
-const client = createClient();
+const tenant = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || 'default');
+const client = createClient(tenant);
 const bus = new EventTarget();
-const screenEl = document.getElementById('screen');
-const statsEl = document.getElementById('stats');
-const screenStatsEl = document.getElementById('screen-stats');
-const menuEl = document.getElementById('menu');
-let mounted = [];
-// The node the viewer last chose in the top bar: a pointer, like a Canvas
-// selection, never written. Until a choice, the first menu entry's.
-let opened = null;
+const $ = (id) => document.getElementById(id);
+const ui = {
+  brand: $('brand'), crumbs: $('crumbs'), search: $('search'), marker: $('marker'), help: $('help'), avatar: $('avatar'),
+  account: $('account'), rail: $('rail'), flyout: $('flyout'), title: $('title'), toolbar: $('toolbar'), content: $('content'),
+};
 
-// index builds the lookups the page draws from.
-export function index(screen) {
-  const nodes = new Map(screen.nodes.map((n) => [n.id, n]));
-  const out = new Map();
-  const inbound = new Set();
-  for (const e of screen.edges) {
-    if (!out.has(e.from)) out.set(e.from, []);
-    out.get(e.from).push(e);
-    if (e.kind === 'contains') inbound.add(e.to);
-  }
-  const targets = (id, kind) => (out.get(id) || []).filter((e) => e.kind === kind).map((e) => nodes.get(e.to)).filter(Boolean);
-  const order = (n) => (n.properties && Number.isFinite(Number(n.properties.order)) ? Number(n.properties.order) : 0);
-  return {
-    nodes,
-    targets,
-    children: (id) => targets(id, 'contains').sort((a, b) => order(a) - order(b) || a.id.localeCompare(b.id)),
-    layout: (id) => targets(id, 'laid-out-by')[0] || null,
-    // state is the node's own State, ui:state:<id without ui:>. A node may
-    // hold more (the Designer's per section, ui:state:designer:<slug>), so
-    // the first has-state edge is the fallback only for an id of another
-    // shape, never a section's (docs/design.md 28).
-    state(id) {
-      const own = `ui:state:${id.replace(/^ui:/, '')}`;
-      const all = targets(id, 'has-state');
-      return (all.find((s) => s.id === own) || all.find((s) => !s.id.startsWith(`${own}:`)) || {}).properties || {};
-    },
-    theme: (id) => (targets(id, 'themed-by')[0] || {}).properties || null,
-    category: (id) => targets(id, 'is-a')[0] || null,
-    // menu is the top bar: the Containers that is-a Menu, by order, each
-    // with the node its opens edge shows (null when that is gone).
-    menu() {
-      const cat = screen.nodes.find((n) => n.kind === 'Category' && n.name === MENU);
-      if (!cat) return [];
-      return screen.edges
-        .filter((e) => e.kind === 'is-a' && e.to === cat.id && nodes.get(e.from)?.kind === 'Container')
-        .map((e) => nodes.get(e.from))
-        .sort((a, b) => order(a) - order(b) || a.id.localeCompare(b.id))
-        .map((entry) => ({ entry, opens: targets(entry.id, 'opens')[0] || null }));
-    },
-    isRenderer: (name) => Object.hasOwn(RENDERERS, name),
-    isMenuEntry(id) {
-      return (out.get(id) || []).some((e) => e.kind === 'is-a' && nodes.get(e.to)?.name === MENU);
-    },
-    // base walks is-a from a node until a Category bound to a renderer.
-    base(id) {
-      const seen = new Set();
-      let cat = this.category(id);
-      while (cat && !seen.has(cat.id)) {
-        if (RENDERERS[cat.name]) return cat.name;
-        seen.add(cat.id);
-        cat = this.category(cat.id);
-      }
-      return null;
-    },
-    root() {
-      if (screen.root && nodes.get(screen.root)?.kind === 'Container') return nodes.get(screen.root);
-      return screen.nodes.find((n) => n.kind === 'Container' && !inbound.has(n.id) && !this.isMenuEntry(n.id)) || null;
-    },
-  };
+let config = null;
+let menu = null;
+let who = null;
+let expanded = null;
+let routeService = null;
+let current = null;
+
+const byOrder = (a, b) => (Number(a.properties?.order) || 0) - (Number(b.properties?.order) || 0) || a.id.localeCompare(b.id);
+
+// railModel reads the menu envelope: Services by order, each Page's
+// children (has-page) by order, and each entry's icon from its State.
+export function railModel(env) {
+  const all = new Map(env.nodes.map((n) => [n.id, n]));
+  const out = (id, kind) => env.edges.filter((e) => e.kind === kind && e.from === id).map((e) => all.get(e.to)).filter(Boolean);
+  const kids = (id) => out(id, 'has-page').sort(byOrder);
+  const iconOf = (id) => out(id, 'has-state')[0]?.properties?.icon;
+  const services = env.nodes.filter((n) => n.kind === 'Service').sort(byOrder);
+  const pages = new Map(env.nodes.filter((n) => n.kind === 'Page').map((n) => [n.properties.path, n]));
+  return { services, pages, kids, iconOf };
 }
 
-async function refresh() {
+function route() {
+  const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  return { service: parts[1] || '', page: parts[2] || '', id: parts[3] || null, tab: new URLSearchParams(location.search).get('tab') };
+}
+
+function href(path, id) {
+  return `/${encodeURIComponent(tenant)}/${path}${id ? `/${encodeURIComponent(id)}` : ''}`;
+}
+
+function navigate(to) {
+  if (to === location.pathname + location.search) return;
+  history.pushState(null, '', to);
+  render();
+}
+
+// link is an <a> that routes inside the shell on a plain click.
+function link(to, text, cls) {
+  const a = document.createElement('a');
+  a.href = to;
+  if (cls) a.className = cls;
+  if (text !== undefined) a.append(text);
+  a.addEventListener('click', (ev) => {
+    if (ev.defaultPrevented || ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button !== 0) return;
+    ev.preventDefault();
+    hideFlyout();
+    navigate(a.getAttribute('href'));
+  });
+  return a;
+}
+
+async function boot() {
   try {
-    const [screen, ontology, layers] = await Promise.all([client.getScreen(), client.getOntology(), client.listLayers()]);
-    draw(screen, ontology, layers);
+    [config, menu] = await Promise.all([client.getConfig(), client.getMenu().then(railModel)]);
   } catch (err) {
-    showError(screenEl, err);
-  }
-}
-
-function draw(screen, ontology, layers) {
-  for (const m of mounted) if (m.mod.destroy) m.mod.destroy(m.handle);
-  mounted = [];
-  screenEl.replaceChildren();
-  screenStatsEl.textContent = `screen ${screen.nodes.length} · ${screen.edges.length} · ${screen.layer}`;
-  screenStatsEl.title = 'the screen graph: nodes, edges, stamp';
-  const ix = index(screen);
-  const ctx = { client, bus, screen, ontology, layers, ix, refresh };
-  drawMenu(ctx);
-  drawStats(ctx);
-  const root = ix.root();
-  if (!root) {
-    const p = document.createElement('p');
-    p.className = 'pt-empty';
-    p.textContent = 'The screen graph is empty: POST a Container to /api/nodes.';
-    screenEl.appendChild(p);
+    ui.title.textContent = 'The portal could not load';
+    ui.content.replaceChildren(errorCard(err));
     return;
   }
-  const el = drawContainer(ctx, root, null, true);
-  if (el) screenEl.appendChild(el);
-}
-
-// drawMenu fills the top bar from the graph: one button per menu entry.
-// Choosing one shows what it opens: expanded (a State write, as the collapse
-// toggle does) and scrolled into view. Which entry was chosen is a viewer's
-// pointer, like a Canvas selection, and is not written.
-function drawMenu(ctx) {
-  menuEl.replaceChildren();
-  for (const { entry, opens } of ctx.ix.menu()) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'gr-btn pt-menu-entry';
-    b.dataset.entry = entry.id;
-    b.textContent = entry.name || entry.id;
-    if (!opens) {
-      b.disabled = true;
-      b.title = `${entry.id} has no opens edge`;
-    } else {
-      b.dataset.opens = opens.id;
-      b.title = `opens ${opens.name || opens.id}`;
-      b.addEventListener('click', () => show(ctx, opens.id));
-    }
-    menuEl.appendChild(b);
+  ui.brand.replaceChildren(link(href(firstPage(null)), config.product.name, 'pt-brand-link'));
+  if (config.product.help) {
+    ui.help.href = config.product.help;
+    ui.help.replaceChildren(icon('help', 16), document.createTextNode('Help'));
+    ui.help.hidden = false;
   }
+  await whoami();
+  wireBanner();
+  wireRail();
+  window.addEventListener('popstate', render);
+  render();
 }
 
-// sourceLayer is the layer a node draws: a Widget's source, else the first
-// source among what a Container holds, depth first in drawing order.
-export function sourceLayer(ix, node, seen = new Set()) {
-  if (!node || seen.has(node.id)) return null;
-  seen.add(node.id);
-  const src = node.properties && node.properties.source;
-  if (src) return parseSource(src).layer;
-  for (const k of ix.children(node.id).filter(visible)) {
-    const l = sourceLayer(ix, k, seen);
-    if (l) return l;
+// whoami reads the principal; a token the portal refuses is dropped, so the
+// viewer is never stuck behind a stale one.
+async function whoami() {
+  try {
+    who = await client.getWhoami();
+  } catch (err) {
+    if (err.code === 'unauthorized' && getToken()) {
+      setToken('');
+      who = await client.getWhoami().catch(() => null);
+      return err;
+    }
+    who = null;
   }
   return null;
 }
 
-// drawStats shows the open view's layer: what the chosen menu entry opens,
-// else the first entry's, else the root's. Its counts and stamp are the
-// layer's whole envelope, as GET /api/layers reports it.
-function drawStats(ctx) {
-  const { ix } = ctx;
-  const first = ix.menu().find((m) => m.opens);
-  const node = (opened && ix.nodes.get(opened)) || (first && first.opens) || ix.root();
-  const name = sourceLayer(ix, node);
-  const layer = name && ctx.layers.find((l) => l.name === name);
-  statsEl.dataset.layer = name || '';
-  if (layer) {
-    statsEl.textContent = `${name} · ${layer.counts.nodes} nodes · ${layer.counts.edges} edges · ${layer.stamp}`;
-    statsEl.title = `layer ${name}${layer.path ? ` from ${layer.path}` : ''}`;
-  } else {
-    statsEl.textContent = name ? `${name} · not mounted` : 'no layer';
-    statsEl.title = name ? `no layer ${name} is mounted (GET /api/layers)` : `${node ? node.id : 'the screen'} draws no layer`;
-  }
+function firstPage(service) {
+  const svc = service || menu.services.find((s) => s.properties.dock !== 'bottom') || menu.services[0];
+  const page = svc && menu.kids(svc.id)[0];
+  return page ? page.properties.path : '';
 }
 
-async function show(ctx, id) {
-  opened = id;
-  drawStats(ctx);
-  try {
-    if (ctx.ix.state(id).collapsed) {
-      await ctx.client.patchNode(id, { state: { collapsed: false } });
-      await refresh();
+function render() {
+  const r = route();
+  const svc = menu.services.find((s) => s.properties.path === r.service) || null;
+  // A move to another service expands it; staying keeps what the viewer chose.
+  if (svc && svc.id !== routeService) {
+    routeService = svc.id;
+    expanded = svc.id;
+  }
+  const page = menu.pages.get(`${r.service}/${r.page}`) || null;
+  document.documentElement.dataset.route = `${r.service}/${r.page}${r.id ? '/*' : ''}`;
+  drawRail(r);
+  drawCrumbs(svc, page, r);
+  ui.search.value = '';
+  drawPage(svc, page, r);
+}
+
+// ---- banner ----
+
+function drawCrumbs(svc, page, r) {
+  const parts = [[href(firstPage(null)), tenant]];
+  if (svc) parts.push([href(firstPage(svc)), svc.name]);
+  if (page) parts.push([href(page.properties.path), page.name]);
+  if (r.id) parts.push([href(page ? page.properties.path : `${r.service}/${r.page}`, r.id), r.id]);
+  ui.crumbs.replaceChildren();
+  parts.forEach(([to, text], i) => {
+    const li = document.createElement('li');
+    if (i === parts.length - 1) {
+      const s = document.createElement('span');
+      s.textContent = text;
+      s.setAttribute('aria-current', 'page');
+      li.appendChild(s);
+    } else {
+      li.appendChild(link(to, text));
     }
-  } catch (err) {
-    showError(screenEl, err);
-    return;
-  }
-  const el = screenEl.querySelector(`[data-id="${CSS.escape(id)}"]`);
-  if (!el) return;
-  el.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-  el.classList.remove('pt-opened');
-  void el.offsetWidth;
-  el.classList.add('pt-opened');
+    ui.crumbs.appendChild(li);
+  });
+  document.title = `${page ? page.name : 'Not found'} · ${config.product.name}`;
 }
 
-function visible(n) {
-  return !(n.properties && n.properties.visible === false);
-}
-
-function drawContainer(ctx, c, parentMode, isRoot) {
-  if (!visible(c)) return null;
-  const { ix } = ctx;
-  const layout = ix.layout(c.id);
-  const mode = (layout && layout.properties && layout.properties.mode) || 'flow';
-  const state = ix.state(c.id);
-  let box;
-  let body;
-  if (isRoot) {
-    box = document.createElement('div');
-    box.className = 'pt-container pt-root';
-    body = box;
-  } else {
-    ({ box, body } = chrome(ctx, c));
-    box.classList.add('pt-container');
-    if (state.collapsed) box.classList.add('pt-collapsed');
-    place(box, c, parentMode);
-  }
-  box.dataset.id = c.id;
-  applyTheme(box, ix.theme(c.id));
-  const base = ix.base(c.id);
-  if (base) mountRenderer(ctx, base, c, body);
-  const kids = ix.children(c.id).filter(visible);
-  if (kids.length) {
-    const inner = document.createElement('div');
-    inner.className = `pt-${mode}`;
-    if (mode === 'grid') {
-      const cols = Number(layout.properties.columns) || 12;
-      inner.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-    }
-    for (const k of kids) {
-      const el = k.kind === 'Container' ? drawContainer(ctx, k, mode, false) : drawWidget(ctx, k, mode);
-      if (el) inner.appendChild(el);
-    }
-    body.appendChild(inner);
-  }
-  return box;
-}
-
-function drawWidget(ctx, w, mode) {
-  const { box, body } = chrome(ctx, w);
-  box.classList.add('pt-widget');
-  box.dataset.id = w.id;
-  if (ctx.ix.state(w.id).collapsed) box.classList.add('pt-collapsed');
-  place(box, w, mode);
-  const base = ctx.ix.base(w.id);
-  if (!base) {
-    const cat = ctx.ix.category(w.id);
-    showError(body, { code: 'no-renderer', message: cat ? `Category ${cat.name} is-a no base Category (${Object.keys(RENDERERS).join(', ')})` : `${w.id} has no is-a edge to a Category` });
-  } else {
-    mountRenderer(ctx, base, w, body);
-  }
-  return box;
-}
-
-// chrome is the glass box with a head: title, Category, collapse toggle.
-// Collapsing writes the node's State through PATCH; display never lives on
-// the node itself.
-function chrome(ctx, n) {
-  const box = document.createElement('div');
-  box.className = 'gr-box';
-  const head = document.createElement('div');
-  head.className = 'gr-box-head';
-  const title = document.createElement('span');
-  title.className = 'gr-box-title';
-  title.textContent = n.name || n.id;
-  const cat = ctx.ix.category(n.id);
+function drawWho() {
+  const name = who ? who.name : 'anonymous';
+  ui.marker.replaceChildren(icon('marker', 14), document.createTextNode(` marker: ${who && who.marker ? who.marker : 'none'}`));
+  ui.marker.title = 'Who holds the tenant\'s marker';
+  const initials = name.split(/[\s._-]+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
   const badge = document.createElement('span');
-  badge.className = 'pt-badge';
-  badge.textContent = cat ? cat.name : n.kind;
-  const toggle = document.createElement('button');
-  toggle.className = 'gr-btn';
-  const collapsed = !!ctx.ix.state(n.id).collapsed;
-  toggle.textContent = collapsed ? 'expand' : 'collapse';
-  toggle.addEventListener('click', async () => {
-    try {
-      await ctx.client.patchNode(n.id, { state: { collapsed: !collapsed } });
-      await ctx.refresh();
-    } catch (err) {
-      showError(body, err);
+  badge.className = `pt-initials${who && !who.anonymous ? ' pt-signed-in' : ''}`;
+  badge.textContent = initials;
+  const label = document.createElement('span');
+  label.className = 'pt-avatar-name';
+  label.textContent = name;
+  ui.avatar.replaceChildren(badge, label);
+  ui.avatar.dataset.principal = name;
+  ui.avatar.title = who && who.writes ? `${name}: may write` : 'anonymous: reads only. Click to give a token.';
+}
+
+function wireBanner() {
+  drawWho();
+  ui.search.addEventListener('input', () => bus.dispatchEvent(new CustomEvent('search', { detail: ui.search.value })));
+  ui.avatar.addEventListener('click', () => {
+    if (ui.account.hidden) drawAccount();
+    ui.account.hidden = !ui.account.hidden;
+    ui.avatar.setAttribute('aria-expanded', String(!ui.account.hidden));
+    if (!ui.account.hidden) ui.account.querySelector('input, button')?.focus();
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !ui.account.hidden) {
+      ui.account.hidden = true;
+      ui.avatar.setAttribute('aria-expanded', 'false');
+      ui.avatar.focus();
     }
   });
-  head.append(title, badge, toggle);
-  const body = document.createElement('div');
-  body.className = 'gr-box-body';
-  box.append(head, body);
-  return { box, body, head };
 }
 
-// applyTheme sets a Container's Theme as the stylesheet's tokens on its box,
-// so it reaches everything inside that has no Theme of its own: color is the
-// accent, opacity the glass surface, font the font-family.
-function applyTheme(el, t) {
-  if (!t) return;
-  if (t.color) el.style.setProperty('--gr-accent', t.color);
-  if (Number.isFinite(Number(t.opacity))) el.style.setProperty('--gr-surface', `rgba(255,255,255,${Number(t.opacity)})`);
-  if (t.font) el.style.fontFamily = t.font;
-}
-
-// place applies bounds: grid cells under grid, pixels under canvas.
-function place(el, n, mode) {
-  const b = n.properties && n.properties.bounds;
-  if (!b) return;
-  if (mode === 'grid') {
-    el.style.gridColumn = `${b.x + 1} / span ${b.w}`;
-    el.style.gridRow = `${b.y + 1} / span ${b.h}`;
-  } else if (mode === 'canvas') {
-    Object.assign(el.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` });
+// drawAccount fills the avatar's panel: give a token to write, or drop it.
+function drawAccount() {
+  ui.account.replaceChildren();
+  const p = document.createElement('p');
+  const status = document.createElement('p');
+  status.className = 'pt-status';
+  status.setAttribute('aria-live', 'polite');
+  const done = async () => {
+    const refused = await whoami();
+    drawWho();
+    drawAccount();
+    if (refused) ui.account.querySelector('.pt-status').textContent = `${refused.code}: ${refused.message}`;
+    render();
+  };
+  if (who && !who.anonymous) {
+    p.textContent = `Signed in as ${who.name}. Writes are allowed.`;
+    const out = document.createElement('button');
+    out.type = 'button';
+    out.className = 'gr-btn';
+    out.textContent = 'Sign out';
+    out.addEventListener('click', () => { setToken(''); done(); });
+    ui.account.append(p, out, status);
+    return;
   }
+  p.textContent = 'Reading as anonymous. Give a token from this tenant\'s tokens.yaml to write.';
+  const f = document.createElement('form');
+  f.className = 'pt-token-form';
+  const input = document.createElement('input');
+  input.type = 'password';
+  input.name = 'token';
+  input.autocomplete = 'off';
+  input.className = 'gr-input';
+  input.setAttribute('aria-label', 'bearer token');
+  input.placeholder = 'bearer token';
+  const go = document.createElement('button');
+  go.type = 'submit';
+  go.className = 'gr-btn';
+  go.textContent = 'Sign in';
+  f.append(input, go);
+  f.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    setToken(input.value.trim());
+    done();
+  });
+  ui.account.append(p, f, status);
 }
 
-function mountRenderer(ctx, base, node, el) {
-  const mod = RENDERERS[base];
-  const host = document.createElement('div');
-  host.className = 'pt-host';
-  el.appendChild(host);
+// ---- rail ----
+
+function wireRail() {
+  ui.flyout.addEventListener('mouseenter', () => clearTimeout(flyoutTimer));
+  ui.flyout.addEventListener('mouseleave', () => hideFlyoutSoon());
+  $('rail-toggle').addEventListener('click', () => {
+    const collapsed = document.body.classList.toggle('pt-rail-collapsed');
+    $('rail-toggle').setAttribute('aria-expanded', String(!collapsed));
+    $('rail-toggle').replaceChildren(icon(collapsed ? 'chevron-right' : 'chevron-left'), label(collapsed ? 'Expand' : 'Collapse'));
+    $('rail-toggle').title = collapsed ? 'Expand the rail' : 'Collapse the rail to icons';
+    drawRail(route());
+  });
+}
+
+function label(text) {
+  const s = document.createElement('span');
+  s.className = 'pt-label';
+  s.textContent = text;
+  return s;
+}
+
+function railCollapsed() {
+  return document.body.classList.contains('pt-rail-collapsed');
+}
+
+function drawRail(r) {
+  const top = document.createElement('ul');
+  top.className = 'pt-services';
+  const bottom = document.createElement('ul');
+  bottom.className = 'pt-services pt-docked';
+  for (const svc of menu.services) {
+    (svc.properties.dock === 'bottom' ? bottom : top).appendChild(drawService(svc, r));
+  }
+  ui.rail.replaceChildren(top, bottom);
+}
+
+function drawService(svc, r) {
+  const li = document.createElement('li');
+  li.className = 'pt-service';
+  li.dataset.service = svc.id;
+  const active = svc.properties.path === r.service;
+  const open = expanded === svc.id && !railCollapsed();
+  li.classList.toggle('pt-active', active);
+  li.classList.toggle('pt-open', open);
+  const head = document.createElement('button');
+  head.type = 'button';
+  head.className = 'pt-service-head';
+  head.setAttribute('aria-expanded', String(open));
+  const chev = icon('chevron-down', 14);
+  chev.classList.add('pt-chev');
+  head.append(icon(menu.iconOf(svc.id)), label(svc.name), chev);
+  head.addEventListener('click', () => {
+    if (railCollapsed()) {
+      navigate(href(firstPage(svc)));
+      return;
+    }
+    expanded = expanded === svc.id ? null : svc.id;
+    hideFlyout();
+    drawRail(route());
+  });
+  li.appendChild(head);
+  if (open) {
+    const ul = document.createElement('ul');
+    ul.className = 'pt-pages';
+    for (const page of menu.kids(svc.id)) {
+      const item = document.createElement('li');
+      const a = link(href(page.properties.path), page.name, 'pt-page');
+      a.dataset.page = page.id;
+      if (`${r.service}/${r.page}` === page.properties.path) a.setAttribute('aria-current', 'page');
+      item.appendChild(a);
+      ul.appendChild(item);
+    }
+    li.appendChild(ul);
+  } else {
+    const show = () => showFlyout(li, svc, r);
+    li.addEventListener('mouseenter', show);
+    li.addEventListener('mouseleave', hideFlyoutSoon);
+    head.addEventListener('focus', show);
+  }
+  return li;
+}
+
+let flyoutTimer = 0;
+
+// showFlyout lists a collapsed service's pages beside it, on hover.
+function showFlyout(li, svc, r) {
+  clearTimeout(flyoutTimer);
+  const box = li.getBoundingClientRect();
+  const h = document.createElement('div');
+  h.className = 'pt-flyout-head';
+  h.textContent = svc.name;
+  const ul = document.createElement('ul');
+  for (const page of menu.kids(svc.id)) {
+    const item = document.createElement('li');
+    const a = link(href(page.properties.path), page.name, 'pt-page');
+    if (`${r.service}/${r.page}` === page.properties.path) a.setAttribute('aria-current', 'page');
+    item.appendChild(a);
+    ul.appendChild(item);
+  }
+  ui.flyout.replaceChildren(h, ul);
+  ui.flyout.dataset.service = svc.id;
+  ui.flyout.hidden = false;
+  const top = Math.min(box.top, window.innerHeight - ui.flyout.offsetHeight - 8);
+  Object.assign(ui.flyout.style, { left: `${box.right + 4}px`, top: `${Math.max(56, top)}px` });
+}
+
+function hideFlyoutSoon() {
+  clearTimeout(flyoutTimer);
+  flyoutTimer = setTimeout(hideFlyout, 150);
+}
+
+function hideFlyout() {
+  clearTimeout(flyoutTimer);
+  ui.flyout.hidden = true;
+}
+
+// ---- pages ----
+
+function unmount() {
+  if (current && current.mod.destroy) current.mod.destroy(current.handle);
+  current = null;
+  screenView.destroyAll();
+}
+
+function drawPage(svc, page, r) {
+  unmount();
+  ui.toolbar.replaceChildren();
+  ui.content.replaceChildren();
+  ui.content.className = 'pt-content';
+  if (!page) {
+    ui.title.textContent = 'Not found';
+    ui.content.appendChild(errorCard({ code: 'not_found', message: `no page ${r.service}/${r.page} in tenant ${tenant}'s menu` }));
+    return;
+  }
+  ui.title.textContent = r.id ? r.id : page.name;
+  ui.title.dataset.page = page.id;
+  if (r.id) {
+    drawItem(page, r);
+    return;
+  }
+  const view = page.properties.view || 'table';
+  if (view === 'screen') {
+    drawScreen(page);
+    return;
+  }
+  const mod = VIEWS[view];
+  if (!mod) {
+    ui.content.appendChild(errorCard({ code: 'no-view', message: `${page.id} has view ${view}, which no renderer draws` }));
+    return;
+  }
+  current = { mod, handle: mod.mount(ui.content, pageCtx(page)) };
+}
+
+function pageCtx(page) {
+  return { client, bus, page, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id) };
+}
+
+// drawItem is one node of a page: its fields, and the page's tabs (its child
+// Pages, a child's own children after it) below, each a table of its Kind.
+function drawItem(page, r) {
+  const tabs = [];
+  const walk = (p, prefix) => {
+    for (const k of menu.kids(p.id)) {
+      tabs.push({ page: k, label: prefix + k.name });
+      walk(k, `${prefix}${k.name} › `);
+    }
+  };
+  walk(page, '');
+  const sub = document.createElement('span');
+  sub.className = 'pt-count';
+  sub.textContent = page.name;
+  ui.toolbar.appendChild(sub);
+  const card = document.createElement('div');
+  card.className = 'pt-card pt-detail';
+  ui.content.appendChild(card);
+  client.listNodes(page.properties.nodeKind).then((env) => {
+    const n = env.nodes.find((x) => x.id === r.id);
+    if (!n) {
+      card.textContent = `No ${page.properties.nodeKind} ${r.id} on the screen or in a mounted layer.`;
+      return;
+    }
+    const dl = document.createElement('dl');
+    const row = (k, v) => {
+      const dt = document.createElement('dt');
+      dt.textContent = k;
+      const dd = document.createElement('dd');
+      dd.textContent = typeof v === 'string' ? v : JSON.stringify(v);
+      dl.append(dt, dd);
+    };
+    row('id', n.id);
+    row('kind', n.kind);
+    if (n.name) row('name', n.name);
+    for (const [k, v] of Object.entries(n.properties || {})) row(k, v);
+    row('updated', nodes.updatedOf(n));
+    card.replaceChildren(dl);
+  }).catch((err) => card.replaceChildren(errorCard(err)));
+  if (!tabs.length) return;
+  const chosen = tabs.find((t) => t.page.properties.path === r.tab) || tabs[0];
+  const nav = document.createElement('nav');
+  nav.className = 'pt-tabs';
+  nav.setAttribute('aria-label', `${page.name} tabs`);
+  for (const t of tabs) {
+    const a = link(`${href(page.properties.path, r.id)}?tab=${encodeURIComponent(t.page.properties.path)}`, t.label, 'pt-tab');
+    if (t === chosen) a.setAttribute('aria-current', 'page');
+    nav.appendChild(a);
+  }
+  ui.content.appendChild(nav);
+  const pane = document.createElement('div');
+  pane.className = 'pt-tab-pane';
+  ui.content.appendChild(pane);
+  const tabBar = document.createElement('div');
+  tabBar.className = 'pt-toolbar pt-tab-toolbar';
+  pane.appendChild(tabBar);
+  current = { mod: nodes, handle: nodes.mount(pane, { ...pageCtx(chosen.page), toolbar: tabBar }) };
+}
+
+// drawScreen draws the screen node a page names, with the open view's layer
+// and the screen graph's own counts in the toolbar (docs/design.md 33).
+async function drawScreen(page) {
+  const id = page.properties.screen;
+  ui.content.classList.add('pt-fill');
+  let screen;
+  let ontology;
+  let layers;
   try {
-    mounted.push({ mod, handle: mod.mount(host, { ...ctx, node }) });
+    [screen, ontology, layers] = await Promise.all([client.getScreen(), client.getOntology(), client.listLayers()]);
   } catch (err) {
-    showError(host, err);
+    ui.content.appendChild(errorCard(err));
+    return;
   }
+  if (ui.title.dataset.page !== page.id) return;
+  const ix = screenView.index(screen);
+  const node = ix.nodes.get(id);
+  const name = node && screenView.sourceLayer(ix, node);
+  const layer = name && layers.find((l) => l.name === name);
+  const stats = document.createElement('span');
+  stats.className = 'pt-mode';
+  stats.id = 'stats';
+  stats.dataset.layer = name || '';
+  if (layer) {
+    stats.title = `layer ${name}${layer.path ? ` from ${layer.path}` : ''}`;
+    stats.textContent = `${name} · ${layer.counts.nodes} nodes · ${layer.counts.edges} edges · ${layer.stamp}`;
+  } else {
+    stats.title = name ? `no layer ${name} is mounted` : `${id} draws no layer`;
+    stats.textContent = name ? `${name} · not mounted` : 'no layer';
+  }
+  const badge = document.createElement('span');
+  badge.className = 'pt-badge';
+  badge.id = 'screen-stats';
+  badge.title = 'the screen graph: nodes, edges, stamp';
+  badge.textContent = `screen ${screen.nodes.length} · ${screen.edges.length} · ${screen.layer}`;
+  ui.toolbar.replaceChildren(stats, badge);
+  if (who && who.anonymous) {
+    const ro = document.createElement('span');
+    ro.className = 'pt-readonly';
+    ro.textContent = 'read-only: sign in to write';
+    ui.toolbar.appendChild(ro);
+  }
+  ui.content.replaceChildren();
+  if (!node) {
+    ui.content.appendChild(errorCard({ code: 'not_on_screen', message: `${id} is not on the screen${screen.nodes.some((n) => n.kind === 'Category' && n.name === 'Designer') ? ' (PORTAL_MODE=production hides the Designer)' : ''}` }));
+    return;
+  }
+  const ctx = { client, bus, screen, ontology, layers, ix, sections: page.properties.sections, refresh: () => drawScreen(page) };
+  screenView.destroyAll();
+  screenView.draw(ctx, node, ui.content);
 }
 
-export function showError(el, err) {
+function errorCard(err) {
+  const box = document.createElement('div');
+  box.className = 'pt-card pt-error-card';
   const pre = document.createElement('pre');
   pre.className = 'gr-error';
-  pre.textContent = JSON.stringify(err && err.code ? err : { code: 'error', message: String(err) }, null, 2);
-  el.appendChild(pre);
+  pre.textContent = `${err.code || 'error'}: ${err.message || String(err)}`;
+  box.appendChild(pre);
+  return box;
 }
 
-refresh();
+boot();

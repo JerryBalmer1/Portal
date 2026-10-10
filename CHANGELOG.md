@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-10-10
+
+- The page is a DevOps-style shell. The banner holds the product, a breadcrumb that mirrors the URL, search, the marker (`none`), help and the avatar. The left rail holds the services: a click opens a service's pages in place and closes the others, a hover on a closed service shows a flyout, the chevron collapses the rail to icons, and Settings is pinned at the foot. The main pane has a title, a toolbar and the content. Routes are `/<tenant>/<service>/<page>[/<id>]` and deep links survive a refresh. Dark theme: cards on a near-black grid (docs/design.md 36).
+- Config split. `portal.base.yaml` (embedded) holds product defaults and the menu; `tenants/<tenant>/portal.yaml` is the tenant's overlay, deep-merged over it. Both are validated against `schema/portal.schema.json` at boot, and a failure stops the binary. `PORTAL_TENANT` (default `default`) and `-tenants` say which tenant a process serves.
+- API: every path is `/api/tenants/{tenant}/...`. New: `config`, `menu` (an envelope of the new Kinds `Service` and `Page`, edge `has-page`, icons in State `icon`), `auth/whoami`, `connections`, `connections/{name}/repos` (GitHub, as `git.repository` nodes; needs a token though it is a GET) and `nodes?kind=` (one Kind across the screen and the mounted layers). `/` redirects to the first page. The unscoped `POST /api/layers` is kept, deprecated, for Claude.Agent.
+- Bearer tokens. `tenants/<tenant>/tokens.yaml` (gitignored) holds SHA-256 hashes. No token reads only, a write without one is 401, and a token the tenant does not hold is 401 on any request. New `New-PortalToken`. The module sends `PORTAL_TOKEN`, and the page takes a token in the avatar panel.
+- Service connections in `tenants/<tenant>/connections.yaml` (gitignored; example committed). Settings/Service connections lists them without secrets and has a Test button per connection.
+- Every menu leaf is a page. Table pages list their Kind or show an empty state. Graph/Explore draws the Canvas with its layer's counts in the toolbar. Designer/Sections and Designer/Export draw the Designer. The top bar's screen menu and stats are gone. Screenshots are now `summary.png`, `service-connections.png` and `explore.png`.
+- Go tests 46, Pester 68.
+
 ## 0.3.6 — 2026-10-09
 
 - Graph.Node lift at tag v0.2.3 (1807fd7): `internal/graphnode/schemas`, `internal/graphnode/graph` and `cmd/graphnode` (reports 0.2.3) recopied. The lift brings the `agent:`, `runner:`, `git:` and `ref:` id prefixes, the `triangle` and `star` shapes, display `when` rules and the envelope `source` block. Upstream now registers `ui:` to Portal with Portal's shape, so the lift carries no edit beyond the import path (docs/design.md 34).

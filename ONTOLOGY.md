@@ -2,25 +2,35 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.3.6, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.4.0, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 
 | Term | Meaning |
 |---|---|
-| Screen graph | The envelope `GET /api/screen` returns: module `Portal`, `root` `ui:root`, every panel a node. Held in memory; it reaches disk only as a snap. |
+| Tenant | Who the portal is run for. One process serves one, `PORTAL_TENANT` (default `default`); every API path names it, `/api/tenants/<tenant>/...`, and any other tenant is 404. Its files are under `tenants/<tenant>/` (docs/design.md 36). |
+| Base config | `portal.base.yaml`: the product's defaults (product name, help link, menu), embedded in the binary and never edited by a tenant. |
+| Overlay | `tenants/<tenant>/portal.yaml`: what a tenant changes, deep-merged over the base (mappings key by key, lists of items with an `id` item by item, anything else replaced). Base and overlay both pass `schema/portal.schema.json` at boot, and the merge must name the product and give every menu entry a label and a path, or the binary stops. |
+| Menu | The shell's left rail, built from the merged config's `menu` tree and served by `GET /api/tenants/<tenant>/menu` as an envelope of Service and Page nodes. Not the screen graph: it is never written or snapped. |
+| Service | Kind. One rail entry (`ui:rail:<service>`): `path`, `order`, `dock` (`bottom` pins it to the foot of the rail: Settings). Its pages hang off it by `has-page`; its icon is its State's `icon`. |
+| Page | Kind. One page of a Service (`ui:rail:<service>:<page>`), routed at `/<tenant>/<path>`. `view` says what draws it: `table` (the nodes of `nodeKind`), `screen` (the screen node `screen` names, a Designer's `sections` only when given) or `connections`. `filter` lists `properties.kind` values offered as chips. A Page's own Pages are the tabs of its item page, `/<tenant>/<path>/<id>`. |
+| Token | A bearer token that may write to a tenant, stored only as its SHA-256 in `tenants/<tenant>/tokens.yaml` (gitignored; `New-PortalToken` adds one). |
+| Principal | Who a request is: a token's name, or `anonymous` with no token, which reads only. `GET /api/tenants/<tenant>/auth/whoami`. A token the tenant does not hold is refused (401). |
+| Marker | The holder the banner names, or `none`. Nothing issues markers yet; whoami's `marker` is always null (docs/design.md 36). |
+| Service connection | An entry of `tenants/<tenant>/connections.yaml` (gitignored): `name`, `type` (`github`), `url`, `token_env`, the environment variable holding its secret. The API lists connections without secrets. A github connection's repositories come back as `git.repository` nodes, id `ui:conn:<connection>/<owner>/<repo>`, to a caller with a token only: the call spends the tenant's secret. |
+| Screen graph | The envelope `GET /api/tenants/<tenant>/screen` returns: module `Portal`, `root` `ui:root`, every panel a node. Held in memory; it reaches disk only as a snap. |
 | Boot | What a start loads the screen from: the snap `PORTAL_SNAP` names, else the newest snap, else the dev seed (`empty` with `-no-seed`). Reported in the `X-Portal-Boot` header (docs/design.md 20). |
 | Container | Kind. A box holding Containers and Widgets by `contains`; arranged by its Layout, drawn with its Theme. Properties `parent`, `order`, `visible`, `bounds`. The root is the Container no `contains` points at. |
-| Menu entry | A Container that `is-a` the Category named Menu and `opens` the Container or Widget it shows. Drawn in the top bar, by `order` then id, never on the screen; contained by nothing. The seed's are `ui:menu:graph`, "Graph", opening `ui:canvas` (docs/design.md 25), and `ui:menu:runs`, "Runs", opening `ui:canvas:agent-runs`, a Canvas on the `agent-runs` layer Claude.Agent mounts (docs/design.md 35). |
+| Menu entry | A Container that `is-a` the Category named Menu and `opens` the Container or Widget it shows, contained by nothing. Until 0.4.0 the top bar drew these; the shell's rail is the tenant's menu now, and screen menu entries are listed and added by the Designer only (docs/design.md 36). The seed's are `ui:menu:graph`, "Graph", opening `ui:canvas` (docs/design.md 25), and `ui:menu:runs`, "Runs", opening `ui:canvas:agent-runs`, a Canvas on the `agent-runs` layer Claude.Agent mounts (docs/design.md 35). |
 | Widget | Kind. A panel; its Category (`is-a`) decides how it draws, `source` says what. Properties `type`, `source`, `bounds`, `order`, `visible`. |
 | Layout | Kind. `mode` grid, flow or canvas; `columns` for grid (12 when absent). Joined by `laid-out-by`. |
-| Category | Graph.Node base Kind used as a panel type. `name`, `properties.label` (required by Graph.Node), `description`. The base Categories Canvas, Table, Detail and Designer have renderers; any other draws with the base it `is-a`. The seeded Category Menu has no renderer: its Containers are the top bar's entries. |
-| State | Kind. Per-node display state: `collapsed`, `selected`, `scroll`. Id `ui:state:<id without ui:>`, joined by `has-state`. A display Kind. |
+| Category | Graph.Node base Kind used as a panel type. `name`, `properties.label` (required by Graph.Node), `description`. The base Categories Canvas, Table, Detail and Designer have renderers; any other draws with the base it `is-a`. The seeded Category Menu has no renderer: its Containers are menu entries. |
+| State | Kind. Per-node display state: `collapsed`, `selected`, `scroll`, and `icon` for a Service or Page. Id `ui:state:<id without ui:>`, joined by `has-state`. A display Kind. |
 | Designer section | One collapsible block of the Designer: Approve, Kinds (ontology.yaml), Categories, Add Panel, Add Container, Add Category, Add Menu Entry. Whether it is collapsed is a State node `ui:state:<Designer id without ui:>:<slug>` (`ui:state:designer:add-panel` for the seed's), joined from the Designer by `has-state`; seeded with Approve and Categories open, and added with those defaults to a booted snap that lacks them (docs/design.md 28). |
 | Theme | Kind. How a Container and what it holds look: `color` (accent, `#rrggbb`), `opacity` (glass surface, 0 to 1), `font` (CSS font-family). Joined by `themed-by`; a Container without one takes its parent's. A display Kind, and a node like any other, so a theme change is a changed node in a diff (docs/design.md 22). |
 | Display Kind | State or Theme: the only Kinds whose `properties` may hold display keys (docs/design.md 5). |
 | Ref | Kind. A stand-in on screen for one node of a mounted layer (`layer`, `node`), so `displays` stays inside the envelope (docs/design.md 9). |
-| Data layer | A Graph.Node envelope mounted read-only under a name (`POST /api/layers`); never written (docs/design.md 2). The top bar shows the open view's layer: its name, node and edge counts and stamp (docs/design.md 33). |
+| Data layer | A Graph.Node envelope mounted read-only under a name (`POST /api/layers`); never written (docs/design.md 2). A page that draws a screen node shows its layer in the toolbar: name, node and edge counts and stamp (docs/design.md 33, 36). |
 | Mount | Kind. A layer mounted by path through `POST /api/layers`, recorded on screen as `ui:mount:<layer>` (`layer`, `path` as given, made absolute), so an approved snap mounts it again at boot. A mount by envelope removes it; flag mounts are never recorded. No edges; it draws nothing (docs/design.md 33). |
 | Source | A Widget's `source`: a layer name and optional `?kind=&from=` query. |
 | Bounds | `{x, y, w, h}`: grid cells under grid, pixels under canvas. |
@@ -37,10 +47,12 @@ Module `Portal`, version 0.3.6, id prefix `ui:` (registered to Portal in Graph.N
 | Widget | `type`, `source`, `bounds`, `order`, `visible` | `is-a` → Category; `displays` → Ref; `has-state` → State |
 | Layout | **`mode`**, `columns` | `has-state` → State |
 | Category | **`label`**, `description` | `is-a` → Category; `has-state` → State |
-| State | `collapsed`, `selected`, `scroll` | (target of `has-state`) |
+| State | `collapsed`, `selected`, `scroll`, `icon` | (target of `has-state`) |
 | Theme | `color`, `opacity`, `font` | (target of `themed-by`) |
 | Ref | **`layer`**, **`node`** | `has-state` → State |
 | Mount | **`layer`**, **`path`** | (none) |
+| Service | **`path`**, `order`, `dock` | `has-page` → Page; `has-state` → State |
+| Page | **`path`**, `order`, `nodeKind`, `view`, `screen`, `sections`, `filter` | `has-page` → Page; `has-state` → State |
 
 Finding Kinds: `absent` (info), set by the diff on an element in snap a and not in snap b; `approved` (info), set by Approve on the snap envelope, its message the note.
 
@@ -65,6 +77,7 @@ Graph.Node's: `schema`, `duplicate-node`, `duplicate-edge`, `dangling-edge`, `ed
 ## Not here yet
 
 - Edges across envelopes, which would retire Ref (docs/design.md 9).
+- Real data on the shell's pages beyond Graph/Explore, the Designer pages, Designer/Themes and Settings/Service connections; markers; connection types beyond github; OAuth or sessions (docs/design.md 36).
 - An edge deletion route (docs/design.md 15).
 - A drift check for `internal/gen` (docs/design.md 16).
 - Editing a Theme from the Designer (docs/design.md 22).

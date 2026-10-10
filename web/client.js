@@ -2,31 +2,64 @@
 // oapi-codegen v2.8.0 emits Go only. ROUTES keys are the spec's operationIds;
 // the Go spec test reads this table and checks every entry against the spec,
 // so the client and the spec cannot drift silently.
+// Every API path names the tenant: createClient(tenant) fills {tenant}.
+// A bearer token, when the viewer has given one (see setToken), goes on
+// every call; without one the portal reads only.
 // Every non-2xx response throws the spec Error object {code, message, problems?}.
 
 export const ROUTES = Object.freeze({
-  getScreen: { method: 'GET', path: '/api/screen' },
-  postNode: { method: 'POST', path: '/api/nodes' },
-  patchNode: { method: 'PATCH', path: '/api/nodes/{id}' },
-  deleteNode: { method: 'DELETE', path: '/api/nodes/{id}' },
-  postEdge: { method: 'POST', path: '/api/edges' },
-  listLayers: { method: 'GET', path: '/api/layers' },
-  mountLayer: { method: 'POST', path: '/api/layers' },
-  getLayerNodes: { method: 'GET', path: '/api/layers/{name}/nodes' },
-  postSnap: { method: 'POST', path: '/api/snap' },
-  getDiff: { method: 'GET', path: '/api/diff' },
-  getOntology: { method: 'GET', path: '/api/ontology' },
+  getConfig: { method: 'GET', path: '/api/tenants/{tenant}/config' },
+  getMenu: { method: 'GET', path: '/api/tenants/{tenant}/menu' },
+  getWhoami: { method: 'GET', path: '/api/tenants/{tenant}/auth/whoami' },
+  listConnections: { method: 'GET', path: '/api/tenants/{tenant}/connections' },
+  getConnectionRepos: { method: 'GET', path: '/api/tenants/{tenant}/connections/{name}/repos' },
+  listNodes: { method: 'GET', path: '/api/tenants/{tenant}/nodes' },
+  getScreen: { method: 'GET', path: '/api/tenants/{tenant}/screen' },
+  postNode: { method: 'POST', path: '/api/tenants/{tenant}/nodes' },
+  patchNode: { method: 'PATCH', path: '/api/tenants/{tenant}/nodes/{id}' },
+  deleteNode: { method: 'DELETE', path: '/api/tenants/{tenant}/nodes/{id}' },
+  postEdge: { method: 'POST', path: '/api/tenants/{tenant}/edges' },
+  listLayers: { method: 'GET', path: '/api/tenants/{tenant}/layers' },
+  mountLayer: { method: 'POST', path: '/api/tenants/{tenant}/layers' },
+  getLayerNodes: { method: 'GET', path: '/api/tenants/{tenant}/layers/{name}/nodes' },
+  postSnap: { method: 'POST', path: '/api/tenants/{tenant}/snap' },
+  getDiff: { method: 'GET', path: '/api/tenants/{tenant}/diff' },
+  getOntology: { method: 'GET', path: '/api/tenants/{tenant}/ontology' },
 });
 
-export function createClient(base = '') {
+// The token lives for the browser tab only (sessionStorage): it is the
+// viewer's credential, not page state, and never part of the graph.
+const TOKEN_KEY = 'portal.token';
+
+export function getToken() {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function setToken(token) {
+  try {
+    if (token) sessionStorage.setItem(TOKEN_KEY, token);
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Storage blocked: the token holds until the page is left.
+  }
+}
+
+export function createClient(tenant, base = '') {
   async function call(op, { params, query, body } = {}) {
     const r = ROUTES[op];
-    const path = r.path.replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(params[k]));
+    const all = { tenant, ...params };
+    const path = r.path.replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(all[k]));
     const url = new URL(base + path, window.location.href);
     for (const [k, v] of Object.entries(query || {})) {
       if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
     }
     const init = { method: r.method, headers: { Accept: 'application/json' } };
+    const token = getToken();
+    if (token) init.headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) {
       init.headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
@@ -52,6 +85,13 @@ export function createClient(base = '') {
   }
 
   return {
+    tenant,
+    getConfig: () => call('getConfig'),
+    getMenu: () => call('getMenu'),
+    getWhoami: () => call('getWhoami'),
+    listConnections: () => call('listConnections'),
+    getConnectionRepos: (name) => call('getConnectionRepos', { params: { name } }),
+    listNodes: (kind) => call('listNodes', { query: { kind } }),
     getScreen: () => call('getScreen'),
     postNode: (node) => call('postNode', { body: node }),
     patchNode: (id, patch) => call('patchNode', { params: { id }, body: patch }),
