@@ -1,7 +1,7 @@
 ---
 name: graph-node
 description: How to produce, declare, validate and read graph/1 envelopes with GraphNode, the base graph shape shared by every graph module (emitters such as Graph.Emitter.FileSystem, Graph.Emitter.Network, Graph.Emitter.Terraform, Graph.Emitter.AzureDevOps; consumers such as GraphRenderer). Use any time this repo writes or reads a graph.json envelope or an ontology.yaml, builds nodes, edges or node ids, or reports GraphNode problem codes.
-version: 0.2.1
+version: 0.2.3
 ---
 
 # GraphNode for emitters and consumers
@@ -22,12 +22,12 @@ PowerShell (7.4+). Until GraphNode is on a feed, import it from the sibling chec
 Import-Module C:\__Code\Graph.Node\src\GraphNode\GraphNode.psd1
 ```
 
-Once it is on a feed, declare it in your psd1 instead: `RequiredModules = @(@{ ModuleName = 'GraphNode'; ModuleVersion = '0.2.0' })`. Do not copy GraphNode's files into your module.
+Once it is on a feed, declare it in your psd1 instead: `RequiredModules = @(@{ ModuleName = 'GraphNode'; ModuleVersion = '0.2.3' })`. Do not copy GraphNode's files into your module.
 
 Go (1.24+). Import the package and pin it to a tag in `go.mod`, never `latest` or a branch:
 
 ```
-go get github.com/JerryBalmer1/GraphNode/graph@v0.2.0
+go get github.com/JerryBalmer1/GraphNode/graph@v0.2.3
 ```
 
 The package embeds the schemas, so `graph.Validate` needs no files on disk.
@@ -46,9 +46,9 @@ $env   = New-GraphEnvelope -Module Example -Version 0.1.0 -Layer $layer -Ontolog
 Export-Graph $env -Path ".\layers\$($layer -replace ':', '-')\graph.json"
 ```
 
-- `New-GraphNode -Id -Kind` are required; `-Name`, `-Properties`, `-Source`, `-Findings`, `-Layer` (sets `stamp.layer`) are optional and omitted from the JSON when not given. `New-GraphNode`, `New-GraphEdge` and `New-GraphEnvelope` write any `[datetime]` or `[DateTimeOffset]` given as `-Layer` or as a top-level `-Properties` value as a UTC stamp `yyyy-MM-ddTHH:mm:ssZ` (whole seconds), so `-Layer (Get-Date)` is safe. Strings are written as given.
+- `New-GraphNode -Id -Kind` are required; `-Name`, `-Properties`, `-Source`, `-Findings`, `-Layer` (sets `stamp.layer`) are optional and omitted from the JSON when not given. `New-GraphNode`, `New-GraphEdge` and `New-GraphEnvelope` write any `[datetime]` or `[DateTimeOffset]` given as `-Layer` or as a top-level `-Properties` value as a UTC stamp `yyyy-MM-ddTHH:mm:ssZ` (whole seconds), so `-Layer (Get-Date)` is safe. Strings are written as given. A list value stays a list, whatever its length: `-Properties @{ names = @('a') }` writes `["a"]` and `@()` writes `[]`.
 - `New-GraphEdge -From -To -Kind` takes node objects or id strings and sets the edge id for you, escaping as below.
-- `New-GraphEnvelope -Module -Layer` are required; it sets `schema: graph/1` and fills `counts` (`nodes`, `edges`, `byKind`). `-Version`, `-Root`, `-Ontology`, `-Findings` (envelope-level findings) are optional.
+- `New-GraphEnvelope -Module -Layer` are required; it sets `schema: graph/1` and fills `counts` (`nodes`, `edges`, `byKind`). `-Version`, `-Root`, `-Ontology`, `-Findings` (envelope-level findings) and `-Source` are optional. `-Source @{ emitter = 'Example'; version = '0.1.0'; target = 'C:/repo'; stamp = (Get-Date) }` writes the envelope's `source` block (below), the stamp as UTC ending `Z`.
 - `Export-Graph` runs `Test-Graph` first and throws on any error (warnings do not block) unless `-Force`; it writes UTF-8 without BOM, LF line endings, and creates the directory.
 
 Go: `env := graph.NewEnvelope(module, version, layer)`, append `graph.Node{ID: ..., Kind: ...}` and `graph.NewEdge(from, to, kind)`, then `env.Recount()` and `graph.Save(path, env)`. `NewEnvelope` keeps the lists non-nil so they serialise as `[]`.
@@ -59,7 +59,7 @@ Rules:
 - Kind names match `^[A-Za-z][A-Za-z0-9_.-]*$`. `New-GraphNode` and `New-GraphEdge` reject anything else.
 - One envelope per layer: each run of your emitter writes one complete envelope of what it saw, never a patch. `layer` is required and must sort in time order as a string. Stamps are UTC ending `Z`: `layer`, `stamp.layer`, `stamp.firstSeen`, `stamp.lastSeen` and ActionRun `startedAt` and `finishedAt` must match `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$` (`2026-10-08T00:00:00Z`); a `+hh:mm` offset or no zone is a `stamp` problem. Keep one width across layers (whole seconds, as the builders write) so string order is time order. Put the same value in `stamp.layer` (`-Layer`) if you stamp nodes.
 - Required: Node `id`, `kind`; Edge `id`, `kind`, `from`, `to`; Envelope `schema`, `module`, `layer`, `nodes`, `edges`. Everything else is optional and tolerated when absent, so leave out what you do not know rather than writing empty values.
-- `source` is a list of `{tool, command, path, file, line}`, all optional. `findings` is a list of `{kind, severity, message, target}`; `kind` and `message` are required by the Go types.
+- On a node or edge, `source` is a list of `{tool, command, path, file, line}`, all optional. On the envelope, `source` is one optional object `{emitter, version, target, stamp}`: what wrote the envelope, its version, what it read (a path, URL or name) and when (UTC ending `Z`). Leave it out, or give all four and nothing else; a bad stamp is `stamp`, anything else `schema`. Go: `env.Source = &graph.EnvelopeSource{...}`. `findings` is a list of `{kind, severity, message, target}`; `kind` and `message` are required by the Go types.
 
 ## Node id prefixes
 
@@ -68,13 +68,17 @@ Some id prefixes are registered to a module; GraphNode's `schemas/ids.md` is the
 | Prefix | Owner | Shape |
 |---|---|---|
 | `fs:` | Graph.Emitter.FileSystem | `fs:` + path relative to the root, forward slashes; the root is `fs:.`; no trailing slash; case preserved |
-| `ui:` | Graph.Portal | reserved |
+| `ui:` | Portal | `ui:` + a non-empty name |
 | `run:`, `finding:`, `decision:`, `notrun:`, `touched:` | Graph.RunReport | the run report's id rules |
 | `alert:` | Claude.Agent.Alerts | `alert:<rule>:<seq>` or `alert:<rule>:line-<n>`; rule `^[a-z][a-z0-9-]*$` |
 | `ledger:` | Claude.Agent.Alerts | `ledger:<seq>` or `ledger:line-<n>` |
+| `agent:` | Graph.Emitter.Agent | `agent:<path relative to the repo>`, then optionally `#<slug>` (`^[a-z0-9_-]+$`) and `/rule-<n>` |
+| `runner:` | Claude.Agent.Runner | `runner:<plan>`, `runner:<plan>/<session id>`, `runner:<plan>/<session id>/step-<n>`; plan has no `.` or `/` |
+| `git:` | Graph.Emitter.Git.Repository | `git:commit/<40 lower-case hex>`, `git:branch/<name>`, `git:tag/<name>`, `git:author/<email, lower-cased, or name>` |
+| `ref:` | Graph.Emitter.Reference | `ref:repo:<folder>`, `ref:doc:<Repo>/<path>`, `ref:section:<Repo>/design.md#<n>`, `ref:skill:<Repo>/<name>`, `ref:ext:<16 lower-case hex>` |
 
 - If your module owns a prefix, every id with it must have the registered shape. Check with `Test-GraphId -Prefix fs -Id 'fs:src/main.go'` (one `[bool]` per id, pipeline input allowed; `-Verbose` says why one fails), `graph.ValidID("fs", id)` or `graphnode check-id fs <id>`.
-- To edge to a node another module owns (a Terraform resource to the `.tf` file it came from), use that module's prefix and shape, `fs:modules/net/main.tf`, so the edge meets the node when a merge brings the layers together. In your own envelope that endpoint is missing: both validators report the `dangling-edge` as a warning, not an error, when the missing id carries a registered prefix whose owner is not your envelope's `module`. A missing id with your own prefix, or no registered prefix, is an error.
+- To edge to a node another module owns (a Terraform resource to the `.tf` file it came from), use that module's prefix and shape, `fs:modules/net/main.tf`, so the edge meets the node when a merge brings the layers together. In your own envelope that endpoint is missing: both validators report the `dangling-edge` as a warning, not an error, when the missing id carries a registered prefix whose owner is not your envelope's `module`. A missing id with your own module's prefix is a cross-layer edge within your module (from one of your layers into another): pure `Test-Graph` reports it as a warning, so `Export-Graph` writes the layer, but `Test-Graph -Strict`, `graph.Validate` and `graphnode validate` report it as an error, so strict CI fails on it. A missing id with no registered prefix is an error everywhere.
 - To register a prefix, propose it to GraphNode; never issue ids with a prefix another module owns for your own nodes.
 
 ## Declare an ontology
@@ -83,7 +87,7 @@ Your repo ships one `ontology.yaml` that declares every Kind, edge Kind and find
 
 ```yaml
 module: Example
-version: 0.2.1
+version: 0.2.3
 kinds:
   VNet:
     description: A virtual network.
@@ -104,6 +108,14 @@ kinds:
         returns: { type: string, description: id of the new NIC }
         trigger: manual
         permissions: [network.write]
+  VM:
+    idRule: "vm:<name>"
+    properties: [power]
+    display:
+      color: "#e07a9a"
+      shape: circle
+      when:
+        - { properties: { power: stopped }, color: "#9e9e9e", shape: triangle }
 edgeKinds:
   contains: { from: [VNet], to: [Subnet], display: { color: "#4a90e2", style: solid } }
 findingKinds:
@@ -111,7 +123,8 @@ findingKinds:
 ```
 
 - `kinds` is required. Each Kind may have `description`, `idRule`, `properties` (names, or `{name, type, required, description}` with `type` one of string, integer, number, boolean, object, array), `display` and `actions`.
-- Kind `display` is `{color, shape, icon, size, label, collapsed}`: `color` is `#rrggbb`; `shape` is `circle`, `square`, `diamond` or `hexagon`; `size` is an integer of 1 or more; `icon` is a name; `label` is a template where `{name}` and `{properties.x}` substitute. The 0.1.0 shape names `round-rectangle`, `rectangle`, `ellipse` and `octagon` are accepted with a `display` warning until 0.3.0; move to the four.
+- Kind `display` is `{color, shape, icon, size, label, collapsed, when}`: `color` is `#rrggbb`; `shape` is `circle`, `square`, `diamond`, `hexagon`, `triangle` or `star`; `size` is an integer of 1 or more; `icon` is a name; `label` is a template where `{name}` and `{properties.x}` substitute. The 0.1.0 shape names `round-rectangle`, `rectangle`, `ellipse` and `octagon` are accepted with a `display` warning until 0.3.0; move to the six.
+- `when` overrides the Kind's display by property value: a list of rules, each `{properties: {<name>: <value>, ...}, <display keys>}`, e.g. `{ properties: { verdict: deny }, color: "#cc0000" }`. A renderer uses the first rule whose every pair equals the node's property (string, number or boolean, exact) and lays its keys over the Kind's; no match leaves the Kind's display. A rule needs at least one pair and at least one display key, with the same rules as above (`display` error otherwise). A rule keyed on a property the Kind does not list in `properties` is a `display` warning; when the Kind lists none, it is not checked. Per-Kind display stays the default; do not split a Kind just to colour some of its nodes.
 - Edge Kind `display` is `{color, style}`: `style` is `solid`, `dashed` or `dotted`. No `shape`, `icon` or `size` on edge Kinds.
 - Display lives here, per Kind and edge Kind, and never on a node or edge: the node and edge schemas reject a `display` key (`schema`). A renderer resolves it by `node.kind` / `edge.kind` from the ontology, so changing a colour is an ontology change, not a re-emit.
 - `actions` are `{name, description, inputs, returns, trigger, permissions}`. `inputs` is a list of `{name, type, required, description}`; `returns` is `{type, description}`. A `type` is a JSON type (string, integer, number, boolean, object, array) or a Kind name, meaning the value is that node's id. The 0.1.0 `inputs: { name: type }` map is accepted with an `action` warning until 0.3.0. `trigger` is `manual`, `on-change`, `schedule:<cron>` or `event:<name>`. Actions are declared only; running one is the ledger's job and produces an ActionRun node.
@@ -137,16 +150,16 @@ Problem codes (the same in both validators; a code one reports and the other doe
 
 | Code | Means |
 |---|---|
-| `schema` | A required field is missing or wrong (`schema` not `graph/1`, no `module`, `layer`, `nodes` or `edges`, a node or edge without its required fields, a node or edge Kind name that does not match the pattern, a `display` key on a node or edge), or, with `-Strict` / Go, any other JSON Schema violation; Go checks the full base Kind schemas, so it can find more `schema` problems than pure `Test-Graph`. Also the code for a file that is not JSON. |
+| `schema` | A required field is missing or wrong (`schema` not `graph/1`, no `module`, `layer`, `nodes` or `edges`, a node or edge without its required fields, a node or edge Kind name that does not match the pattern, a `display` key on a node or edge, an envelope `source` block that is not exactly `{emitter, version, target, stamp}` with non-empty strings), or, with `-Strict` / Go, any other JSON Schema violation; Go checks the full base Kind schemas, so it can find more `schema` problems than pure `Test-Graph`. Also the code for a file that is not JSON. |
 | `duplicate-node` | Two nodes in the envelope have the same `id`. |
 | `duplicate-edge` | Two edges in the envelope have the same `id`. |
-| `dangling-edge` | An edge's `from` or `to` is not the id of a node in the same envelope. A warning when the missing id carries another module's registered prefix; otherwise an error. |
+| `dangling-edge` | An edge's `from` or `to` is not the id of a node in the same envelope. A warning when the missing id carries another module's registered prefix; with the envelope's own module's prefix, a warning in pure `Test-Graph` and an error with `-Strict` / Go; otherwise an error. |
 | `edge-id` | An edge's `id` is well formed but is not `from|to|kind` for its own `from`, `to` and `kind`. |
 | `edgeid` | An edge's `id` is malformed: not three `|`-separated parts (an unescaped `|` in an id), or a `%` that does not start `%25` or `%7C`. |
 | `counts` | `counts.nodes` or `counts.edges` disagrees with the lists. |
 | `kind` | A base Kind node is missing what its schema requires (ActionRun `action`, `startedAt`; Category `label`). |
-| `stamp` | `layer`, `stamp.layer`, `stamp.firstSeen`, `stamp.lastSeen`, or ActionRun `startedAt` or `finishedAt` is not a UTC ISO-8601 stamp ending `Z`. |
-| `display` | In an ontology: a display block that breaks its rules (colour not `#rrggbb`, unknown shape or style, size below 1, an unknown key); a warning for a 0.1.0 shape name. |
+| `stamp` | `layer`, `source.stamp`, `stamp.layer`, `stamp.firstSeen`, `stamp.lastSeen`, or ActionRun `startedAt` or `finishedAt` is not a UTC ISO-8601 stamp ending `Z`. |
+| `display` | In an ontology: a display block or `when` rule that breaks its rules (colour not `#rrggbb`, unknown shape or style, size below 1, an unknown key, a rule without `properties` or without a display key); a warning for a 0.1.0 shape name, and for a `when` rule keyed on a property the Kind does not declare. |
 | `action` | In an ontology: an action declaration that breaks its rules, or a warning for a 0.1.0 `inputs` map. With `-Ontology` / `--ontology`: an ActionRun missing a required input, with an undeclared or wrongly typed input, or with a `result` of the wrong type; a warning for an ActionRun whose action the ontology does not declare. |
 
 What the validators do not check yet: that a node's or edge's Kind is declared in your `ontology.yaml`, and that an edge's endpoints match its edge Kind's `from` / `to`. Those rules are yours to keep.
@@ -156,8 +169,8 @@ What the validators do not check yet: that a node's or edge's Kind is declared i
 - `Import-Graph .\graph.json` returns the envelope with `nodes`, `edges` and `findings` always present (empty arrays when missing). Validate it with `Test-Graph` before trusting it.
 - `Import-Graph` (PowerShell's JSON reader) turns ISO-8601 strings such as `layer`, `startedAt` and `finishedAt` into `[datetime]`. A valid `Z` stamp exports back unchanged and `Test-Graph` accepts it; an offset stamp (invalid anyway) would come back rewritten in the local time zone. Compare layers as the strings in the file.
 - `Get-GraphSchema envelope` (or `node`, `edge`, `ontology`, `action-run`, `category`) returns a schema as a hashtable; `-Raw` returns the JSON text; `-List` lists all six.
-- Go: `graph.Load(path)` or `graph.Decode(r)` returns `*graph.Envelope`, filling empty lists; `env.NodeIndex()` maps id to index. `graph.SchemaNames()` and `graph.SchemaBytes(name)` expose the embedded schemas. `graph.ParseEdgeID(id)` returns the decoded from, to and kind; `graph.PrefixOf(id)` returns the registered prefix an id carries.
-- Tolerate every optional field being absent. Resolve display, edge rules and actions from the ontology the envelope names, not from the nodes. An edge whose far end has another module's prefix points into that module's layer.
+- Go: `graph.Load(path)` or `graph.Decode(r)` returns `*graph.Envelope`, filling empty lists, with `Source` (`*graph.EnvelopeSource`) nil when the envelope has no `source` block; `env.NodeIndex()` maps id to index. `graph.SchemaNames()` and `graph.SchemaBytes(name)` expose the embedded schemas. `graph.ParseEdgeID(id)` returns the decoded from, to and kind; `graph.PrefixOf(id)` returns the registered prefix an id carries.
+- Tolerate every optional field being absent. Resolve display, edge rules and actions from the ontology the envelope names, not from the nodes; for display, take the Kind's block, then lay over it the first `when` rule whose `properties` all equal the node's. An edge whose far end has another module's prefix points into that module's layer.
 
 ## Base Kinds you may emit
 
@@ -182,3 +195,4 @@ Any other Kind is yours and is declared in your `ontology.yaml`. Never add your 
 - 0.1.0: initial; stamps (`layer`, `stamp.*`, ActionRun `startedAt`, `finishedAt`) must be UTC ending `Z`, builders convert `[datetime]`, new code `stamp`; `display` on a node or edge is rejected (`schema`); pure `Test-Graph` checks the edge Kind pattern; a relative `envelope.ontology` path is relative to the envelope file's directory; `-Strict` errors for an unbuilt binary or an unsupported platform.
 - 0.2.0: problems carry `severity` (`error`, `warning`) and only errors fail; Kind `display` checked (`#rrggbb` colour, shape circle|square|diamond|hexagon, integer `size`), edge Kind `display` is `{color, style}`, new code `display`; id prefix registry (`schemas/ids.md`), `Get-GraphIdPrefix`, `Test-GraphId`, `graphnode prefixes` and `check-id`, `graph.IDPrefixes`, `ValidID`, `PrefixOf`, and a dangling edge to another module's prefix is a warning; `%` and `|` in edge id parts are percent-encoded, new code `edgeid`, `graph.ParseEdgeID`; action `inputs` as `[{name, type, required}]` and `returns: {type}`, ActionRun `result`, `Test-Graph -Ontology` and `graphnode validate --ontology` check ActionRuns, new code `action`, `graph.ValidateWithOntology`, `CheckActionRuns`, `HasErrors`. 0.1.0 shapes and `inputs` maps are warnings until 0.3.0.
 - 0.2.1: `ui:` is registered to Graph.Portal, not GraphRenderer; `alert:` and `ledger:` are registered to Claude.Agent.Alerts, with their shapes checked by `Test-GraphId`, `graph.ValidID` and `graphnode check-id` (`schemas/ids.md`, `Get-GraphIdPrefix`, `graph.IDPrefixes`, `graphnode prefixes`).
+- 0.2.3: `agent:` (Graph.Emitter.Agent), `runner:` (Claude.Agent.Runner), `git:` (Graph.Emitter.Git.Repository) and `ref:` (Graph.Emitter.Reference) registered with shape checks; `ui:` owned by Portal; shapes `triangle` and `star`; Kind `display.when` overrides display by property value; a dangling edge onto the envelope's own module's prefix is a warning in pure `Test-Graph`, an error with `-Strict` / Go; envelope `source` block `{emitter, version, target, stamp}`, `New-GraphEnvelope -Source`, `graph.EnvelopeSource`; list-valued properties stay lists in the builders.

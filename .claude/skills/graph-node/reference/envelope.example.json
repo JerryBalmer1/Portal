@@ -5,6 +5,7 @@
   "version": "0.2.0",
   "layer": "2026-10-08T00:00:00Z",
   "root": "vnet:a",
+  "source": { "emitter": "Example", "version": "0.2.0", "target": "subscription:example", "stamp": "2026-10-08T00:00:00Z" },
   "nodes": [
     { "id": "vnet:a", "kind": "VNet", "name": "vnet-a", "properties": { "cidr": "10.0.0.0/16" },
       "source": [ { "tool": "az", "command": "az network vnet show -n vnet-a" } ],

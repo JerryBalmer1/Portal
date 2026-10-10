@@ -23,15 +23,11 @@ BeforeAll {
     [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
     # The Graph.Node version the lift and the graph-node skill are pinned to (docs/design.md 4).
-    $script:GraphNodeTag = 'v0.2.1'
-    # The one edit the lift carries: the ui: row of the id prefix registry names Portal (docs/design.md 4). Since
-    # v0.2.1 Graph.Node reserves ui: for the 0.1.0 name, split here so this file never spells it (docs/design.md 31).
-    $script:Registered = @{
-        'graph/ids.go'   = @(('{Prefix: "ui:", Owner: "Graph' + '.Portal", Shape: "reserved; ui: + a non-empty name"},'),
-                             '{Prefix: "ui:", Owner: "Portal", Shape: "ui: + a non-empty name; Portal''s screen graph (Portal ontology.yaml idRule per Kind)"},')
-        'schemas/ids.md' = @(('| `ui:` | Graph' + '.Portal | reserved; `ui:` + a non-empty name |'),
-                             '| `ui:` | Portal | `ui:` + a non-empty name; Portal''s screen graph (Portal ontology.yaml idRule per Kind) |')
-    }
+    $script:GraphNodeTag = 'v0.2.3'
+    # Edits the lift carries, file => (upstream text, Portal's text). Up to v0.2.1 the ui: row of the id prefix
+    # registry was one (docs/design.md 4, 31); since v0.2.3 Graph.Node registers ui: to Portal itself, so the lift is
+    # upstream's but for the import path (docs/design.md 34). A new edit goes here and in design.md.
+    $script:Registered = @{}
 
     function Get-FrontVersion([string] $Path) {
         $text = Get-Content -LiteralPath $Path -Raw
@@ -78,9 +74,9 @@ BeforeAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.3.5 and needs PowerShell 7.4' {
+    It 'is version 0.3.6 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.3.5'
+        $m.ModuleVersion | Should -Be '0.3.6'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -141,9 +137,16 @@ Describe 'Skills' {
     }
     # Since Graph 0.2.3 the skill's own version: tracks the run report's envelope and ontology, not Graph's
     # ModuleVersion (Graph design.md 9), so the copy is compared with Graph's committed skill, version and files.
-    # git-guard follows the same rule since 0.3.2 (docs/design.md 30). graph-node is checked here too since 0.3.3,
-    # besides against Graph.Node's pinned tag above: both must hold (docs/design.md 31).
-    It '<_> (maintained in Graph, read-only here) is Graph''s committed skill, version and files' -Skip:(-not $HasGraph) -ForEach 'run-report', 'git-guard', 'graph-node' {
+    # git-guard follows the same rule since 0.3.2 (docs/design.md 30). graph-node was checked here too from 0.3.3 to
+    # 0.3.5 (docs/design.md 31); since 0.3.6 it follows Graph.Node's pinned tag, which Graph's copy may lag behind but
+    # never lead (docs/design.md 34).
+    It 'graph-node is never older than Graph''s committed copy' -Skip:(-not $HasGraph) {
+        $committed = Get-SiblingAt 'Graph' 'HEAD' '.claude/skills/graph-node/SKILL.md'
+        $theirs = [regex]::Match($committed, '(?m)^version:\s*(\S+)\s*$').Groups[1].Value
+        $theirs | Should -Not -BeNullOrEmpty
+        [version](Get-FrontVersion (Join-Path $SkillRoot 'graph-node' 'SKILL.md')) | Should -BeGreaterOrEqual ([version]$theirs) -Because 'Graph has a newer graph-node: name a newer Graph.Node tag and recopy'
+    }
+    It '<_> (maintained in Graph, read-only here) is Graph''s committed skill, version and files' -Skip:(-not $HasGraph) -ForEach 'run-report', 'git-guard' {
         $committed = Get-SiblingAt 'Graph' 'HEAD' ".claude/skills/$_/SKILL.md"
         $version = [regex]::Match($committed, '(?m)^version:\s*(\S+)\s*$').Groups[1].Value
         $version | Should -Not -BeNullOrEmpty
@@ -218,10 +221,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.3.5, the eight Kinds, the seven edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.3.6, the eight Kinds, the seven edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.3\.5$'
+        $text | Should -Match '(?m)^version: 0\.3\.6$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -373,7 +376,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.3.5'
+        $s.version | Should -Be '0.3.6'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -385,14 +388,25 @@ Describe 'Live portal' {
         $s.edges.id | Should -Contain 'ui:root|ui:theme:default|themed-by'
         Join-Path $Work 'state' | Should -Not -Exist
     }
-    It 'seeds the menu as nodes: one Container "Graph" that is-a Menu and opens the Canvas, contained by nothing' {
+    It 'seeds the menu as nodes: Containers "Graph" and "Runs" that are-a Menu and open their Canvases, contained by nothing' {
         $s = Get-PortalScreen -Url $Url
-        $entry = $s.nodes | Where-Object id -EQ 'ui:menu:graph'
-        $entry.kind | Should -Be 'Container'
-        $entry.name | Should -Be 'Graph'
-        $s.edges.id | Should -Contain 'ui:menu:graph|ui:category:Menu|is-a'
-        $s.edges.id | Should -Contain 'ui:menu:graph|ui:canvas|opens'
-        @($s.edges | Where-Object { $_.kind -eq 'contains' -and $_.to -eq 'ui:menu:graph' }) | Should -BeNullOrEmpty
+        foreach ($m in @(
+                @{ Id = 'ui:menu:graph'; Name = 'Graph'; Order = 0; Opens = 'ui:canvas'; Source = 'filesystem' }
+                @{ Id = 'ui:menu:runs'; Name = 'Runs'; Order = 1; Opens = 'ui:canvas:agent-runs'; Source = 'agent-runs' })) {
+            $entry = $s.nodes | Where-Object id -EQ $m.Id
+            $entry.kind | Should -Be 'Container'
+            $entry.name | Should -Be $m.Name
+            $entry.properties.order | Should -Be $m.Order
+            $s.edges.id | Should -Contain "$($m.Id)|ui:category:Menu|is-a"
+            $s.edges.id | Should -Contain "$($m.Id)|$($m.Opens)|opens"
+            @($s.edges | Where-Object { $_.kind -eq 'contains' -and $_.to -eq $m.Id }) | Should -BeNullOrEmpty
+            $target = $s.nodes | Where-Object id -EQ $m.Opens
+            $target.properties.type | Should -Be 'Canvas'
+            $target.properties.source | Should -Be $m.Source
+            $s.edges.id | Should -Contain "ui:root|$($m.Opens)|contains"
+        }
+        # The seed records no Mount: agent-runs is drawn once Claude.Agent mounts it (docs/design.md 35).
+        @($s.nodes | Where-Object kind -EQ 'Mount') | Should -BeNullOrEmpty
         (Send $Url POST '/api/edges' @{ kind = 'opens'; from = 'ui:menu:graph'; to = 'ui:layout:root' }).Body.problems.code | Should -Contain 'edge-endpoints'
     }
     It 'seeds a State per Designer section, joined by has-state: Approve and Categories open, the rest collapsed' {

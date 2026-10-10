@@ -22,7 +22,12 @@ kinds:
         permissions: [network.write]
   VM:
     idRule: "vm:<name>"
-    display: { color: "#e07a9a", shape: circle }
+    properties: [power]
+    display:
+      color: "#e07a9a"
+      shape: circle
+      when:
+        - { properties: { power: stopped }, color: "#9e9e9e", shape: triangle }
   ActionRun:
     description: Base kind from GraphNode.
     display: { color: "#f5a623", shape: diamond }

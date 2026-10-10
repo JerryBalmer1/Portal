@@ -17,17 +17,62 @@ var legacyShapes = map[string]string{
 	"octagon":         "hexagon",
 }
 
-// ontologyWarnings finds the 0.1.0 forms the schema still accepts: a legacy
-// display shape and an action whose inputs are a name -> type map.
+// legacyShape warns when a display block or display rule uses a 0.1.0 shape.
+func legacyShape(block map[string]any, path string) []Problem {
+	shape, _ := block["shape"].(string)
+	use, legacy := legacyShapes[shape]
+	if !legacy {
+		return nil
+	}
+	return []Problem{{Code: "display", Path: path + "/shape", Severity: SeverityWarning,
+		Message: fmt.Sprintf("shape %q is a 0.1.0 name accepted until 0.3.0; use circle, square, diamond, hexagon, triangle or star (nearest: %s)", shape, use)}}
+}
+
+// declaredProperties returns the property names a Kind declares, and false
+// when it declares none, so nothing can be checked against them.
+func declaredProperties(kd map[string]any) (map[string]bool, bool) {
+	list, ok := kd["properties"].([]any)
+	if !ok {
+		return nil, false
+	}
+	names := map[string]bool{}
+	for _, p := range list {
+		switch t := p.(type) {
+		case string:
+			names[t] = true
+		case map[string]any:
+			if n, ok := t["name"].(string); ok {
+				names[n] = true
+			}
+		}
+	}
+	return names, true
+}
+
+// ontologyWarnings finds the 0.1.0 forms the schema still accepts (a legacy
+// display shape, an action whose inputs are a name -> type map) and display
+// rules keyed on a property the Kind does not declare (design.md 18).
 func ontologyWarnings(doc any) []Problem {
 	kinds := mapAt(doc, "kinds")
 	var out []Problem
 	for _, k := range sortedKeys(kinds) {
 		kd, _ := kinds[k].(map[string]any)
-		if shape, ok := mapAt(kd, "display")["shape"].(string); ok {
-			if use, legacy := legacyShapes[shape]; legacy {
-				out = append(out, Problem{Code: "display", Path: "/kinds/" + k + "/display/shape", Severity: SeverityWarning,
-					Message: fmt.Sprintf("shape %q is a 0.1.0 name accepted until 0.3.0; use circle, square, diamond or hexagon (nearest: %s)", shape, use)})
+		display := mapAt(kd, "display")
+		out = append(out, legacyShape(display, "/kinds/"+k+"/display")...)
+		declared, hasDeclared := declaredProperties(kd)
+		rules, _ := display["when"].([]any)
+		for i, r := range rules {
+			rm, _ := r.(map[string]any)
+			p := fmt.Sprintf("/kinds/%s/display/when/%d", k, i)
+			out = append(out, legacyShape(rm, p)...)
+			if !hasDeclared {
+				continue
+			}
+			for _, name := range sortedKeys(mapAt(rm, "properties")) {
+				if !declared[name] {
+					out = append(out, Problem{Code: "display", Path: p + "/properties/" + name, Severity: SeverityWarning,
+						Message: fmt.Sprintf("display rule keys on %s, which Kind %s does not declare in properties", name, k)})
+				}
 			}
 		}
 		actions, _ := kd["actions"].([]any)

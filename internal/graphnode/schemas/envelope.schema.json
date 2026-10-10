@@ -11,6 +11,18 @@
     "version":  { "type": "string" },
     "layer":    { "$ref": "node.schema.json#/$defs/utcStamp", "description": "this envelope's layer stamp: UTC ISO-8601 ending Z, sortable as a string" },
     "root":     { "type": "string", "description": "id of the node the graph was built from, if any" },
+    "source": {
+      "type": "object",
+      "description": "what wrote this envelope, from what, and when (design.md 20); optional, all four keys required when present",
+      "required": ["emitter", "version", "target", "stamp"],
+      "properties": {
+        "emitter": { "type": "string", "minLength": 1, "description": "the emitting module or function, e.g. Graph.Emitter.FileSystem" },
+        "version": { "type": "string", "minLength": 1, "description": "the emitter's version" },
+        "target":  { "type": "string", "minLength": 1, "description": "what was read: a path, URL or name" },
+        "stamp":   { "$ref": "node.schema.json#/$defs/utcStamp", "description": "when the emitter read the target: UTC ending Z" }
+      },
+      "additionalProperties": false
+    },
     "nodes":    { "type": "array", "items": { "$ref": "node.schema.json" } },
     "edges":    { "type": "array", "items": { "$ref": "edge.schema.json" } },
     "findings": { "type": "array", "items": { "$ref": "node.schema.json#/$defs/finding" } },

@@ -49,17 +49,44 @@
     },
     "display": {
       "type": "object",
-      "description": "How a renderer draws nodes of this Kind, resolved by node.kind; never carried on a node (design.md 13).",
+      "description": "How a renderer draws nodes of this Kind, resolved by node.kind; never carried on a node (design.md 13). when overrides it for nodes whose properties match (design.md 18).",
       "properties": {
         "color":     { "$ref": "#/$defs/color" },
-        "shape":     { "type": "string", "enum": ["circle", "square", "diamond", "hexagon", "round-rectangle", "rectangle", "ellipse", "octagon"],
-                       "description": "circle | square | diamond | hexagon; round-rectangle, rectangle, ellipse and octagon are 0.1.0 names, accepted with a display warning until 0.3.0" },
+        "shape":     { "$ref": "#/$defs/shape" },
         "icon":      { "type": "string" },
         "size":      { "type": "integer", "minimum": 1 },
         "label":     { "type": "string", "description": "template; {name} and {properties.x} substitute" },
+        "collapsed": { "type": "boolean" },
+        "when":      { "type": "array", "items": { "$ref": "#/$defs/displayRule" },
+                       "description": "overrides in order; the first rule whose properties all equal the node's wins, and its keys replace the Kind's (design.md 18)" }
+      },
+      "additionalProperties": false
+    },
+    "displayRule": {
+      "type": "object",
+      "description": "A display override keyed on property values: properties: { verdict: deny } plus the display keys it changes.",
+      "required": ["properties"],
+      "minProperties": 2,
+      "properties": {
+        "properties": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": ["string", "number", "boolean"] },
+          "description": "property name -> the value it must equal; every pair must match"
+        },
+        "color":     { "$ref": "#/$defs/color" },
+        "shape":     { "$ref": "#/$defs/shape" },
+        "icon":      { "type": "string" },
+        "size":      { "type": "integer", "minimum": 1 },
+        "label":     { "type": "string" },
         "collapsed": { "type": "boolean" }
       },
       "additionalProperties": false
+    },
+    "shape": {
+      "type": "string",
+      "enum": ["circle", "square", "diamond", "hexagon", "triangle", "star", "round-rectangle", "rectangle", "ellipse", "octagon"],
+      "description": "circle | square | diamond | hexagon | triangle | star; round-rectangle, rectangle, ellipse and octagon are 0.1.0 names, accepted with a display warning until 0.3.0"
     },
     "edgeDisplay": {
       "type": "object",

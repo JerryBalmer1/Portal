@@ -2,7 +2,7 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.3.5, id prefix `ui:` (registered to Portal in the lifted Graph.Node id registry), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.3.6, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 
@@ -11,7 +11,7 @@ Module `Portal`, version 0.3.5, id prefix `ui:` (registered to Portal in the lif
 | Screen graph | The envelope `GET /api/screen` returns: module `Portal`, `root` `ui:root`, every panel a node. Held in memory; it reaches disk only as a snap. |
 | Boot | What a start loads the screen from: the snap `PORTAL_SNAP` names, else the newest snap, else the dev seed (`empty` with `-no-seed`). Reported in the `X-Portal-Boot` header (docs/design.md 20). |
 | Container | Kind. A box holding Containers and Widgets by `contains`; arranged by its Layout, drawn with its Theme. Properties `parent`, `order`, `visible`, `bounds`. The root is the Container no `contains` points at. |
-| Menu entry | A Container that `is-a` the Category named Menu and `opens` the Container or Widget it shows. Drawn in the top bar, by `order` then id, never on the screen; contained by nothing. The seed's is `ui:menu:graph`, "Graph", opening `ui:canvas` (docs/design.md 25). |
+| Menu entry | A Container that `is-a` the Category named Menu and `opens` the Container or Widget it shows. Drawn in the top bar, by `order` then id, never on the screen; contained by nothing. The seed's are `ui:menu:graph`, "Graph", opening `ui:canvas` (docs/design.md 25), and `ui:menu:runs`, "Runs", opening `ui:canvas:agent-runs`, a Canvas on the `agent-runs` layer Claude.Agent mounts (docs/design.md 35). |
 | Widget | Kind. A panel; its Category (`is-a`) decides how it draws, `source` says what. Properties `type`, `source`, `bounds`, `order`, `visible`. |
 | Layout | Kind. `mode` grid, flow or canvas; `columns` for grid (12 when absent). Joined by `laid-out-by`. |
 | Category | Graph.Node base Kind used as a panel type. `name`, `properties.label` (required by Graph.Node), `description`. The base Categories Canvas, Table, Detail and Designer have renderers; any other draws with the base it `is-a`. The seeded Category Menu has no renderer: its Containers are the top bar's entries. |

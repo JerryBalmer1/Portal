@@ -31,8 +31,17 @@ const DesignerCategory = "Designer"
 // (docs/design.md 25).
 const MenuCategory = "Menu"
 
-// SeedMenuEntry is the dev seed's one menu entry, "Graph", opening ui:canvas.
+// SeedMenuEntry is the dev seed's first menu entry, "Graph", opening ui:canvas.
 const SeedMenuEntry = "ui:menu:graph"
+
+// SeedRunsEntry is the dev seed's second menu entry, "Runs", opening
+// SeedRunsCanvas, a Canvas on the agent-runs layer that Claude.Agent mounts
+// (docs/design.md 35).
+const (
+	SeedRunsEntry  = "ui:menu:runs"
+	SeedRunsCanvas = "ui:canvas:agent-runs"
+	RunsLayer      = "agent-runs"
+)
 
 // SeedDesigner is the dev seed's Designer Container.
 const SeedDesigner = "ui:designer"
@@ -233,9 +242,11 @@ func (p *Portal) stamp() string {
 const StampLayout = "2006-01-02T15:04:05.000Z"
 
 // seed builds the dev screen: one root Container, its grid Layout and Theme,
-// the four base Categories and Menu, one Canvas Widget on the filesystem
-// layer, the Designer panel with a State per section, and one menu entry
-// opening the Canvas (docs/design.md 7, 25 and 28). The Theme's values are base.css's own,
+// the four base Categories and Menu, a Canvas Widget on the filesystem
+// layer and one on the agent-runs layer, the Designer panel with a State per
+// section, and two menu entries, Graph and Runs, opening the Canvases
+// (docs/design.md 7, 25, 28 and 35). The seed records no Mount: agent-runs
+// is drawn once Claude.Agent mounts it. The Theme's values are base.css's own,
 // so a seeded page looks as it did before Themes.
 func (p *Portal) seed() error {
 	env := p.screen
@@ -258,6 +269,9 @@ func (p *Portal) seed() error {
 		graph.Node{ID: SeedDesigner, Kind: "Container", Name: "designer", Properties: map[string]any{
 			"order": 1, "parent": Root, "bounds": map[string]any{"x": 8, "y": 0, "w": 4, "h": 9}}},
 		graph.Node{ID: SeedMenuEntry, Kind: "Container", Name: "Graph", Properties: map[string]any{"order": 0}},
+		graph.Node{ID: SeedRunsCanvas, Kind: "Widget", Name: RunsLayer, Properties: map[string]any{
+			"type": "Canvas", "source": RunsLayer, "bounds": map[string]any{"x": 0, "y": 9, "w": 8, "h": 9}}},
+		graph.Node{ID: SeedRunsEntry, Kind: "Container", Name: "Runs", Properties: map[string]any{"order": 1}},
 	)
 	env.Edges = append(env.Edges,
 		graph.NewEdge(Root, "ui:layout:root", "laid-out-by"),
@@ -268,6 +282,10 @@ func (p *Portal) seed() error {
 		graph.NewEdge(SeedDesigner, "ui:category:"+DesignerCategory, "is-a"),
 		graph.NewEdge(SeedMenuEntry, "ui:category:"+MenuCategory, "is-a"),
 		graph.NewEdge(SeedMenuEntry, "ui:canvas", "opens"),
+		graph.NewEdge(Root, SeedRunsCanvas, "contains"),
+		graph.NewEdge(SeedRunsCanvas, "ui:category:Canvas", "is-a"),
+		graph.NewEdge(SeedRunsEntry, "ui:category:"+MenuCategory, "is-a"),
+		graph.NewEdge(SeedRunsEntry, SeedRunsCanvas, "opens"),
 	)
 	addSections(env)
 	all := make([]string, 0, len(env.Nodes))

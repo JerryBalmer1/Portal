@@ -63,18 +63,28 @@ type Counts struct {
 	ByKind map[string]int `json:"byKind,omitempty"`
 }
 
+// EnvelopeSource records what wrote an envelope, from what, and when
+// (design.md 20). All four fields are required when the block is present.
+type EnvelopeSource struct {
+	Emitter string `json:"emitter"`
+	Version string `json:"version"`
+	Target  string `json:"target"`
+	Stamp   string `json:"stamp"`
+}
+
 // Envelope is the document an emitter writes: one layer of one module.
 type Envelope struct {
-	Schema   string    `json:"schema"`
-	Ontology string    `json:"ontology,omitempty"`
-	Module   string    `json:"module"`
-	Version  string    `json:"version,omitempty"`
-	Layer    string    `json:"layer"`
-	Root     string    `json:"root,omitempty"`
-	Nodes    []Node    `json:"nodes"`
-	Edges    []Edge    `json:"edges"`
-	Findings []Finding `json:"findings"`
-	Counts   *Counts   `json:"counts,omitempty"`
+	Schema   string          `json:"schema"`
+	Ontology string          `json:"ontology,omitempty"`
+	Module   string          `json:"module"`
+	Version  string          `json:"version,omitempty"`
+	Layer    string          `json:"layer"`
+	Root     string          `json:"root,omitempty"`
+	Source   *EnvelopeSource `json:"source,omitempty"`
+	Nodes    []Node          `json:"nodes"`
+	Edges    []Edge          `json:"edges"`
+	Findings []Finding       `json:"findings"`
+	Counts   *Counts         `json:"counts,omitempty"`
 }
 
 // EdgeID builds the id an edge must carry: from|to|kind with % and | in from

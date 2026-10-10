@@ -105,7 +105,7 @@ task Smoke Build, {
         if ($p.Boot -ne 'seed') { throw "a fresh artifacts/smoke booted from $($p.Boot), not seed" }
         $screen = Get-PortalScreen -Url $p.Url
         $ids = @($screen.nodes.id)
-        foreach ($id in 'ui:root', 'ui:layout:root', 'ui:theme:default', 'ui:canvas', 'ui:designer', 'ui:category:Canvas', 'ui:category:Table', 'ui:category:Detail', 'ui:category:Designer', 'ui:category:Menu', 'ui:menu:graph') {
+        foreach ($id in 'ui:root', 'ui:layout:root', 'ui:theme:default', 'ui:canvas', 'ui:designer', 'ui:category:Canvas', 'ui:category:Table', 'ui:category:Detail', 'ui:category:Designer', 'ui:category:Menu', 'ui:menu:graph', 'ui:canvas:agent-runs', 'ui:menu:runs') {
             if ($id -notin $ids) { throw "seed lacks $id" }
         }
         $report.checks.seed = [ordered]@{ boot = $p.Boot; nodes = $screen.nodes.Count; edges = $screen.edges.Count }
@@ -116,7 +116,7 @@ task Smoke Build, {
 
         # A menu entry is a node and two edges through the existing POSTs, as the Designer's form writes it.
         $entry = 'ui:menu:smoke'
-        $null = Invoke-RestMethod -Method Post -Uri "$($p.Url)/api/nodes" -ContentType 'application/json' -Body (@{ id = $entry; kind = 'Container'; name = 'Smoke'; properties = @{ order = 1 } } | ConvertTo-Json -Compress)
+        $null = Invoke-RestMethod -Method Post -Uri "$($p.Url)/api/nodes" -ContentType 'application/json' -Body (@{ id = $entry; kind = 'Container'; name = 'Smoke'; properties = @{ order = 2 } } | ConvertTo-Json -Compress)
         $null = Invoke-RestMethod -Method Post -Uri "$($p.Url)/api/edges" -ContentType 'application/json' -Body (@{ kind = 'is-a'; from = $entry; to = 'ui:category:Menu' } | ConvertTo-Json -Compress)
         $null = Invoke-RestMethod -Method Post -Uri "$($p.Url)/api/edges" -ContentType 'application/json' -Body (@{ kind = 'opens'; from = $entry; to = 'ui:designer' } | ConvertTo-Json -Compress)
         $report.checks.menu = [ordered]@{ added = $entry; edges = @("$entry|ui:category:Menu|is-a", "$entry|ui:designer|opens") }
@@ -147,7 +147,7 @@ task Smoke Build, {
         $d = Compare-PortalSnap $a $b -Url $p.Url
         if (@($d.changed.nodes).Count -ne 1 -or $d.changed.nodes[0].id -ne 'ui:theme:default') { throw 'GET /api/diff disagrees with the approval' }
         foreach ($id in $report.checks.menu.edges) { if ($id -notin @($after.edges.id)) { throw "the restart lacks the menu edge $id" } }
-        $report.checks.menu.restart = Test-TopBarMenu -Url $p.Url -Entries @('ui:menu:graph', $entry)
+        $report.checks.menu.restart = Test-TopBarMenu -Url $p.Url -Entries @('ui:menu:graph', 'ui:menu:runs', $entry)
         $report.checks.canvasFit = Test-CanvasFit -Url $p.Url
 
         $report.result = 'passed'
@@ -170,8 +170,9 @@ task Pester Build, {
     if ($LASTEXITCODE -ne 0) { throw "Pester failed: $LASTEXITCODE test(s)" }
 }
 
-# A headless capture of the dev seed over the newest FileSystem layer (the fixture when the sibling has none), with
-# reduced motion. Also prints how many Canvas nodes took a colour from the layer ontology (data-coloured).
+# A headless capture of the dev seed over the newest FileSystem layer (the fixture when the sibling has none) and, when
+# Claude.Agent has one, its newest agent-runs layer (docs/design.md 35), with reduced motion. Also prints how many Canvas
+# nodes took a colour from the layer ontology (data-coloured).
 task Screenshot Build, {
     $browser = Find-HeadlessBrowser
     if (-not $browser) { print Yellow 'Screenshot skipped: neither msedge nor chrome found.'; return }
@@ -183,7 +184,9 @@ task Screenshot Build, {
     $null = New-Item -ItemType Directory -Force -Path $outDir, $work
     $png = Join-Path $outDir 'portal.png'
     try {
-        $p = Start-Portal -Port $testPort -Artifacts (Join-Path $work 'artifacts') -Filesystem $fs
+        $runs = 'C:\__Code\Claude.Agent\artifacts\layers'
+        $mount = if (Test-Path -LiteralPath $runs) { @{ 'agent-runs' = $runs } } else { @{} }
+        $p = Start-Portal -Port $testPort -Artifacts (Join-Path $work 'artifacts') -Filesystem $fs -Mount $mount
         $common = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--force-prefers-reduced-motion', '--virtual-time-budget=8000')
         Remove-Item -LiteralPath $png -ErrorAction SilentlyContinue
         $null = Start-Process -FilePath $browser -ArgumentList ($common + @("--screenshot=$png", '--window-size=1400,900', '--hide-scrollbars', "$($p.Url)/")) -Wait -NoNewWindow -PassThru `

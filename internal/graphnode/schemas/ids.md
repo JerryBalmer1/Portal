@@ -13,6 +13,10 @@ A node id is any non-empty string (node.schema.json). An id that starts with a r
 | `touched:` | Graph.RunReport | `touched:<path relative to the repo>`, forward slashes |
 | `alert:` | Claude.Agent.Alerts | `alert:<rule>:<seq>`, or `alert:<rule>:line-<n>` for a ledger line without seq; rule matches `^[a-z][a-z0-9-]*$`, seq and n positive integers |
 | `ledger:` | Claude.Agent.Alerts | `ledger:<seq>`, or `ledger:line-<n>` for a ledger line without seq; seq and n positive integers |
+| `agent:` | Graph.Emitter.Agent | `agent:<path relative to the repo, forward slashes>` (AgentFile), then optionally `#<heading slug>` (Section) and `/rule-<n>` (Rule); slug matches `^[a-z0-9_-]+$`, n a positive integer. The run layer's `agent:run/<stamp>/step-<n>/...` is a path in this shape |
+| `runner:` | Claude.Agent.Runner | `runner:<plan>` (Plan), `runner:<plan>/<session id>` (Run), `runner:<plan>/<session id>/step-<n>` (Step); plan has no `.` or `/`, n a positive integer |
+| `git:` | Graph.Emitter.Git.Repository | `git:commit/<40 lower-case hex sha>`, `git:branch/<name>`, `git:tag/<name>`, `git:author/<email, lower-cased; the name when the email is empty>` |
+| `ref:` | Graph.Emitter.Reference | `ref:repo:<folder name>`, `ref:doc:<Repo>/<path relative to the root>`, `ref:section:<Repo>/design.md#<n>`, `ref:skill:<Repo>/<name>`, `ref:ext:<first 16 lower-case hex of the SHA-256 of host + path>` |
 
 ## `fs:` in full
 
@@ -24,7 +28,7 @@ A node id is any non-empty string (node.schema.json). An id that starts with a r
 
 ## Edges across emitters
 
-An emitter that draws an edge to a node another emitter owns uses that emitter's prefix and shape, so the edge meets the node when a merge brings the two layers together (design.md 11). Until then the endpoint is missing from the emitter's own envelope. Both validators report that `dangling-edge` as a warning, not an error, when the missing id carries a registered prefix whose owner is not the envelope's `module`. A missing id with the envelope's own prefix, or with no registered prefix, is still an error.
+An emitter that draws an edge to a node another emitter owns uses that emitter's prefix and shape, so the edge meets the node when a merge brings the two layers together (design.md 11). Until then the endpoint is missing from the emitter's own envelope. Both validators report that `dangling-edge` as a warning, not an error, when the missing id carries a registered prefix whose owner is not the envelope's `module`. A missing id with the envelope's own module's prefix may be in another layer of that module: pure `Test-Graph` reports it as a warning, `Test-Graph -Strict`, `graph.Validate` and `graphnode validate` as an error (design.md 19). A missing id with no registered prefix is an error everywhere.
 
 ## Adding a prefix
 

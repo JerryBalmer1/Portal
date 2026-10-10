@@ -110,7 +110,7 @@ func TestSeedValidatesAndBootsFromSeed(t *testing.T) {
 	}
 	want := map[string]string{Root: "Container", "ui:layout:root": "Layout", SeedTheme: "Theme", "ui:canvas": "Widget", "ui:designer": "Container",
 		"ui:category:Canvas": "Category", "ui:category:Table": "Category", "ui:category:Detail": "Category", "ui:category:Designer": "Category",
-		"ui:category:Menu": "Category", SeedMenuEntry: "Container"}
+		"ui:category:Menu": "Category", SeedMenuEntry: "Container", SeedRunsCanvas: "Widget", SeedRunsEntry: "Container"}
 	for _, sec := range DesignerSections {
 		want[SectionStateID(SeedDesigner, sec.Slug)] = "State"
 	}
@@ -272,8 +272,9 @@ func TestDanglingEdgeToAnotherOwnerIsStillRefused(t *testing.T) {
 	t.Errorf("no dangling-edge error: %v", inv.Problems)
 }
 
-// The seed's menu is nodes and edges only: one Container that is-a Menu and
-// opens the Canvas, contained by nothing, so the screen tree never draws it.
+// The seed's menu is nodes and edges only: Containers that are-a Menu, each
+// opening a Canvas, contained by nothing, so the screen tree never draws them.
+// Graph opens the filesystem Canvas, Runs the agent-runs one (docs/design.md 35).
 func TestSeedMenuEntryIsAContainerThatIsAMenuAndOpensTheCanvas(t *testing.T) {
 	p, err := New(Options{Artifacts: t.TempDir()})
 	if err != nil {
@@ -292,19 +293,31 @@ func TestSeedMenuEntryIsAContainerThatIsAMenuAndOpensTheCanvas(t *testing.T) {
 			entries = append(entries, e.From)
 		case e.Kind == "opens":
 			opens[e.From] = e.To
-		case e.Kind == "contains" && e.To == SeedMenuEntry:
-			t.Errorf("menu entry is contained by %s", e.From)
+		case e.Kind == "contains" && (e.To == SeedMenuEntry || e.To == SeedRunsEntry):
+			t.Errorf("menu entry %s is contained by %s", e.To, e.From)
 		}
 	}
-	if !slices.Equal(entries, []string{SeedMenuEntry}) {
-		t.Fatalf("menu entries %v, want [%s]", entries, SeedMenuEntry)
+	if !slices.Equal(entries, []string{SeedMenuEntry, SeedRunsEntry}) {
+		t.Fatalf("menu entries %v, want [%s %s]", entries, SeedMenuEntry, SeedRunsEntry)
 	}
-	n := env.Nodes[env.NodeIndex()[SeedMenuEntry]]
-	if n.Kind != "Container" || n.Name != "Graph" {
-		t.Errorf("menu entry is %s %q, want Container \"Graph\"", n.Kind, n.Name)
-	}
-	if opens[SeedMenuEntry] != "ui:canvas" {
-		t.Errorf("menu entry opens %q, want ui:canvas", opens[SeedMenuEntry])
+	idx := env.NodeIndex()
+	for _, w := range []struct {
+		id, name, opens, source string
+		order                   int64
+	}{{SeedMenuEntry, "Graph", "ui:canvas", "filesystem", 0}, {SeedRunsEntry, "Runs", SeedRunsCanvas, RunsLayer, 1}} {
+		n := env.Nodes[idx[w.id]]
+		if n.Kind != "Container" || n.Name != w.name {
+			t.Errorf("menu entry %s is %s %q, want Container %q", w.id, n.Kind, n.Name, w.name)
+		}
+		if fmt.Sprint(n.Properties["order"]) != fmt.Sprint(w.order) {
+			t.Errorf("menu entry %s order %v, want %d", w.id, n.Properties["order"], w.order)
+		}
+		if opens[w.id] != w.opens {
+			t.Errorf("menu entry %s opens %q, want %s", w.id, opens[w.id], w.opens)
+		}
+		if c := env.Nodes[idx[w.opens]]; c.Kind != "Widget" || c.Properties["type"] != "Canvas" || c.Properties["source"] != w.source {
+			t.Errorf("%s is %s %v, want a Canvas Widget on %s", w.opens, c.Kind, c.Properties, w.source)
+		}
 	}
 	// opens leaves only a Container and ends at a Container or a Widget.
 	if _, err := p.AddEdge([]byte(`{"kind":"opens","from":"ui:canvas","to":"ui:root"}`)); err == nil {

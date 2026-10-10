@@ -2,12 +2,12 @@
 
 # Portal
 
-The portal of the graph family: a blank page plus one API. Every panel on the page is a node in a Graph.Node envelope; the API reads and changes that graph, mounts data layers read-only, approves the screen as a snap and diffs two snaps. Widgets are modules, one renderer per base Category; the graph widget (Canvas) is one of them. No UI model of its own (docs/design.md 1); the first data it draws is Graph.Emitter.FileSystem's layer. A start boots from the newest approved snap, else from the dev seed (docs/design.md 20). The portal serves on one fixed port, 8200 (docs/design.md 24); the top bar's menu is graph too: Containers that `is-a` Menu, each `opens` what it shows (docs/design.md 25), and its stats are the open view's data layer (docs/design.md 33).
+The portal of the graph family: a blank page plus one API. Every panel on the page is a node in a Graph.Node envelope; the API reads and changes that graph, mounts data layers read-only, approves the screen as a snap and diffs two snaps. Widgets are modules, one renderer per base Category; the graph widget (Canvas) is one of them. No UI model of its own (docs/design.md 1); the first data it draws is Graph.Emitter.FileSystem's layer, and the seed's Runs entry opens a Canvas on Claude.Agent's `agent-runs` layer (docs/design.md 35). A start boots from the newest approved snap, else from the dev seed (docs/design.md 20). The portal serves on one fixed port, 8200 (docs/design.md 24); the top bar's menu is graph too: Containers that `is-a` Menu, each `opens` what it shows (docs/design.md 25), and its stats are the open view's data layer (docs/design.md 33).
 
 Rows, bottom to top:
 
 ```
-Graph.Node           the shape: schemas, validator (lifted here at v0.2.1, internal/graphnode)
+Graph.Node           the shape: schemas, validator (lifted here at v0.2.3, internal/graphnode)
 emitters             write layers: Graph.Emitter.FileSystem, ...
 Portal               mounts layers read-only; its own screen is a graph/1 envelope
 Graph                orchestrates; calls the PowerShell wrappers here
@@ -24,15 +24,15 @@ Nothing edits below its own row.
 | `internal/gen/api/` | Generated from the spec: models, chi server interface, embedded spec. Read-only. |
 | `internal/server/` | The handlers; Go spec tests (every operation against the spec, route and client parity). |
 | `internal/store/` | Screen graph and its boot, validation, layers, snaps and approval, diff. |
-| `internal/graphnode/` | Graph.Node's schemas and `graph` package, lifted at tag v0.2.1 with `ui:` registered to Portal (docs/design.md 4). |
+| `internal/graphnode/` | Graph.Node's schemas and `graph` package, lifted at tag v0.2.3, unchanged but for the import path; upstream registers `ui:` to Portal (docs/design.md 4, 34). |
 | `cmd/portal/` | The server: `portal [-port 8200] [-artifacts artifacts] [-mount name=path]... [-filesystem <dir or file>] [-no-seed]`, on 127.0.0.1; `-port 0` is refused; `PORTAL_SNAP=<stamp>` boots from that snap; `PORTAL_MODE=production` hides the Designer. |
 | `cmd/graphnode/` | Graph.Node's validator CLI, lifted: `graphnode validate <graph.json> [--ontology <ontology.yaml>]`, `validate-ontology <ontology.yaml>`, `prefixes`, `check-id <prefix> <id>`, `schema [name]`, `version`. |
 | `web/` | The page: `index.html`, `portal.js`, `client.js`, renderers `canvas.js`, `table.js`, `detail.js`, `designer.js` (with Approve; collapsible sections, each a State node), `base.css`, vendored Cytoscape. |
-| `ontology.yaml` | Module `Portal` 0.3.5: Kinds Container, Widget, Layout, Category, State, Theme, Ref, Mount; edges contains, laid-out-by, is-a, opens, displays, has-state, themed-by; findings absent, approved. |
+| `ontology.yaml` | Module `Portal` 0.3.6: Kinds Container, Widget, Layout, Category, State, Theme, Ref, Mount; edges contains, laid-out-by, is-a, opens, displays, has-state, themed-by; findings absent, approved. |
 | `src/Portal/` | PowerShell module: `Start-Portal`, `Stop-Portal`, `Get-PortalStatus`, `Get-PortalScreen`, `New-PortalSnap`, `Compare-PortalSnap`, `Mount-PortalLayer`. |
-| `tests/` | Pester (`Invoke-Tests.ps1`, `Portal.Tests.ps1`) and fixtures: `layers/filesystem/` (a FileSystem layer and its ontology), `invalid.graph.json` (Graph.Node's at v0.2.1). |
+| `tests/` | Pester (`Invoke-Tests.ps1`, `Portal.Tests.ps1`) and fixtures: `layers/filesystem/` (a FileSystem layer and its ontology), `invalid.graph.json` (Graph.Node's at v0.2.3). |
 | `docs/` | `design.md` (decisions, numbered), `manual-check-list.md`, `screenshots/portal.png`. |
-| `.claude/skills/` | `manual-check-list`, `ontology-doc`, `readme` (this repo's docs); `graph-node` (0.2.1, copied read-only from Graph.Node v0.2.1); `run-report` 0.2.2 and `git-guard` 0.1.0 (copied read-only from Graph's committed HEAD, 0.2.8). |
+| `.claude/skills/` | `manual-check-list`, `ontology-doc`, `readme` (this repo's docs); `graph-node` (0.2.3, copied read-only from Graph.Node v0.2.3); `run-report` 0.2.2 and `git-guard` 0.1.0 (copied read-only from Graph's committed HEAD, 0.2.8). |
 | `.claude/settings.json` | Wires `git-guard` as a PreToolUse hook on the Bash and PowerShell tools: an agent's `git commit`, `git push`, `git tag`, `--amend`, `gh pr merge` and `gh release create` are refused. |
 | `.env.example` | `PORTAL_PORT=8200`; copy to `.env` (gitignored) to move the portal. |
 
@@ -58,7 +58,7 @@ Invoke-Build Up           # portal on http://127.0.0.1:8200 over artifacts/ (-Po
 Invoke-Build Status       # port, URL and boot stamp
 Invoke-Build Down         # stop it
 Invoke-Build Generate     # internal/gen from api/openapi.yaml
-Invoke-Build Screenshot   # docs/screenshots/portal.png
+Invoke-Build Screenshot   # docs/screenshots/portal.png; mounts Claude.Agent's newest agent-runs layer when present
 ```
 
 Pester runs only as `pwsh -NoProfile -File .\tests\Invoke-Tests.ps1`.
@@ -78,7 +78,7 @@ $b.diff.changed.nodes                                               # ui:theme:d
 Stop-Portal -Artifacts $env:TEMP\portal-demo
 $p = Start-Portal -Port 18200 -Artifacts $env:TEMP\portal-demo -Filesystem .\tests\fixtures\layers\filesystem
 $p.Boot -eq $b.stamp                                                # True
-(Get-PortalScreen -Url $p.Url).nodes.Count                          # 18
+(Get-PortalScreen -Url $p.Url).nodes.Count                          # 20
 Stop-Portal -Artifacts $env:TEMP\portal-demo
 ```
 
@@ -87,7 +87,7 @@ Stop-Portal -Artifacts $env:TEMP\portal-demo
 A menu entry is three writes through the same POSTs the Designer uses:
 
 ```powershell
-$entry = @{ id = 'ui:menu:designer'; kind = 'Container'; name = 'Designer'; properties = @{ order = 1 } } | ConvertTo-Json -Compress
+$entry = @{ id = 'ui:menu:designer'; kind = 'Container'; name = 'Designer'; properties = @{ order = 2 } } | ConvertTo-Json -Compress
 Invoke-RestMethod -Method Post -Uri "$url/api/nodes" -ContentType application/json -Body $entry
 Invoke-RestMethod -Method Post -Uri "$url/api/edges" -ContentType application/json -Body '{"kind":"is-a","from":"ui:menu:designer","to":"ui:category:Menu"}'
 Invoke-RestMethod -Method Post -Uri "$url/api/edges" -ContentType application/json -Body '{"kind":"opens","from":"ui:menu:designer","to":"ui:designer"}'
@@ -111,4 +111,4 @@ A refused write answers 422 with `problems`, each `{code, path, message, severit
 
 ## Status
 
-0.3.5: a layer mounted by path is a Mount node on screen (`ui:mount:<name>`), so an approved snap mounts it again at boot; the top bar shows the open view's layer, its counts and stamp, with the screen graph's in a badge. 0.3.4: `Invoke-Build Up` stops a running portal, waits up to 10 s for its port and starts a new one, printing `replaced <old stamp> with <new stamp>`; `-NoReplace` keeps the old throw. 0.3.3: `graph-node` recopied at 0.2.1 and the Graph.Node lift moved to tag v0.2.1 (`ui:` still registered to Portal). 0.3.2: the `git-guard` hook wired in `.claude/settings.json`, `run-report` recopied at 0.2.2 (writes only to this repo's `artifacts/`). 0.3.1: Designer sections collapsible, each a State node (`ui:state:designer:<slug>`), Title Case headings and buttons, the Canvas fits its panel after load. Decisions and what was deferred: docs/design.md (entry 33 is 0.3.5's, 32 0.3.4's, 31 0.3.3's, 30 0.3.2's, 28 and 29 0.3.1's, 24 to 27 0.3.0's, 18 to 23 0.2.0's; 9, 15, 16 and 22 name the next questions).
+0.3.6: the Graph.Node lift and `graph-node` skill at v0.2.3 (upstream now registers `ui:` to Portal, so the lift carries no edit); the dev seed has the Runs menu entry and its `agent-runs` Canvas (`ui:menu:runs`, `ui:canvas:agent-runs`), drawn once Claude.Agent mounts the layer. 0.3.5: a layer mounted by path is a Mount node on screen (`ui:mount:<name>`), so an approved snap mounts it again at boot; the top bar shows the open view's layer, its counts and stamp, with the screen graph's in a badge. 0.3.4: `Invoke-Build Up` stops a running portal, waits up to 10 s for its port and starts a new one, printing `replaced <old stamp> with <new stamp>`; `-NoReplace` keeps the old throw. 0.3.3: `graph-node` recopied at 0.2.1 and the Graph.Node lift moved to tag v0.2.1 (`ui:` still registered to Portal). 0.3.2: the `git-guard` hook wired in `.claude/settings.json`, `run-report` recopied at 0.2.2 (writes only to this repo's `artifacts/`). 0.3.1: Designer sections collapsible, each a State node (`ui:state:designer:<slug>`), Title Case headings and buttons, the Canvas fits its panel after load. Decisions and what was deferred: docs/design.md (34 and 35 are 0.3.6's, 33 0.3.5's, 32 0.3.4's, 31 0.3.3's, 30 0.3.2's, 28 and 29 0.3.1's, 24 to 27 0.3.0's, 18 to 23 0.2.0's; 9, 15, 16 and 22 name the next questions).

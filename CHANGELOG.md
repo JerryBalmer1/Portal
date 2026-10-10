@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.6 — 2026-10-09
+
+- Graph.Node lift at tag v0.2.3 (1807fd7): `internal/graphnode/schemas`, `internal/graphnode/graph` and `cmd/graphnode` (reports 0.2.3) recopied. The lift brings the `agent:`, `runner:`, `git:` and `ref:` id prefixes, the `triangle` and `star` shapes, display `when` rules and the envelope `source` block. Upstream now registers `ui:` to Portal with Portal's shape, so the lift carries no edit beyond the import path (docs/design.md 34).
+- `graph-node` skill recopied at 0.2.3 from Graph.Node v0.2.3. Graph's committed copy is still 0.2.1, so Pester now checks graph-node against the pinned tag, and checks only that Graph's copy is not newer. `run-report` and `git-guard` are still compared with Graph's committed files in full (docs/design.md 34).
+- Dev seed: the Runs menu entry `ui:menu:runs` (order 1) opens `ui:canvas:agent-runs`, a Canvas on the `agent-runs` layer below the filesystem Canvas, so a fresh checkout has the Runs view. The seed holds no Mount node: the layer is drawn once Claude.Agent mounts it. The seed is now 20 nodes and 19 edges (docs/design.md 35).
+- Smoke expects Graph, Runs and Smoke in the top bar, with its own entry at order 2. `Invoke-Build Screenshot` mounts Claude.Agent's newest agent-runs layer when that sibling has one. Screenshot refreshed.
+- Go tests 35, Pester 61.
+
 ## 0.3.5 — 2026-10-09
 
 - A mount by path is a Mount node. `POST /api/layers` with `{name, path}` records `ui:mount:<name>` (`layer`, and `path` as given, made absolute) on the screen, so an approved snap mounts the layer again at boot. A directory path mounts its newest `*.graph.json` each time. Mounting the same path again leaves the screen and its stamp unchanged. An inline mount removes the node. Flag mounts (`-filesystem`, `-mount`) are never recorded and win over a recorded layer of the same name. A recorded layer that is gone at boot is printed and skipped (docs/design.md 33).
