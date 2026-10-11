@@ -311,3 +311,51 @@ Choices made without asking:
   - Pester: `-Bootstrap` once and `-Name` only for an existing principal; a portal reading what the module wrote; the boot warning; the anonymous Users, Agents and Tokens pages; the Users Add flow in Chrome; and a token minted for the added user going live at the next revoke and being refused a write (403).
   - Smoke bootstraps its admin and checks the role. Screenshot adds `identity-users.png`.
 - **Version 0.5.0** in `Portal.psd1`, `ontology.yaml` (Kind `Principal`), `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated.
+
+## 39. Dev mode: an auto-minted admin, a browser sign-in shortcut, a visible warning
+
+0.5.1's brief: nobody pastes tokens during development, and nobody demos or ships a dev-mode portal without being told.
+- A tenant's `portal.yaml` gains `mode: dev | demo | prod`, prod when absent, served on `GET /api/tenants/{tenant}` and shown in the banner.
+- `Invoke-Build Dev` refuses unless the mode is dev, mints an admin `dev-bootstrap` into the gitignored identity files (replacing its previous token), sets `PORTAL_TOKEN`, runs Up and prints the token once, DEV ONLY. Up never mints.
+- The avatar's box signs in and out with a token kept in sessionStorage. In mode dev it also offers "Use dev token", read from `GET .../dev-token`, which exists only in mode dev and only on 127.0.0.1.
+- Mode dev shows a persistent amber bar; mode demo a thin blue `DEMO` bar and no shortcuts.
+- CLAUDE.md stops an agent from screenshot or demo work while any tenant is in mode dev. The README's "Before you demo" lists the steps out of it, and Pester fails if `tenants/default/portal.yaml` is committed with mode dev.
+- `tenants/default` is set to dev for now.
+
+Choices made without asking:
+
+- **Where the served token comes from.** `tokens.yaml` holds hashes only, so the binary cannot recover a token. It serves the token it was handed: `cmd/portal` reads `PORTAL_TOKEN` at boot, which `Invoke-Build Dev` sets for its process and `Start-Portal` passes on. It keeps it only when the tenant is in mode dev and the token authenticates as `dev-bootstrap`. Each request checks again, so a revoked dev token is never handed out. No new variable: `PORTAL_TOKEN` is already the module's credential, and a non-dev token in it is never served.
+- **What 404 means.** `GET .../dev-token` answers 200 only when all of these hold at request time; anything else is 404 with one message, so a caller cannot tell which condition failed:
+  - the mode is dev;
+  - the binary holds a live dev-bootstrap token;
+  - the caller's address is loopback;
+  - the `Host` it named is loopback (127.0.0.1, ::1 or localhost).
+  The listener is already 127.0.0.1 only (`host` in `cmd/portal`). The address check is for a test or a future listener; the Host check stops a page on another origin that rebinds its name to 127.0.0.1. The route needs no token: it is how an anonymous tab signs in. The answer carries `Cache-Control: no-store`.
+- **dev-bootstrap outside mode dev.** Its tokens are refused, 401 naming the mode, on reads too. The boot warns while `tokens.yaml` still holds any (`... is in mode demo and tokens.yaml still holds 1 token(s) of dev-bootstrap ...`). So a tenant switched to demo cannot be driven by the dev admin even if the revoke was forgotten. The page drops a refused token at boot and reads as anonymous, so a tab left signed in from dev mode does not stop at an error card.
+- **dev-bootstrap in the identity files.** Entry 38 allows `createdBy: null` only on the first principal. dev-bootstrap is minted into tenants that already have their first admin (`tenants/default` has one), and a real admin is bootstrapped into tenants that only had dev-bootstrap. So:
+  - `dev-bootstrap`, a user admin with `createdBy: null`, may sit anywhere in `principals.yaml`.
+  - The once-only rule counts every other principal: null `createdBy` only on the first one that is not dev-bootstrap. `New-PortalToken -Bootstrap` ignores dev-bootstrap the same way, and appends the real admin beside it rather than rewriting the file.
+  - The name is reserved: `POST .../principals` refuses it (422), and so does `New-PortalToken -Name dev-bootstrap`. A dev-bootstrap made any other way would carry a creator and stop the next boot.
+  - Principals made by dev-bootstrap keep `createdBy: 'ui:principal:dev-bootstrap'`, and the principal itself stays after its token is revoked. Removing principals is not in the API.
+- **Mode is read twice.** The binary reads the merged config with its YAML decoder; the schema refuses an unknown value at boot, and the merge writes `mode: prod` when the overlay names none, so `GET .../config` says it too. The module has no YAML decoder (entry 38): a private `Get-PortalTenantMode` reads a top-level block line `mode: <value>`. A mode written in flow style (`{ mode: dev }`) reads as prod there, so `Dev` refuses rather than mints. Write the mode as a block line.
+- **`Dev` reuses `Up`.** It is `task Dev DevGate, DevMint, Up, {...}`. DevGate refuses before Build, so a refusal builds and writes nothing. DevMint sets `PORTAL_TOKEN` in the Invoke-Build process, which Up's portal inherits. The minting is a private `New-PortalDevToken`, which refuses outside mode dev itself, not an exported function: it exists only for the build task. It writes `tokens.yaml` whole, in the binary's block shape, keeping the file's leading comment and every other token, legacy ones included.
+- **Sign-in was mostly there.** The avatar box (paste, Sign in, Sign out, sessionStorage, the bearer header) shipped in 0.4.0 (entry 36). 0.5.1 adds:
+  - the role beside the name in the avatar (`jerry · admin`);
+  - "Use dev token" in mode dev, offered to anonymous and to any principal but dev-bootstrap;
+  - the mode badge and the bars.
+  The bars are an element of `index.html` in a grid row of their own under the banner, with no close control. They are page chrome, not panels: entry 1's "new panel types are Category nodes" is untouched.
+- **Before you demo, in a working order.** The brief listed: switch to demo, revoke dev-bootstrap, mint a real admin, check the bar, check the avatar. With dev-bootstrap refused outside dev, the revoke needs a real admin, and in demo dev-bootstrap cannot sign in to do it. So the README orders it: mint the real admin, sign in as it and revoke dev-bootstrap, switch to demo and restart, check the bar, check the avatar. All five steps are kept.
+- **The commit guard reads git.** The Pester test reads `tenants/default/portal.yaml` as committed (`git show HEAD:`) and as staged (`git show :`), and fails if either says `mode: dev`. Reading git rather than the working tree means a local, unstaged dev mode passes, and the test fails at the moment it matters: when dev is staged for a commit. With this task's change staged, it fails, as asked.
+- **Screenshots refuse in dev.** `Invoke-Build Screenshot` copies `tenants/default/portal.yaml` into its temporary tenant, so it would capture the amber bar into `docs/screenshots/`, which are shown to others. It refuses while that file is mode dev, which is the CLAUDE.md rule enforced in the build. Smoke and Pester copy the same file and so run in mode dev now. They pass there: nothing they check depends on the mode, and the dev tests set their own.
+- **PORTAL_MODE is separate.** `PORTAL_MODE=production` (entry 3) hides the Designer and is set by `Start-Portal -Production`. The tenant mode says what the tenant is run for. Demo does not hide the Designer; tying the two is not decided.
+- **Coverage.**
+  - Go, `internal/tenant`: modes and their default, dev-bootstrap's place in the file, its tokens only in mode dev, and the reserved name.
+  - Go, `internal/server`: the token served in mode dev and not after a revoke; 404 for a LAN or public caller, a rebound or LAN Host, and for no, the admin's, a reader's or an unknown token passed; 404 and a 401 naming the mode in demo, prod and absent; a reader refused Add while the dev admin may.
+  - Pester:
+    - the commit guard;
+    - the mode reader;
+    - the mint (once, replacing only its own token, refusing outside dev);
+    - `-Bootstrap` beside dev-bootstrap;
+    - `Invoke-Build Dev` refusing and writing nothing, and Up not minting;
+    - the boot lines;
+    - in Chrome over DevTools: the amber bar, Use dev token to `dev-bootstrap · admin` and an Add, a reader signed in through the box unable to Add, the DEMO bar with no shortcut and a dropped dev token, and no bar in prod.

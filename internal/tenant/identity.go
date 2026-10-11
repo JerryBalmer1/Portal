@@ -36,6 +36,11 @@ const (
 	CreatedLayout = "2006-01-02T15:04:05.000Z"
 	// TokenIDLength is how much of a token's SHA-256 names it in the API.
 	TokenIDLength = 12
+	// DevPrincipalName is the admin Invoke-Build Dev mints in a tenant of
+	// mode dev (docs/design.md 39). It may sit anywhere in principals.yaml
+	// with createdBy null, beside the tenant's real first admin; its tokens
+	// authenticate only while the tenant's mode is dev.
+	DevPrincipalName = "dev-bootstrap"
 )
 
 // PrincipalName is a principal's name: it is the tail of the id.
@@ -106,7 +111,7 @@ func loadIdentity(dir string) ([]Principal, []token, error) {
 	var ps []string
 	var out []Principal
 	byID := map[string]Principal{}
-	roots := 0
+	real := 0 // principals before this one, dev-bootstrap aside
 	for i, e := range pdoc.Principals {
 		at := fmt.Sprintf("/principals/%d", i)
 		if !PrincipalName.MatchString(e.Name) {
@@ -128,12 +133,16 @@ func loadIdentity(dir string) ([]Principal, []token, error) {
 			ps = append(ps, fmt.Sprintf("%s/created: %q is not an RFC 3339 time", at, e.Created))
 		}
 		p := Principal{ID: e.ID, Name: e.Name, Type: e.Type, Role: e.Role, Created: e.Created}
-		if e.CreatedBy == nil {
-			roots++
-			if i != 0 || e.Role != RoleAdmin {
-				ps = append(ps, fmt.Sprintf("%s/createdBy: null only for the first principal, an admin (New-PortalToken -Bootstrap)", at))
+		switch {
+		case e.Name == DevPrincipalName:
+			if e.CreatedBy != nil || e.Role != RoleAdmin || e.Type != "user" {
+				ps = append(ps, fmt.Sprintf("%s: %s is the user admin Invoke-Build Dev mints, createdBy null", at, DevPrincipalName))
 			}
-		} else {
+		case e.CreatedBy == nil:
+			if real != 0 || e.Role != RoleAdmin {
+				ps = append(ps, fmt.Sprintf("%s/createdBy: null only for the first principal, an admin (New-PortalToken -Bootstrap), and for %s", at, DevPrincipalName))
+			}
+		default:
 			p.CreatedBy = *e.CreatedBy
 			by, ok := byID[p.CreatedBy]
 			switch {
@@ -142,6 +151,9 @@ func loadIdentity(dir string) ([]Principal, []token, error) {
 			case !by.MayGrant(e.Role):
 				ps = append(ps, fmt.Sprintf("%s/role: %s, above its creator %s's %s (attenuation)", at, e.Role, by.Name, by.Role))
 			}
+		}
+		if e.Name != DevPrincipalName {
+			real++
 		}
 		byID[e.ID] = p
 		out = append(out, p)
@@ -294,6 +306,9 @@ func (t *Tenant) AddPrincipal(by Principal, name, typ, role string) (Principal, 
 	}
 	if !PrincipalName.MatchString(name) {
 		return Principal{}, fmt.Errorf("%w: name %q must match %s", ErrInvalid, name, PrincipalName)
+	}
+	if name == DevPrincipalName {
+		return Principal{}, fmt.Errorf("%w: %s is reserved for the admin Invoke-Build Dev mints", ErrInvalid, name)
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()

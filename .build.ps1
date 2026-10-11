@@ -3,6 +3,9 @@
 #                           Invoke-Build Up           (start the portal on its fixed port over artifacts/: -Port,
 #                                                      else PORTAL_PORT from .env, else the environment, else 8200;
 #                                                      a running one is stopped and replaced; -NoReplace throws instead)
+#                           Invoke-Build Dev          (only for a tenant in mode dev: mint dev-bootstrap, an admin,
+#                                                      set PORTAL_TOKEN to its token and run Up; prints the token once,
+#                                                      DEV ONLY. Up itself never mints anything)
 #                           Invoke-Build Status       (port, URL and boot stamp of the running portal)
 #                           Invoke-Build Down         (stop it)
 #                           Invoke-Build Generate     (regenerate internal/gen from api/openapi.yaml)
@@ -74,6 +77,32 @@ task Up Build, {
     $p = & $m { param($a) Invoke-PortalUp @a } $up
     if ($p.Replaced) { print Green "replaced $($p.Replaced) with $($p.Boot)" }
     print Green "portal at $($p.Url) (process $($p.ProcessId)), booted from $($p.Boot); Invoke-Build Down stops it"
+}
+
+# Dev mode (docs/design.md 39). DevGate refuses, before anything is built or minted, unless the tenant Up serves
+# (PORTAL_TENANT, else default, under PORTAL_TENANTS, else tenants/) says mode: dev in its portal.yaml. DevMint makes
+# principal dev-bootstrap (admin) in that tenant's gitignored principals.yaml when absent, replaces every dev-bootstrap
+# token in tokens.yaml with one new one, and sets PORTAL_TOKEN for this process, which the portal Up starts inherits:
+# in mode dev the binary serves that token at GET .../dev-token to 127.0.0.1, the page's "Use dev token".
+task DevGate {
+    $m = Import-Module $module -Force -PassThru
+    $tenant = & $m { Get-PortalTenant }
+    $mode = & $m { Get-PortalTenantMode }
+    if ($mode -ne 'dev') {
+        throw "Dev refuses: tenant $tenant is in mode $mode, not dev. Dev mints an admin and a local sign-in shortcut, so it runs only for a tenant whose portal.yaml says 'mode: dev'. Use Invoke-Build Up, which never mints anything; README, Before you demo."
+    }
+}
+
+task DevMint DevGate, {
+    $m = Import-Module $module -Force -PassThru
+    $script:DevMinted = & $m { New-PortalDevToken }
+    $env:PORTAL_TOKEN = $script:DevMinted.Token
+    print Yellow "minted dev-bootstrap (admin) in $($script:DevMinted.Path); replaced $($script:DevMinted.Replaced) older dev-bootstrap token(s)"
+}
+
+task Dev DevGate, DevMint, Up, {
+    print Yellow 'DEV ONLY. dev-bootstrap is an admin. Not for demo or production; README, Before you demo.'
+    print Yellow "DEV ONLY token (PORTAL_TOKEN for this process; the page's avatar offers it as Use dev token): $($script:DevMinted.Token)"
 }
 
 task Status {
@@ -196,6 +225,11 @@ task Pester Build, {
 # principals.yaml, tokens.yaml and connections.yaml are never read.
 # Also prints how many Canvas nodes took a colour from the layer ontology (data-coloured).
 task Screenshot Build, {
+    # Screenshots are shown to others: never of a dev-mode tenant (CLAUDE.md, docs/design.md 39).
+    $shotMode = & (Import-Module $module -Force -PassThru) { param($t) Get-PortalTenantMode -Tenant default -Tenants $t } (Join-Path $repo 'tenants')
+    if ($shotMode -eq 'dev') {
+        throw "Screenshot refuses: tenants/default/portal.yaml is mode dev, and docs/screenshots are shown to others. Switch it to demo first (README, Before you demo)."
+    }
     $browser = Find-HeadlessBrowser
     if (-not $browser) { print Yellow 'Screenshot skipped: neither msedge nor chrome found.'; return }
     Import-Module $module -Force

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.5.0
+  version: 0.5.1
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -99,6 +99,40 @@ paths:
               schema: { type: string }
         "404": { $ref: "#/components/responses/NotFound" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/tenants/{tenant}:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: getTenant
+      tags: [tenant]
+      summary: The tenant this process serves and its mode, the overlay's mode (dev, demo or prod; prod when absent). The page draws the mode in the banner, an amber DEV MODE bar for dev and a blue DEMO bar for demo (docs/design.md 39).
+      responses:
+        "200":
+          description: The tenant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantInfo" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/dev-token:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: getDevToken
+      tags: [tenant]
+      summary: >-
+        The page's "Use dev token" sign-in. Exists only while the tenant's mode is dev, the request comes from
+        127.0.0.1 (or ::1) with a loopback Host, and the binary was started with PORTAL_TOKEN set to a token of the
+        dev-bootstrap principal that the tenant still holds (Invoke-Build Dev does all three). Anything else is 404,
+        as if the route were not there. Anonymous may call it: it is how an anonymous tab signs in (docs/design.md 39).
+      responses:
+        "200":
+          description: The dev-bootstrap token, to send as the bearer token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DevToken" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/tenants/{tenant}/screen:
     parameters:
       - $ref: "#/components/parameters/Tenant"
@@ -594,12 +628,40 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
   schemas:
+    TenantInfo:
+      type: object
+      required: [name, mode]
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        mode:
+          type: string
+          enum: [dev, demo, prod]
+          description: The overlay's mode; prod when it names none.
+    DevToken:
+      type: object
+      required: [token, principal, role]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          description: A bearer token of the dev-bootstrap principal. DEV ONLY.
+        principal:
+          type: string
+          description: ui:principal:dev-bootstrap.
+        role:
+          type: string
+          description: admin.
     Config:
       type: object
       description: The merged config; schema/portal.schema.json is authoritative.
-      required: [product, menu]
+      required: [product, menu, mode]
       additionalProperties: true
       properties:
+        mode:
+          type: string
+          enum: [dev, demo, prod]
+          description: What the tenant is run for; prod when the overlay names none (docs/design.md 39).
         product:
           type: object
           required: [name]

@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.5.0 on 2026-10-10, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 in full (Go 55 tests, Smoke passed, Pester 73 passed); items 0.3, 1.1 to 1.14 and 3.1 to 3.5 run as written, each from its own `pwsh -NoProfile -File`, and their Expects are the output seen (every item that mints a token now bootstraps its principal first). Not run: 0.1 (no toolchain change); 2.1 to 2.7, which are interactive. 2.7's Add path was driven by the DevTools protocol in Pester ("the Users page Add flow"); its Revoke click and the page's sign-out after revoking its own token were not driven.
+Verified for: 0.5.1 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 in full with mode dev staged (Go 63 tests, Smoke passed, Pester 86 passed and 1 failed, the commit guard, by design); items 1.14, 1.15 and 3.6 run as written, each from its own `pwsh -NoProfile -File`, and their Expects are the output seen. Not rerun for 0.5.1: 0.1 (no toolchain change), 0.3, 1.1 to 1.13 and 3.1 to 3.5 (their code is unchanged; they now copy a mode-dev overlay, and Pester and Smoke cover them there). Not run: 2.1 to 2.8, which are interactive; 2.8 also runs Invoke-Build Dev, whose Up would have replaced the portal running on 8200. 2.8's sign-in, reader and DEMO paths were driven over the DevTools protocol in Pester.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/server`, `internal/store` and `internal/tenant` (55 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 73, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
+Expect: go test ends `ok` for `cmd/portal`, `internal/server`, `internal/store` and `internal/tenant` (63 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 87, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 86, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -377,7 +377,40 @@ try {
 }
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: `portal: warning: tokens.yaml entries without a principal act as admin until rotated: old-ci`, then `whoami: {"id":null,"name":"old-ci","type":null,"role":"admin","anonymous":false,"legacy":true,"writes":true,"administers":true,"tenant":"default","marker":null}`, `snap: 201`, and `add: 403 forbidden: old-ci's token belongs to no principal (from before 0.5.0), so it cannot be recorded as createdBy; bootstrap a principal with New-PortalToken -Bootstrap` (docs/design.md 38).
+Expect: while `tenants/default/portal.yaml` is mode dev, first `portal: warning: tenant default is in mode dev: auto-minted admin, local sign-in shortcut; not for demo or production` (docs/design.md 39); then `portal: warning: tokens.yaml entries without a principal act as admin until rotated: old-ci`, then `whoami: {"id":null,"name":"old-ci","type":null,"role":"admin","anonymous":false,"legacy":true,"writes":true,"administers":true,"tenant":"default","marker":null}`, `snap: 201`, and `add: 403 forbidden: old-ci's token belongs to no principal (from before 0.5.0), so it cannot be recorded as createdBy; bootstrap a principal with New-PortalToken -Bootstrap` (docs/design.md 38).
+
+### 1.15 Tenant mode; the dev token only in mode dev, and dev-bootstrap refused outside it
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-1.15-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"; Set-Content "$t\default\portal.yaml" 'mode: dev'
+$null = New-PortalToken -Name check -Bootstrap -Tenants $t
+$dev = & (Get-Module Portal) { param($t) New-PortalDevToken -Tenants $t } $t
+$dir = Join-Path $env:TEMP 'portal-check-1.15'
+$saved = $env:PORTAL_TOKEN
+try {
+    foreach ($mode in 'dev', 'demo') {
+        Set-Content "$t\default\portal.yaml" "mode: $mode"
+        Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+        $env:PORTAL_TOKEN = $dev.Token
+        $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' -Tenants $t
+        $env:PORTAL_TOKEN = $saved
+        try {
+            $api = "$($p.Url)/api/tenants/default"
+            "${mode}: tenant $((Invoke-RestMethod $api) | ConvertTo-Json -Compress)"
+            Get-Content "$($p.LogPath).err"
+            $r = Invoke-WebRequest "$api/dev-token" -SkipHttpErrorCheck
+            "${mode}: dev-token $($r.StatusCode) $(if ($r.StatusCode -eq 200) { 'same token: ' + (($r.Content | ConvertFrom-Json).token -eq $dev.Token) } else { ($r.Content | ConvertFrom-Json).message })"
+            $w = Invoke-WebRequest "$api/auth/whoami" -Headers @{ Authorization = "Bearer $($dev.Token)" } -SkipHttpErrorCheck
+            "${mode}: whoami with the dev token $($w.StatusCode) $(if ($w.StatusCode -eq 200) { ($w.Content | ConvertFrom-Json).role } else { ($w.Content | ConvertFrom-Json).message })"
+        }
+        finally { Stop-Portal -Artifacts $dir; & (Get-Module Portal) { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
+    }
+}
+finally { $env:PORTAL_TOKEN = $saved; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `dev: tenant {"mode":"dev","name":"default"}`, `portal: warning: tenant default is in mode dev: auto-minted admin, local sign-in shortcut; not for demo or production`, `dev: dev-token 200 same token: True`, `dev: whoami with the dev token 200 admin`; then `demo: tenant {"mode":"demo","name":"default"}`, `portal: warning: tenant default is in mode demo and tokens.yaml still holds 1 token(s) of dev-bootstrap, refused until revoked or mode dev`, `demo: dev-token 404 no dev token: it exists only in mode dev, from 127.0.0.1, on a portal started by Invoke-Build Dev` and `demo: whoami with the dev token 401 the bearer token belongs to dev-bootstrap, whose tokens work only while tenant default's mode is dev; it is demo` (docs/design.md 39).
 
 ## 2. Page
 
@@ -497,6 +530,17 @@ Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction Silen
 ```
 Expect: as anonymous Users lists `check`, `admin`, its created time and `bootstrap`, and the Add button is greyed with `sign in to write`. Signed in, the avatar reads `check` and the role list offers reader, contributor and admin; Add shows `Added ann. Issue its token with New-PortalToken -Name ann.` and a row `ann`, `reader`, `<created>`, `check`. Agents shows `No agents yet` and `Agents are minted via Marker, later.` Tokens lists `check` with a 12-digit hash and its created time; the first Revoke turns into `Revoke <hash>?`, the second removes it, and the page drops the now-refused token and reads as anonymous. The printed principals.yaml ends with ann's entry, `createdBy: 'ui:principal:check'`.
 
+### 2.8 Dev mode in the browser: the amber bar, Use dev token, a reader cannot Add
+```powershell
+# Invoke-Build Dev runs Up: it stops a portal Up started and serves tenants/default on 8200, so it needs that tenant in mode dev.
+Import-Module .\src\Portal\Portal.psd1 -Force
+Invoke-Build Dev
+Start-Process 'http://127.0.0.1:8200/default/identity/users'
+Read-Host 'Read the bar; open the avatar and press Use dev token; Add "rea" as reader; in another PowerShell run New-PortalToken -Name rea; Add "rea2" (the portal re-reads tokens.yaml); sign out, paste rea''s token, Sign in, and hover Add; press Enter here to stop'
+Invoke-Build Down
+```
+Expect: Invoke-Build prints `minted dev-bootstrap (admin) in <repo>\tenants\default\tokens.yaml; replaced <n> older dev-bootstrap token(s)`, the Up line, then two `DEV ONLY` lines, the second with the token. The page has an amber bar under the banner, `DEV MODE — auto-minted admin, local sign-in shortcut. Not for demo or production. See README: Before you demo.`, with no close button, and a `DEV` badge in the banner. The avatar panel offers `Use dev token`; pressing it signs in and the avatar reads `dev-bootstrap · admin`. Add `rea` shows its row, created by `dev-bootstrap`. After the Add of `rea2`, rea's token is live: signed in with it, the avatar reads `rea · reader` and Add is greyed, its tooltip `admin only: rea is reader`.
+
 ## 3. PowerShell
 
 ### 3.1 Approve, PATCH a Theme, approve, diff, restart
@@ -604,3 +648,20 @@ try {
 finally { Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue }
 ```
 Expect: `before bootstrap: No principal named jerry in <path>\principals.yaml. The tenant has no principals yet: make the first admin with -Bootstrap.`, then `token: 64 hex chars; on disk: False; ui:principal:jerry admin`, then principals.yaml's `principals:` with one entry (`id: 'ui:principal:jerry'`, `name: 'jerry'`, `type: user`, `role: admin`, `created: '<time>'`, `createdBy: null`), then tokens.yaml's `tokens:` with `- principal: 'ui:principal:jerry'`, `sha256: <64 hex>`, `created: '<time>'`, then `again: -Bootstrap makes a tenant's first admin, once; <path>\principals.yaml already holds 1 principal(s) (jerry). Issue a token for one with New-PortalToken -Name <principal>.`, `second token: True` and `unknown: No principal named eve in <path>\principals.yaml. An admin adds one on Identity/Users.`
+
+### 3.6 Invoke-Build Dev refuses outside mode dev; Up never mints
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-3.6-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"; Set-Content "$t\default\portal.yaml" 'mode: demo'
+$saved = $env:PORTAL_TENANTS
+try {
+    $env:PORTAL_TENANTS = $t
+    try { Invoke-Build Dev } catch { "Dev: $($_.Exception.Message)" }
+    "identity files written: $(@(Get-ChildItem "$t\default" -Filter *.yaml).Name -join ', ')"
+    "Up mints: $([regex]::Match((Get-Content .\.build.ps1 -Raw), '(?ms)^task Up Build, \{(.*?)^\}').Groups[1].Value -match 'Token|Mint')"
+}
+finally { $env:PORTAL_TENANTS = $saved; Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: Invoke-Build's own `ERROR: Dev refuses: ...` and `Build FAILED. 2 tasks, 1 errors`, then `Dev: Dev refuses: tenant default is in mode demo, not dev. Dev mints an admin and a local sign-in shortcut, so it runs only for a tenant whose portal.yaml says 'mode: dev'. Use Invoke-Build Up, which never mints anything; README, Before you demo.`, `identity files written: portal.yaml` (no principals.yaml or tokens.yaml: nothing was built or minted) and `Up mints: False`.

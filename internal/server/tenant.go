@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/JerryBalmer1/Portal/internal/gen/api"
@@ -28,6 +30,10 @@ type principalKey struct{}
 func (s *Server) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		who, err := s.t.Authenticate(r.Header.Get("Authorization"))
+		if errors.Is(err, tenant.ErrDevOnly) {
+			unauthorized(w, "the bearer token belongs to "+tenant.DevPrincipalName+", whose tokens work only while tenant "+s.t.Name+"'s mode is dev; it is "+s.t.Mode())
+			return
+		}
 		if err != nil {
 			unauthorized(w, "the bearer token is not one tenant "+s.t.Name+" holds (tenants/"+s.t.Name+"/tokens.yaml)")
 			return
@@ -137,6 +143,55 @@ func (s *Server) shell(w http.ResponseWriter, name, service, page string) {
 		return
 	}
 	writeAsset(w, "text/html", data)
+}
+
+// GetTenant names the tenant and its mode (docs/design.md 39).
+func (s *Server) GetTenant(w http.ResponseWriter, r *http.Request, name api.Tenant) {
+	if s.tenantOK(w, name) {
+		writeJSON(w, http.StatusOK, api.TenantInfo{Name: s.t.Name, Mode: api.TenantInfoMode(s.t.Mode())})
+	}
+}
+
+// GetDevToken hands the dev-bootstrap token to the page's "Use dev token",
+// and is 404 unless all of these hold at the time of the request: the
+// tenant's mode is dev, the binary was given a token (PORTAL_TOKEN) that is
+// one of dev-bootstrap's and still in tokens.yaml, and the caller and the
+// Host it asked for are loopback. The listener is 127.0.0.1 already; the
+// Host check keeps a page on another origin that rebinds its name to
+// 127.0.0.1 from reading it (docs/design.md 39).
+func (s *Server) GetDevToken(w http.ResponseWriter, r *http.Request, name api.Tenant) {
+	if !s.tenantOK(w, name) {
+		return
+	}
+	p, ok := s.t.DevToken(s.devToken)
+	if !ok || !loopback(r) {
+		writeError(w, http.StatusNotFound, "not_found", "no dev token: it exists only in mode dev, from 127.0.0.1, on a portal started by Invoke-Build Dev", nil)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, api.DevToken{Token: s.devToken, Principal: p.ID, Role: p.Role})
+}
+
+// loopback is whether the request came from a loopback address and named a
+// loopback host (127.0.0.1, ::1 or localhost, any port).
+func loopback(r *http.Request) bool {
+	addr, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	if ip := net.ParseIP(addr); ip == nil || !ip.IsLoopback() {
+		return false
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (s *Server) GetConfig(w http.ResponseWriter, r *http.Request, name api.Tenant) {

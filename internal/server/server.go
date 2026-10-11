@@ -30,10 +30,11 @@ const maxBody = 64 << 20
 
 // Server serves api/openapi.yaml.
 type Server struct {
-	p   *store.Portal
-	t   *tenant.Tenant
-	gh  tenant.GitHub
-	web fs.FS
+	p        *store.Portal
+	t        *tenant.Tenant
+	gh       tenant.GitHub
+	web      fs.FS
+	devToken string
 }
 
 var _ api.ServerInterface = (*Server)(nil)
@@ -43,12 +44,16 @@ type Options struct {
 	// GitHub calls github connections; its zero value uses the network and
 	// os.Getenv. Tests inject a client and an environment.
 	GitHub tenant.GitHub
+	// DevToken is the token GET .../dev-token may serve: cmd/portal passes
+	// PORTAL_TOKEN. It is served only while it is a token of dev-bootstrap
+	// in a tenant of mode dev, to a loopback caller (docs/design.md 39).
+	DevToken string
 }
 
 // New returns the handler serving p for tenant t, and the embedded page.
 // Every request passes the bearer-token middleware first.
 func New(p *store.Portal, t *tenant.Tenant, o Options) http.Handler {
-	s := &Server{p: p, t: t, gh: o.GitHub, web: web.FS}
+	s := &Server{p: p, t: t, gh: o.GitHub, web: web.FS, devToken: o.DevToken}
 	r := chi.NewRouter()
 	r.NotFound(notFound)
 	r.MethodNotAllowed(methodNotAllowed)

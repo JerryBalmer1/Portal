@@ -10,6 +10,13 @@
 // tokens.yaml and connections.yaml when present. A tenant file that fails
 // stops the binary (docs/design.md 36).
 //
+// The tenant's mode (portal.yaml mode: dev, demo or prod; prod when absent)
+// is printed at boot. In mode dev, PORTAL_TOKEN, when it is a token of the
+// dev-bootstrap principal (Invoke-Build Dev), is what GET .../dev-token
+// serves to a loopback caller; outside mode dev dev-bootstrap's tokens are
+// refused, and the boot warns if the tenant still holds any (docs/design.md
+// 39). PORTAL_MODE is separate from the tenant's mode.
+//
 // The screen boots from the newest snap under <artifacts>/snaps, or from the
 // one PORTAL_SNAP=<stamp> names, else from the dev seed; the layers its Mount
 // nodes record are mounted, then the flags'. PORTAL_MODE=production
@@ -84,7 +91,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("portal: %v", err)
 	}
-	fmt.Printf("tenant %s from %s (%d menu nodes, %d principals, %d tokens, %d connections)\n", t.Name, *tenants, len(t.Menu.Nodes), len(t.Principals()), t.Tokens(), len(t.Connections))
+	fmt.Printf("tenant %s from %s, mode %s (%d menu nodes, %d principals, %d tokens, %d connections)\n", t.Name, *tenants, t.Mode(), len(t.Menu.Nodes), len(t.Principals()), t.Tokens(), len(t.Connections))
+	devToken := ""
+	switch {
+	case t.Mode() == tenant.ModeDev:
+		fmt.Fprintf(os.Stderr, "portal: warning: tenant %s is in mode dev: auto-minted admin, local sign-in shortcut; not for demo or production\n", t.Name)
+		if _, ok := t.DevToken(os.Getenv("PORTAL_TOKEN")); ok {
+			devToken = os.Getenv("PORTAL_TOKEN")
+		}
+	case t.DevTokens() > 0:
+		fmt.Fprintf(os.Stderr, "portal: warning: tenant %s is in mode %s and tokens.yaml still holds %d token(s) of %s, refused until revoked or mode dev\n", t.Name, t.Mode(), t.DevTokens(), tenant.DevPrincipalName)
+	}
 	// A token from before 0.5.0 names no principal and acts as admin until
 	// it is rotated (docs/design.md 38).
 	if legacy := t.LegacyTokens(); len(legacy) > 0 {
@@ -121,7 +138,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := server.Serve(ctx, host, *port, server.New(p, t, server.Options{})); err != nil {
+	if err := server.Serve(ctx, host, *port, server.New(p, t, server.Options{DevToken: devToken})); err != nil {
 		log.Fatalf("portal: port %d: %v; free it, or set PORTAL_PORT in .env or pass -port", *port, err)
 	}
 }

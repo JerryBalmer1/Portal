@@ -177,8 +177,8 @@ input[type="range"]::-moz-range-thumb {
 body {
   display: grid;
   grid-template-columns: var(--pt-rail-w) minmax(0, 1fr);
-  grid-template-rows: var(--pt-banner-h) minmax(0, 1fr);
-  grid-template-areas: "banner banner" "rail main";
+  grid-template-rows: var(--pt-banner-h) auto minmax(0, 1fr);
+  grid-template-areas: "banner banner" "modebar modebar" "rail main";
   height: 100vh;
   overflow: hidden;
 }
@@ -209,6 +209,18 @@ body.pt-rail-collapsed { --pt-rail-w: 52px; }
 .pt-crumbs [aria-current] { color: var(--gr-text); overflow: hidden; text-overflow: ellipsis; }
 .pt-banner-right { display: flex; align-items: center; gap: 12px; position: relative; }
 .pt-search input { width: 220px; padding-left: 30px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='%23999' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6'/%3E%3Cpath d='M20 20l-4.5-4.5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: 9px 50%; }
+/* The tenant's mode (docs/design.md 39): a badge in the banner, and under it
+   an amber bar for dev and a thin blue one for demo. Neither bar can be
+   dismissed; prod has neither. The row is empty when the bar is hidden. */
+.pt-mode { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; border: var(--gr-border); color: var(--gr-text-muted); }
+.pt-mode[data-mode="dev"] { background: rgb(245,166,35); border-color: rgb(245,166,35); color: rgb(26,18,4); }
+.pt-mode[data-mode="demo"] { background: rgb(52,120,226); border-color: rgb(52,120,226); color: #fff; }
+.pt-modebar { grid-area: modebar; margin: 0; font-size: 13px; font-weight: 600; text-align: center; }
+.pt-modebar[data-mode="dev"] { padding: 7px 14px; background: rgb(245,166,35); color: rgb(26,18,4); border-bottom: 1px solid rgb(196,128,18); }
+.pt-modebar[data-mode="demo"] { padding: 1px 14px; font-size: 11px; letter-spacing: 0.12em; background: rgb(52,120,226); color: #fff; }
+.pt-dev-signin { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--gr-line); }
+.pt-dev-signin p { margin: 0; font-size: 12px; }
+.pt-avatar-role { color: var(--gr-text-muted); font-size: 12px; }
 .pt-marker { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--gr-text-muted); white-space: nowrap; }
 .pt-help { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--gr-text-muted); text-decoration: none; }
 .pt-help:hover { color: var(--gr-text); }

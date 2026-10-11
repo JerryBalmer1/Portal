@@ -8,6 +8,8 @@
 // Every non-2xx response throws the spec Error object {code, message, problems?}.
 
 export const ROUTES = Object.freeze({
+  getTenant: { method: 'GET', path: '/api/tenants/{tenant}' },
+  getDevToken: { method: 'GET', path: '/api/tenants/{tenant}/dev-token' },
   getConfig: { method: 'GET', path: '/api/tenants/{tenant}/config' },
   getMenu: { method: 'GET', path: '/api/tenants/{tenant}/menu' },
   getWhoami: { method: 'GET', path: '/api/tenants/{tenant}/auth/whoami' },
@@ -90,6 +92,8 @@ export function createClient(tenant, base = '') {
 
   return {
     tenant,
+    getTenant: () => call('getTenant'),
+    getDevToken: () => call('getDevToken'),
     getConfig: () => call('getConfig'),
     getMenu: () => call('getMenu'),
     getWhoami: () => call('getWhoami'),

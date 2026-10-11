@@ -1,9 +1,11 @@
-// The shell. A top banner (product, breadcrumb, search, marker, help,
-// avatar), a left rail of services whose pages open in place, and a main
-// pane (title, toolbar, content). Everything it draws comes from the API:
-// the rail from GET /api/tenants/{tenant}/menu (an envelope of Service and
-// Page nodes built from the tenant's config, icons in their States), the
-// product name and help from .../config, the avatar from .../auth/whoami,
+// The shell. A top banner (product, breadcrumb, search, mode, marker, help,
+// avatar), under it the tenant's mode bar (amber DEV MODE, blue DEMO, none
+// for prod; docs/design.md 39), a left rail of services whose pages open in
+// place, and a main pane (title, toolbar, content). Everything it draws comes
+// from the API: the rail from GET /api/tenants/{tenant}/menu (an envelope of
+// Service and Page nodes built from the tenant's config, icons in their
+// States), the mode from GET /api/tenants/{tenant}, the product name and help
+// from .../config, the avatar from .../auth/whoami,
 // and each page from its Page node: a table of nodes of its Kind, a screen
 // node drawn by screen.js, the service connections (docs/design.md 36), or
 // the tenant's principals and tokens (docs/design.md 38).
@@ -28,12 +30,13 @@ const client = createClient(tenant);
 const bus = new EventTarget();
 const $ = (id) => document.getElementById(id);
 const ui = {
-  brand: $('brand'), crumbs: $('crumbs'), search: $('search'), marker: $('marker'), help: $('help'), avatar: $('avatar'),
+  brand: $('brand'), crumbs: $('crumbs'), search: $('search'), mode: $('mode'), modebar: $('modebar'), marker: $('marker'), help: $('help'), avatar: $('avatar'),
   account: $('account'), rail: $('rail'), flyout: $('flyout'), title: $('title'), toolbar: $('toolbar'), content: $('content'),
 };
 
 let config = null;
 let menu = null;
+let mode = 'prod';
 let who = null;
 let expanded = null;
 let routeService = null;
@@ -83,9 +86,31 @@ function link(to, text, cls) {
   return a;
 }
 
+// The bars' words; the dev one is the text the brief gives (docs/design.md 39).
+export const MODE_BARS = Object.freeze({
+  dev: 'DEV MODE — auto-minted admin, local sign-in shortcut. Not for demo or production. See README: Before you demo.',
+  demo: 'DEMO',
+});
+
+async function load() {
+  const [c, m, t] = await Promise.all([client.getConfig(), client.getMenu().then(railModel), client.getTenant()]);
+  config = c;
+  menu = m;
+  mode = t.mode;
+}
+
 async function boot() {
   try {
-    [config, menu] = await Promise.all([client.getConfig(), client.getMenu().then(railModel)]);
+    try {
+      await load();
+    } catch (err) {
+      // A token the portal refuses (revoked, or dev-bootstrap's once the
+      // tenant left mode dev) is refused on reads too: drop it and read as
+      // anonymous rather than stop at the error card.
+      if (err.code !== 'unauthorized' || !getToken()) throw err;
+      setToken('');
+      await load();
+    }
   } catch (err) {
     ui.title.textContent = 'The portal could not load';
     ui.content.replaceChildren(errorCard(err));
@@ -97,6 +122,7 @@ async function boot() {
     ui.help.replaceChildren(icon('help', 16), document.createTextNode('Help'));
     ui.help.hidden = false;
   }
+  drawMode();
   await whoami();
   wireBanner();
   wireRail();
@@ -144,6 +170,19 @@ function render() {
 
 // ---- banner ----
 
+// drawMode shows the tenant's mode: a badge in the banner, and under it a
+// bar no one can dismiss, amber for dev and blue for demo; prod shows neither.
+function drawMode() {
+  document.documentElement.dataset.mode = mode;
+  ui.mode.textContent = mode;
+  ui.mode.dataset.mode = mode;
+  ui.mode.title = `tenant ${tenant} runs in mode ${mode}`;
+  ui.mode.hidden = mode === 'prod';
+  ui.modebar.textContent = MODE_BARS[mode] || '';
+  ui.modebar.dataset.mode = mode;
+  ui.modebar.hidden = !MODE_BARS[mode];
+}
+
 function drawCrumbs(svc, page, r) {
   const parts = [[href(firstPage(null)), tenant]];
   if (svc) parts.push([href(firstPage(svc)), svc.name]);
@@ -176,6 +215,12 @@ function drawWho() {
   const label = document.createElement('span');
   label.className = 'pt-avatar-name';
   label.textContent = name;
+  if (who && !who.anonymous && who.role) {
+    const role = document.createElement('span');
+    role.className = 'pt-avatar-role';
+    role.textContent = ` · ${who.role}`;
+    label.appendChild(role);
+  }
   ui.avatar.replaceChildren(badge, label);
   ui.avatar.dataset.principal = name;
   ui.avatar.dataset.role = (who && who.role) || '';
@@ -201,6 +246,7 @@ function wireBanner() {
 }
 
 // drawAccount fills the avatar's panel: give a token to write, or drop it.
+// In mode dev it also offers the dev-bootstrap token (docs/design.md 39).
 function drawAccount() {
   ui.account.replaceChildren();
   const p = document.createElement('p');
@@ -223,6 +269,7 @@ function drawAccount() {
     out.textContent = 'Sign out';
     out.addEventListener('click', () => { setToken(''); done(); });
     ui.account.append(p, out, status);
+    if (who.name !== 'dev-bootstrap') devSignIn(done, status);
     return;
   }
   p.textContent = 'Reading as anonymous. Give a token from this tenant\'s tokens.yaml to write.';
@@ -246,6 +293,36 @@ function drawAccount() {
     done();
   });
   ui.account.append(p, f, status);
+  devSignIn(done, status);
+}
+
+// devSignIn adds "Use dev token" to the panel in mode dev only: it reads the
+// token from GET .../dev-token, which the portal serves only in mode dev, to
+// 127.0.0.1, after Invoke-Build Dev; anywhere else that call is 404.
+function devSignIn(done, status) {
+  if (mode !== 'dev') return;
+  const box = document.createElement('div');
+  box.className = 'pt-dev-signin';
+  const note = document.createElement('p');
+  note.textContent = 'DEV ONLY: sign in as dev-bootstrap, the admin Invoke-Build Dev minted.';
+  const use = document.createElement('button');
+  use.type = 'button';
+  use.className = 'gr-btn';
+  use.dataset.devToken = 'true';
+  use.textContent = 'Use dev token';
+  use.addEventListener('click', async () => {
+    use.disabled = true;
+    try {
+      const t = await client.getDevToken();
+      setToken(t.token);
+      await done();
+    } catch (err) {
+      use.disabled = false;
+      status.textContent = err.code === 'not_found' ? 'No dev token: start the portal with Invoke-Build Dev.' : `${err.code}: ${err.message}`;
+    }
+  });
+  box.append(note, use);
+  ui.account.append(box);
 }
 
 // ---- rail ----

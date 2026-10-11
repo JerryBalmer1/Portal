@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.5.0 and needs PowerShell 7.4' {
+    It 'is version 0.5.1 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.5.0'
+        $m.ModuleVersion | Should -Be '0.5.1'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,10 +302,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.5.0, the eleven Kinds, the eight edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.5.1, the eleven Kinds, the eight edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.5\.0$'
+        $text | Should -Match '(?m)^version: 0\.5\.1$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.5.0'
+        $s.version | Should -Be '0.5.1'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -982,5 +982,269 @@ Describe 'Production mode' {
         Get-PortalScreen -Url $Prod.Url | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $f -Encoding utf8NoBOM
         & $GraphNodeBin validate $f | Out-Null
         $LASTEXITCODE | Should -Be 0
+    }
+}
+
+Describe 'Dev mode' {
+    # docs/design.md 39. Each portal here has its own tenant directory, so the repo's identity files are never touched.
+    BeforeAll {
+        function New-ModeTenant([string] $Mode) {
+            $dir = Join-Path $TestDrive "mode-$Mode-$([guid]::NewGuid().ToString('n'))"
+            $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'default')
+            Set-Content -LiteralPath (Join-Path $dir 'default' 'portal.yaml') -Value "mode: $Mode" -Encoding utf8NoBOM
+            $dir
+        }
+        # Side portals (other tenants, other modes) run on 18205, so the dev portal on 18200 runs throughout.
+        function Start-SidePortal([string] $Tenants, [string] $Token) {
+            $saved = $env:PORTAL_TOKEN
+            try {
+                $env:PORTAL_TOKEN = $Token
+                Start-Portal -Port 18205 -Artifacts (Join-Path $TestDrive "side-$([guid]::NewGuid().ToString('n'))") -Filesystem '' -Tenants $Tenants
+            }
+            finally { $env:PORTAL_TOKEN = $saved }
+        }
+        function Stop-SidePortal($P) { if ($P) { Stop-Portal -Artifacts $P.Artifacts; InModuleScope Portal { Wait-PortalPortFree -Port 18205 -TimeoutSec 10 } } }
+        # A tenant in mode dev with the real first admin (root), dev-bootstrap from the Dev mint, and a reader (reed)
+        # that dev-bootstrap made, each with a token; and a portal started as Invoke-Build Dev starts it, with
+        # PORTAL_TOKEN the dev token.
+        $script:DevTenants = New-ModeTenant dev
+        $script:DevRoot = New-PortalToken -Name root -Bootstrap -Tenants $DevTenants
+        $script:Dev = InModuleScope Portal -Parameters @{ T = $DevTenants } { param($T) New-PortalDevToken -Tenants $T }
+        Add-Content -LiteralPath (Join-Path $DevTenants 'default' 'principals.yaml') -Encoding utf8NoBOM -Value (
+            "  - id: 'ui:principal:reed'`n    name: 'reed'`n    type: user`n    role: reader`n    created: '2026-10-11T00:00:00.000Z'`n    createdBy: 'ui:principal:dev-bootstrap'")
+        $script:Reed = New-PortalToken -Name reed -Tenants $DevTenants
+        $script:DevWork = Join-Path $TestDrive 'dev'
+        $saved = $env:PORTAL_TOKEN
+        try {
+            $env:PORTAL_TOKEN = $Dev.Token
+            $script:DevPortal = Start-Portal -Port 18200 -Artifacts $DevWork -Filesystem '' -Tenants $DevTenants
+        }
+        finally { $env:PORTAL_TOKEN = $saved }
+        $script:DevUrl = $DevPortal.Url
+    }
+    AfterAll { Stop-Portal -Artifacts $DevWork; InModuleScope Portal { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
+
+    It 'tenants/default/portal.yaml is neither committed nor staged with mode dev (README, Before you demo)' {
+        # Fails on purpose while the default tenant is set to dev: a dev-mode tenant must never be committed.
+        foreach ($rev in 'HEAD', '') {
+            $text = (& git -C $Repo show "${rev}:tenants/default/portal.yaml" 2>$null) -join "`n"
+            $where = if ($rev) { 'committed (HEAD)' } else { 'staged (the index)' }
+            $text | Should -Not -Match '(?m)^mode:\s*[''"]?dev[''"]?\s*(#.*)?$' -Because "tenants/default/portal.yaml as $where says mode: dev; switch it to demo or prod before committing"
+        }
+    }
+    It 'Get-PortalTenantMode reads <Text> as <Mode>' -ForEach @(
+        @{ Text = '{}'; Mode = 'prod' }
+        @{ Text = 'mode: dev'; Mode = 'dev' }
+        @{ Text = "mode: 'demo'  # for the review"; Mode = 'demo' }
+        @{ Text = "# mode: dev`nproduct: { name: X }"; Mode = 'prod' }
+        @{ Text = '{ mode: dev }'; Mode = 'prod' }
+    ) {
+        $dir = Join-Path $TestDrive "read-$([guid]::NewGuid().ToString('n'))"
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'default')
+        Set-Content -LiteralPath (Join-Path $dir 'default' 'portal.yaml') -Value $Text
+        InModuleScope Portal -Parameters @{ T = $dir } { param($T) Get-PortalTenantMode -Tenants $T } | Should -Be $Mode
+    }
+    It 'the Dev mint makes dev-bootstrap once, replaces only its own token, and refuses outside mode dev' {
+        $mt = New-ModeTenant dev
+        $null = New-PortalToken -Name root -Bootstrap -Tenants $mt
+        $first = InModuleScope Portal -Parameters @{ T = $mt } { param($T) New-PortalDevToken -Tenants $T }
+        $first.Replaced | Should -Be 0
+        $again = InModuleScope Portal -Parameters @{ T = $mt } { param($T) New-PortalDevToken -Tenants $T }
+        $again.Token | Should -Not -Be $first.Token
+        $again.Replaced | Should -Be 1
+        $again.Role | Should -Be 'admin'
+        $principals = InModuleScope Portal -Parameters @{ T = $mt } { param($T) Read-PortalYamlList -Path (Join-Path $T 'default' 'principals.yaml') -Key principals }
+        @($principals | Where-Object name -CEQ 'dev-bootstrap').Count | Should -Be 1
+        ($principals | Where-Object name -CEQ 'dev-bootstrap').createdBy | Should -BeNullOrEmpty
+        $tokens = InModuleScope Portal -Parameters @{ T = $mt } { param($T) Read-PortalYamlList -Path (Join-Path $T 'default' 'tokens.yaml') -Key tokens }
+        @($tokens | Where-Object principal -CEQ 'ui:principal:dev-bootstrap').Count | Should -Be 1
+        @($tokens | Where-Object principal -CEQ 'ui:principal:root').Count | Should -Be 1
+        ($tokens | Where-Object principal -CEQ 'ui:principal:dev-bootstrap').sha256 | Should -Be ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($again.Token))).ToLowerInvariant())
+        (Get-Content -LiteralPath $again.Path -Raw) | Should -Match '(?m)^# Bearer tokens of tenant default'
+        foreach ($mode in 'demo', 'prod') {
+            $t = New-ModeTenant $mode
+            { InModuleScope Portal -Parameters @{ T = $t } { param($T) New-PortalDevToken -Tenants $T } } | Should -Throw "*mode $mode, not dev*"
+            Test-Path -LiteralPath (Join-Path $t 'default' 'tokens.yaml') | Should -BeFalse
+        }
+    }
+    It '-Bootstrap appends the real first admin beside dev-bootstrap; the name dev-bootstrap is reserved' {
+        $t = New-ModeTenant dev
+        $null = InModuleScope Portal -Parameters @{ T = $t } { param($T) New-PortalDevToken -Tenants $T }
+        $jerry = New-PortalToken -Name jerry -Bootstrap -Tenants $t
+        $jerry.Role | Should -Be 'admin'
+        $names = @((InModuleScope Portal -Parameters @{ T = $t } { param($T) Read-PortalYamlList -Path (Join-Path $T 'default' 'principals.yaml') -Key principals }).name)
+        $names | Should -Be @('dev-bootstrap', 'jerry')
+        { New-PortalToken -Name eve -Bootstrap -Tenants $t } | Should -Throw '*already holds 1 principal(s) (jerry)*'
+        { New-PortalToken -Name dev-bootstrap -Tenants $t } | Should -Throw '*reserved*'
+        # The binary loads what the module wrote.
+        $p = $null
+        try {
+            $p = Start-SidePortal $t ''
+            (Invoke-RestMethod "$($p.Url)/api/tenants/default/principals").nodes.name | Should -Be @('dev-bootstrap', 'jerry')
+        }
+        finally { Stop-SidePortal $p }
+    }
+    It 'Invoke-Build Dev refuses, building and minting nothing, for a tenant not in mode dev; Up never mints' {
+        $t = New-ModeTenant demo
+        $saved = @{ PORTAL_TENANTS = $env:PORTAL_TENANTS; PORTAL_TENANT = $env:PORTAL_TENANT }
+        $err = $null
+        try {
+            $env:PORTAL_TENANTS = $t; $env:PORTAL_TENANT = $null
+            try { Invoke-Build Dev -File (Join-Path $Repo '.build.ps1') *> $null } catch { $err = "$_" }
+        }
+        finally { foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) } }
+        $err | Should -Match 'Dev refuses: tenant default is in mode demo, not dev'
+        Test-Path -LiteralPath (Join-Path $t 'default' 'tokens.yaml') | Should -BeFalse
+        Test-Path -LiteralPath (Join-Path $t 'default' 'principals.yaml') | Should -BeFalse
+        $build = Get-Content -LiteralPath (Join-Path $Repo '.build.ps1') -Raw
+        $up = [regex]::Match($build, '(?ms)^task Up Build, \{(.*?)^\}').Groups[1].Value
+        $up | Should -Not -BeNullOrEmpty
+        $up | Should -Not -Match 'Token|Mint'
+        $build | Should -Match '(?m)^task Dev DevGate, DevMint, Up, \{'
+    }
+    It 'the binary says mode dev at boot, GET /api/tenants/default says dev, and dev-token hands out the Dev token' {
+        Get-Content -LiteralPath $DevPortal.LogPath -Raw | Should -Match 'tenant default from .*, mode dev \('
+        Get-Content -LiteralPath "$($DevPortal.LogPath).err" -Raw | Should -Match 'warning: tenant default is in mode dev'
+        (Invoke-RestMethod "$DevUrl/api/tenants/default").mode | Should -Be 'dev'
+        $t = Invoke-RestMethod "$DevUrl/api/tenants/default/dev-token"
+        $t.token | Should -Be $Dev.Token
+        $t.principal | Should -Be 'ui:principal:dev-bootstrap'
+        (Invoke-RestMethod "$DevUrl/api/tenants/default/auth/whoami" -Headers @{ Authorization = "Bearer $($t.token)" }).role | Should -Be 'admin'
+    }
+    It 'the page: the amber bar, then Use dev token signs in as dev-bootstrap, admin, and Add works' {
+        $js = @'
+(async () => {
+  const wait = async (f, what) => { for (let i = 0; i < 100; i++) { const v = f(); if (v) return v; await new Promise((r) => setTimeout(r, 100)); } throw new Error('timed out waiting for ' + what); };
+  const avatar = document.getElementById('avatar');
+  await wait(() => avatar.dataset.principal, 'the avatar');
+  await wait(() => document.querySelector('form[data-form="add-user"]'), 'the Add user form');
+  const bar = document.getElementById('modebar');
+  const out = { bar: bar.hidden ? null : bar.textContent, barButtons: bar.querySelectorAll('button').length, badge: document.getElementById('mode').textContent, before: avatar.dataset.principal,
+    addBefore: document.querySelector('form[data-form="add-user"] button[type="submit"]').disabled };
+  avatar.click();
+  const use = await wait(() => document.querySelector('#account button[data-dev-token]'), 'Use dev token');
+  use.click();
+  await wait(() => avatar.dataset.role === 'admin', 'the admin avatar');
+  await new Promise((r) => setTimeout(r, 300));
+  out.avatar = avatar.textContent;
+  out.principal = avatar.dataset.principal;
+  out.stored = (sessionStorage.getItem('portal.token') || '').length;
+  const form = await wait(() => document.querySelector('form[data-form="add-user"]'), 'the Add user form');
+  const btn = form.querySelector('button[type="submit"]');
+  out.addDisabled = btn.disabled;
+  form.querySelector('input[name="name"]').value = 'ann';
+  form.querySelector('select[name="role"]').value = 'reader';
+  btn.click();
+  const row = await wait(() => document.querySelector('tr[data-principal="ui:principal:ann"]'), 'the added row');
+  out.added = [...row.cells].map((c) => c.textContent);
+  return JSON.stringify(out);
+})()
+'@
+        $raw = Invoke-PageScript -Url $DevUrl -Route '/default/identity/users' -Token '' -Script $js
+        if ($null -eq $raw) { Set-ItResult -Skipped -Because 'no Chrome for the DevTools protocol'; return }
+        $seen = $raw | ConvertFrom-Json
+        $seen.bar | Should -BeExactly 'DEV MODE — auto-minted admin, local sign-in shortcut. Not for demo or production. See README: Before you demo.'
+        $seen.barButtons | Should -Be 0
+        $seen.badge | Should -Be 'dev'
+        $seen.before | Should -Be 'anonymous'
+        $seen.addBefore | Should -BeTrue
+        $seen.principal | Should -Be 'dev-bootstrap'
+        $seen.avatar | Should -Match 'dev-bootstrap · admin'
+        $seen.stored | Should -Be 64
+        $seen.addDisabled | Should -BeFalse
+        $seen.added[0] | Should -Be 'ann'
+        $seen.added[3] | Should -Be 'dev-bootstrap'
+    }
+    It 'the page: a reader signed in through the box cannot click Add' {
+        $js = @'
+(async () => {
+  const wait = async (f, what) => { for (let i = 0; i < 100; i++) { const v = f(); if (v) return v; await new Promise((r) => setTimeout(r, 100)); } throw new Error('timed out waiting for ' + what); };
+  const avatar = document.getElementById('avatar');
+  await wait(() => avatar.dataset.principal, 'the avatar');
+  avatar.click();
+  const f = await wait(() => document.querySelector('#account form.pt-token-form'), 'the sign-in form');
+  f.querySelector('input[name="token"]').value = '__READER__';
+  f.requestSubmit();
+  await wait(() => avatar.dataset.role === 'reader', 'the reader avatar');
+  await new Promise((r) => setTimeout(r, 300));
+  const form = await wait(() => document.querySelector('form[data-form="add-user"]'), 'the Add user form');
+  const btn = form.querySelector('button[type="submit"]');
+  const out = { avatar: avatar.textContent, disabled: btn.disabled, title: btn.title };
+  form.querySelector('input[name="name"]').value = 'bob';
+  btn.click();
+  await new Promise((r) => setTimeout(r, 800));
+  out.bob = !!document.querySelector('tr[data-principal="ui:principal:bob"]');
+  avatar.click();
+  avatar.click();
+  out.signOut = !![...document.querySelectorAll('#account button')].find((b) => b.textContent === 'Sign out');
+  out.devOffered = !!document.querySelector('#account button[data-dev-token]');
+  return JSON.stringify(out);
+})()
+'@
+        $raw = Invoke-PageScript -Url $DevUrl -Route '/default/identity/users' -Token '' -Script $js.Replace('__READER__', $Reed.Token)
+        if ($null -eq $raw) { Set-ItResult -Skipped -Because 'no Chrome for the DevTools protocol'; return }
+        $seen = $raw | ConvertFrom-Json
+        $seen.avatar | Should -Match 'reed · reader'
+        $seen.disabled | Should -BeTrue
+        $seen.title | Should -Match 'admin only: reed is reader'
+        $seen.bob | Should -BeFalse
+        $seen.signOut | Should -BeTrue
+        $seen.devOffered | Should -BeTrue
+        (Invoke-RestMethod "$DevUrl/api/tenants/default/principals").nodes.name | Should -Not -Contain 'bob'
+    }
+    It 'in mode demo: the DEMO bar, no Use dev token, dev-token is 404 and dev-bootstrap''s token is refused' {
+        $t = New-ModeTenant demo
+        $null = New-PortalToken -Name root -Bootstrap -Tenants $t
+        # A dev-bootstrap left from mode dev: written as the mint writes it, then the tenant moved to demo.
+        Set-Content -LiteralPath (Join-Path $t 'default' 'portal.yaml') -Value 'mode: dev'
+        $old = InModuleScope Portal -Parameters @{ T = $t } { param($T) New-PortalDevToken -Tenants $T }
+        Set-Content -LiteralPath (Join-Path $t 'default' 'portal.yaml') -Value 'mode: demo'
+        $p = $null
+        try {
+            $p = Start-SidePortal $t $old.Token
+            Get-Content -LiteralPath "$($p.LogPath).err" -Raw | Should -Match 'mode demo and tokens\.yaml still holds 1 token\(s\) of dev-bootstrap'
+            (Invoke-RestMethod "$($p.Url)/api/tenants/default").mode | Should -Be 'demo'
+            [int](Invoke-WebRequest "$($p.Url)/api/tenants/default/dev-token" -SkipHttpErrorCheck).StatusCode | Should -Be 404
+            $r = Invoke-WebRequest "$($p.Url)/api/tenants/default/auth/whoami" -Headers @{ Authorization = "Bearer $($old.Token)" } -SkipHttpErrorCheck
+            [int]$r.StatusCode | Should -Be 401
+            $r.Content | Should -Match 'work only while tenant default''s mode is dev'
+            $js = @'
+(async () => {
+  const wait = async (f, what) => { for (let i = 0; i < 100; i++) { const v = f(); if (v) return v; await new Promise((r) => setTimeout(r, 100)); } throw new Error('timed out waiting for ' + what); };
+  const avatar = document.getElementById('avatar');
+  await wait(() => avatar.dataset.principal, 'the avatar');
+  const bar = document.getElementById('modebar');
+  const out = { bar: bar.hidden ? null : bar.textContent, badge: document.getElementById('mode').textContent, principal: avatar.dataset.principal, stored: sessionStorage.getItem('portal.token') };
+  avatar.click();
+  await wait(() => document.querySelector('#account form.pt-token-form'), 'the sign-in form');
+  out.devOffered = !!document.querySelector('#account button[data-dev-token]');
+  return JSON.stringify(out);
+})()
+'@
+            # The tab still holds the dev token from mode dev: the page drops it and reads as anonymous.
+            $raw = Invoke-PageScript -Url $p.Url -Route '/default/identity/users' -Token $old.Token -Script $js
+            if ($null -eq $raw) { Set-ItResult -Skipped -Because 'no Chrome for the DevTools protocol'; return }
+            $seen = $raw | ConvertFrom-Json
+            $seen.bar | Should -BeExactly 'DEMO'
+            $seen.badge | Should -Be 'demo'
+            $seen.principal | Should -Be 'anonymous'
+            $seen.stored | Should -BeNullOrEmpty
+            $seen.devOffered | Should -BeFalse
+        }
+        finally { Stop-SidePortal $p }
+    }
+    It 'in mode prod the page shows no bar and no badge' {
+        $t = New-ModeTenant prod
+        $p = $null
+        try {
+            $p = Start-SidePortal $t ''
+
+            (Invoke-RestMethod "$($p.Url)/api/tenants/default").mode | Should -Be 'prod'
+            $dom = Get-PageDom $p.Url '/default/identity/users'
+            if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+            $dom | Should -Match '<p class="pt-modebar" id="modebar" role="status" hidden="" data-mode="prod"></p>'
+            $dom | Should -Match '<span class="pt-mode" id="mode" hidden="" data-mode="prod"'
+        }
+        finally { Stop-SidePortal $p }
     }
 }

@@ -10,7 +10,9 @@ function New-PortalToken {
         principal may hold any number of tokens: mint a new one, then revoke the old on Settings/Tokens.
         -Bootstrap is for a tenant with no principals yet: it creates principal -Name as the first admin, createdBy
         null, and issues its token. It works once; with any principal already in principals.yaml it throws. Other
-        principals are added by an admin on Identity/Users (docs/design.md 38).
+        principals are added by an admin on Identity/Users (docs/design.md 38). dev-bootstrap, the admin Invoke-Build
+        Dev mints in a tenant of mode dev, does not count: -Bootstrap appends the real first admin beside it. The name
+        dev-bootstrap is reserved, and its tokens come only from Invoke-Build Dev (docs/design.md 39).
     .EXAMPLE
         $t = New-PortalToken -Name jerry -Bootstrap; $env:PORTAL_TOKEN = $t.Token
     .EXAMPLE
@@ -25,6 +27,9 @@ function New-PortalToken {
         [ValidatePattern('^[a-z0-9][a-z0-9-]*$')] [string] $Tenant = (Get-PortalTenant),
         [string] $Tenants = $(if ($env:PORTAL_TENANTS) { $env:PORTAL_TENANTS } else { Join-Path $script:RepoRoot 'tenants' })
     )
+    if ($Name -ceq 'dev-bootstrap') {
+        throw "dev-bootstrap is reserved for the admin Invoke-Build Dev mints in a tenant of mode dev; pick another name."
+    }
     $Tenants = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Tenants))
     $dir = Join-Path $Tenants $Tenant
     if (-not (Test-Path -LiteralPath (Join-Path $dir 'portal.yaml'))) {
@@ -35,12 +40,18 @@ function New-PortalToken {
     $now = [datetime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.fffZ', [Globalization.CultureInfo]::InvariantCulture)
     $id = "ui:principal:$Name"
     if ($Bootstrap) {
-        if ($principals.Count -gt 0) {
-            throw "-Bootstrap makes a tenant's first admin, once; $principalsFile already holds $($principals.Count) principal(s) ($(@($principals | ForEach-Object { $_.name }) -join ', ')). Issue a token for one with New-PortalToken -Name <principal>."
+        $real = @($principals | Where-Object { $_.name -cne 'dev-bootstrap' })
+        if ($real.Count -gt 0) {
+            throw "-Bootstrap makes a tenant's first admin, once; $principalsFile already holds $($real.Count) principal(s) ($(@($real | ForEach-Object { $_.name }) -join ', ')). Issue a token for one with New-PortalToken -Name <principal>."
         }
-        $text = "# Principals of tenant ${Tenant}: who may hold a token, and with what role (docs/design.md 38).`n" +
-            "principals:`n  - id: '$id'`n    name: '$Name'`n    type: user`n    role: admin`n    created: '$now'`n    createdBy: null`n"
-        Set-Content -LiteralPath $principalsFile -Value $text -NoNewline -Encoding utf8NoBOM
+        $entry = "  - id: '$id'`n    name: '$Name'`n    type: user`n    role: admin`n    created: '$now'`n    createdBy: null`n"
+        $text = if ($principals.Count -gt 0) { Get-Content -LiteralPath $principalsFile -Raw } else { '' }
+        if ($text) {
+            # Only dev-bootstrap is there: keep it, and append the real first admin.
+            if (-not $text.EndsWith("`n")) { $text += "`n" }
+        }
+        else { $text = "# Principals of tenant ${Tenant}: who may hold a token, and with what role (docs/design.md 38).`nprincipals:`n" }
+        Set-Content -LiteralPath $principalsFile -Value ($text + $entry) -NoNewline -Encoding utf8NoBOM
         $role = 'admin'
     }
     else {

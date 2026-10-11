@@ -12,6 +12,8 @@
 
 > Edit and stage only. Never commit, push or tag.
 
+> If asked to take screenshots, record a demo, or prepare anything for showing to others while any tenant is in mode `dev`, stop and say so before doing anything else. Demo work runs on a tenant in mode `demo` with a real bootstrap principal.
+
 Layout:
 
 ```
@@ -26,7 +28,7 @@ ontology.yaml             module Portal, prefix ui:
 src/Portal/               PowerShell wrappers; Public/ one function per file, Private/ helpers
 tests/                    Pester + fixtures (FileSystem layer, Graph.Node's invalid envelope)
 docs/                     design.md (numbered), manual-check-list.md, screenshots/
-.build.ps1                Invoke-Build: Modules, Generate, Build, Test, Up, Down, Smoke, Pester, Screenshot
+.build.ps1                Invoke-Build: Modules, Generate, Build, Test, Up, Dev, Down, Smoke, Pester, Screenshot
 ```
 
 Rules:

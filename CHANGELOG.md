@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.5.1 — 2026-10-11
+
+- **Tenant mode.** `mode: dev | demo | prod` in `tenants/<tenant>/portal.yaml`, prod when absent (`schema/portal.schema.json`).
+  - Served by the new `GET /api/tenants/{tenant}` (`{name, mode}`) and in the merged config.
+  - Printed at boot, and shown in the banner as a badge.
+  - Mode dev adds a persistent amber bar: "DEV MODE — auto-minted admin, local sign-in shortcut. Not for demo or production. See README: Before you demo." Mode demo adds a thin blue "DEMO" bar. Neither has a dismiss control.
+  - `tenants/default` is set to `mode: dev` for now.
+- **`Invoke-Build Dev`.**
+  - It refuses, building and minting nothing, unless the tenant's mode is dev.
+  - It makes principal `dev-bootstrap` (admin, `createdBy` null) in the gitignored `principals.yaml`, replaces every earlier dev-bootstrap token in `tokens.yaml` with a new one, sets `PORTAL_TOKEN`, runs Up and prints the token once, DEV ONLY.
+  - `Invoke-Build Up` is unchanged and never mints.
+  - The minting is a private `New-PortalDevToken`; mode is read by a private `Get-PortalTenantMode`.
+- **Browser sign-in.**
+  - The avatar shows the principal's name and role (`jerry · admin`).
+  - In mode dev, the avatar's box adds "Use dev token", read from the new `GET /api/tenants/{tenant}/dev-token`. That route answers only in mode dev, to a loopback caller with a loopback Host, while the binary holds a live dev-bootstrap token from `PORTAL_TOKEN`; anything else is 404.
+  - At boot the page drops a token the portal refuses and reads as anonymous.
+- **dev-bootstrap is refused outside mode dev.** Its tokens get 401 naming the mode, and the boot warns while any is left.
+  - It may sit anywhere in `principals.yaml` with `createdBy` null.
+  - `-Bootstrap` ignores it, and appends the real first admin beside it.
+  - The name is reserved for `POST .../principals` (422) and `New-PortalToken -Name`.
+- **Guards.**
+  - CLAUDE.md: stop before screenshot or demo work while any tenant is in mode dev.
+  - README: "Dev mode" and "Before you demo".
+  - Pester fails while `tenants/default/portal.yaml` is committed or staged with mode dev, so it fails now, as asked.
+  - `Invoke-Build Screenshot` refuses while that file is mode dev.
+- **Version.** 0.5.1 in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated.
+- **Tests.**
+  - Go 63 tests, all passing (8 new: `internal/tenant/devmode_test.go`, `internal/server/devmode_test.go`).
+  - Pester 87: 86 passed and 1 failed, the commit guard, by design while mode dev is staged (14 new, `Describe 'Dev mode'`; the reader and dev-token paths are driven in Chrome over DevTools).
+  - Smoke passed.
+- **Manual items.** 1.15, 2.8 and 3.6 are new; the 1.14 Expect is updated (docs/design.md 39).
+
 ## 0.5.0 — 2026-10-11
 
 - Identity. New Kind `Principal` (`ui:principal:<name>`): `type` (user or agent), `role` (reader, contributor or admin), `created`, and `createdBy`, absent only on the first admin. Kept in `tenants/<tenant>/principals.yaml` (gitignored; example committed) and served by `GET /api/tenants/{tenant}/principals` as an envelope. An admin adds a user with `POST .../principals`; agents are refused, to be minted via Marker later (docs/design.md 38).

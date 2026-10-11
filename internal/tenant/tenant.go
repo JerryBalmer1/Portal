@@ -30,6 +30,15 @@ import (
 // Default is the tenant PORTAL_TENANT names when unset.
 const Default = "default"
 
+// Tenant modes (docs/design.md 39): the overlay's mode, prod when absent.
+// dev allows the dev-bootstrap principal's tokens and the dev-token
+// endpoint; demo and prod refuse both.
+const (
+	ModeDev  = "dev"
+	ModeDemo = "demo"
+	ModeProd = "prod"
+)
+
 // NamePattern is a tenant name: a path segment in every API route.
 var NamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
@@ -107,6 +116,7 @@ func Load(o Options) (*Tenant, error) {
 	if ps := checkMerged(merged); len(ps) > 0 {
 		return nil, &ConfigError{File: "portal.base.yaml + " + overlayPath, Problems: ps}
 	}
+	defaultMode(merged)
 	t := &Tenant{Name: name, Config: merged, dir: dir, now: o.Now}
 	if t.now == nil {
 		t.now = time.Now
@@ -149,7 +159,24 @@ func LoadConfig(base, overlay, schemaDoc []byte) (map[string]any, error) {
 	if ps := checkMerged(merged); len(ps) > 0 {
 		return nil, &ConfigError{File: "merged", Problems: ps}
 	}
+	defaultMode(merged)
 	return merged, nil
+}
+
+// defaultMode writes mode prod into a merged config that names none, so
+// GET .../config and Mode always say which mode the tenant runs in.
+func defaultMode(c map[string]any) {
+	if _, ok := c["mode"].(string); !ok {
+		c["mode"] = ModeProd
+	}
+}
+
+// Mode is the tenant's mode: dev, demo or prod (docs/design.md 39).
+func (t *Tenant) Mode() string {
+	if m, ok := t.Config["mode"].(string); ok {
+		return m
+	}
+	return ModeProd
 }
 
 func problemStrings(ps []graph.Problem) []string {

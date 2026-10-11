@@ -6,6 +6,11 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "mode": {
+      "enum": ["dev", "demo", "prod"],
+      "default": "prod",
+      "description": "What the tenant is run for (docs/design.md 39). dev: Invoke-Build Dev mints the admin dev-bootstrap, GET .../dev-token serves its token on 127.0.0.1, and the page shows an amber DEV MODE bar. demo: a blue DEMO bar and no shortcuts. prod: neither. Absent means prod. Separate from PORTAL_MODE, which hides the Designer."
+    },
     "product": {
       "type": "object",
       "additionalProperties": false,
