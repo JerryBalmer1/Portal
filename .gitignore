@@ -5,3 +5,5 @@ tests/testResults.xml
 tenants/*/tokens.yaml
 tenants/*/connections.yaml
 tenants/*/principals.yaml
+tenants/*/ledger.jsonl
+tenants/*/data/

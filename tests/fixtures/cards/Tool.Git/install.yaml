@@ -1,0 +1,12 @@
+# How Portal.Agent installs and checks the binary behind Tool.Git. Shape: README "install.yaml".
+tool: Tool.Git
+binary: git
+check:
+  command: git --version
+  expect: '^git version 2\.'
+install:
+  windows:
+    winget: Git.Git
+    version: 2.55.0.5
+  linux:
+    apt: git

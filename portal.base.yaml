@@ -11,8 +11,19 @@
 # says otherwise: screen draws a screen node, connections lists the tenant's
 # service connections, users and agents its principals of that type (users
 # with an admin's Add), tokens its bearer tokens (with an admin's Revoke;
-# docs/design.md 38). A page's children are the tabs of its item page,
+# docs/design.md 38), feeds the tenant's feeds and their cards (read-only). A page's children are the tabs of its item page,
 # /<tenant>/<service>/<page>/<id>.
+#
+# feeds are where cards (Graph.Node manifest cards: manifest.yaml and the
+# files of its folder) are published: kind oci (an OCI registry; url is the
+# registry and the repository namespace) or nuget (a NuGet v3 feed; url is
+# its service index), visibility private (the default) or public, and
+# token_env, the variable holding the feed's API key when it needs one.
+# GET /api/tenants/<tenant>/feeds serves them as Feed nodes, with the cards
+# pushed to each; POST .../feeds/<id>/push publishes one, contributor or
+# admin, one line in tenants/<tenant>/ledger.jsonl per push. The two below
+# are the stock services of compose.yaml on 127.0.0.1 (Invoke-Build Feeds);
+# a tenant overrides one by id, or adds its own (docs/design.md 40).
 #
 # theme is the shell's own settings, not a node's display (that is State and
 # Theme nodes, docs/design.md 5). graph.wheelZoomSpeed scales the Canvas's
@@ -25,6 +36,10 @@ product:
 theme:
   graph:
     wheelZoomSpeed: 1.0
+
+feeds:
+  - { id: cards-oci, label: Cards (OCI), kind: oci, url: "http://127.0.0.1:8201/cards", visibility: private }
+  - { id: cards-nuget, label: Cards (NuGet), kind: nuget, url: "http://127.0.0.1:8202/v3/index.json", visibility: private, token_env: PORTAL_NUGET_KEY }
 
 menu:
   - id: overview
@@ -131,6 +146,7 @@ menu:
     icon: artifact
     path: artifacts
     children:
+      - { id: feeds, label: Feeds, path: artifacts/feeds, view: feeds }
       - { id: exports, label: Exports, path: artifacts/exports, kind: artifact.export }
       - { id: bundles, label: Bundles, path: artifacts/bundles, kind: artifact.bundle }
 

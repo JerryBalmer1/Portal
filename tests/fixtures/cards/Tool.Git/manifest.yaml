@@ -1,0 +1,15 @@
+name: Tool.Git
+version: 0.1.0
+type: tool
+description: Git CLI, mounted by Portal.Agent for reading history and recording and publishing commits.
+tags: [git, vcs]
+needs:
+  - { name: git, version-range: ">=2.40" }
+verbs:
+  - { name: status, effect: read,  description: "git status: show the working tree and index" }
+  - { name: log,    effect: read,  description: "git log: show commit history" }
+  - { name: fetch,  effect: read,  description: "git fetch: download refs and objects; the working tree and local branches are not changed" }
+  - { name: commit, effect: write, description: "git commit: record staged changes" }
+  - { name: push,   effect: write, description: "git push: update remote refs" }
+pins:
+  Graph.Node: 0.3.0

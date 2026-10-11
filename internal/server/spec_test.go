@@ -111,7 +111,7 @@ func tokenID(token string) string { return tenant.HashToken(token)[:tenant.Token
 
 // testEnv is the environment the GitHub caller reads: one connection's
 // token is set, one is not.
-var testEnv = map[string]string{"PT_GH": ghSecret, "PT_GH_BAD": "wrong"}
+var testEnv = map[string]string{"PT_GH": ghSecret, "PT_GH_BAD": "wrong", "PORTAL_NUGET_KEY": nugetKey}
 
 // fakeGitHub answers GET /user/repos like GitHub: 101 repos over two pages
 // for the right token, 401 otherwise.
@@ -188,7 +188,7 @@ func newTenantDir(t *testing.T, p *store.Portal, gh string) (*tenant.Tenant, str
 func serve(t *testing.T, p *store.Portal) *httptest.Server {
 	t.Helper()
 	gh := fakeGitHub(t)
-	h := New(p, newTenant(t, p, gh.URL), Options{GitHub: tenant.GitHub{Getenv: func(k string) string { return testEnv[k] }}})
+	h := New(p, newTenant(t, p, gh.URL), Options{GitHub: tenant.GitHub{Getenv: func(k string) string { return testEnv[k] }}, Feeds: fakeFeeds(t)})
 	s := httptest.NewServer(h)
 	t.Cleanup(s.Close)
 	return s
@@ -342,6 +342,8 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 		{"GET", "/api/tenants/other/tokens", "", 404},
 		{"DELETE", "/api/tenants/default/tokens/" + tokenID(legacyToken), "", 200},
 		{"DELETE", "/api/tenants/default/tokens/" + tokenID(legacyToken), "", 404},
+		{"GET", "/api/tenants/default/feeds", "", 200},
+		{"GET", "/api/tenants/other/feeds", "", 404},
 		{"GET", "/api/tenants/default/nodes?kind=Category", "", 200},
 		{"GET", "/api/tenants/default/nodes", "", 400},
 		{"GET", "/api/tenants/other/nodes?kind=Category", "", 404},
@@ -400,6 +402,10 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 		if route, _, err := h.router.FindRoute(vreq); err == nil {
 			hit[c.method+" "+route.Path] = true
 		}
+	}
+	for _, c := range pushCalls(t) {
+		h.doForm(t, c.token, s.URL, c.target, c.parts, c.want)
+		hit["POST /api/tenants/{tenant}/feeds/{feed}/push"] = true
 	}
 	for op := range h.specOps() {
 		if !hit[op] {

@@ -199,7 +199,7 @@ func TestMenuShape(t *testing.T) {
 		"ui:rail:policy":             {"Rules", "Decisions"},
 		"ui:rail:ledger":             {"Entries", "Verify", "Keys"},
 		"ui:rail:identity":           {"Users", "Agents", "Marker holders"},
-		"ui:rail:artifacts":          {"Exports", "Bundles"},
+		"ui:rail:artifacts":          {"Feeds", "Exports", "Bundles"},
 		"ui:rail:stack":              {"Services", "Requests", "Events"},
 		"ui:rail:settings":           {"Tenants", "Tokens", "Service connections"},
 	} {

@@ -1,11 +1,13 @@
 // Package tenant is what one tenant of the portal runs with: the product's
 // base config (portal.base.yaml) with the tenant's overlay
 // (tenants/<tenant>/portal.yaml) deep-merged over it, the menu built from
-// that config as a Graph.Node envelope, its identity (principals.yaml, and
+// that config as a Graph.Node envelope, its feeds and their ledger
+// (ledger.jsonl), its identity (principals.yaml, and
 // tokens.yaml: the bearer tokens and whose they are) and the service
 // connections (connections.yaml). Everything is read at boot and checked: a
 // file that fails stops the binary. The only files written are the two
-// identity files, by an admin's Add principal and Revoke (identity.go).
+// identity files, by an admin's Add principal and Revoke (identity.go), and
+// the ledger, one line appended per push (feeds.go).
 package tenant
 
 import (
@@ -24,6 +26,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"go.yaml.in/yaml/v3"
 
+	"github.com/JerryBalmer1/Portal/internal/feed"
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 )
 
@@ -50,11 +53,14 @@ type Tenant struct {
 	Config      map[string]any
 	Menu        *graph.Envelope
 	Connections []Connection
+	Feeds       []feed.Feed
 	dir         string
 	now         func() time.Time
 	mu          sync.RWMutex
 	principals  []Principal
 	tokens      []token
+	ledger      []LedgerEntry
+	pushMu      sync.Mutex
 }
 
 // Options configures Load.
@@ -118,6 +124,10 @@ func Load(o Options) (*Tenant, error) {
 	}
 	defaultMode(merged)
 	t := &Tenant{Name: name, Config: merged, dir: dir, now: o.Now}
+	var fps []string
+	if t.Feeds, fps = loadFeeds(merged); len(fps) > 0 {
+		return nil, &ConfigError{File: "portal.base.yaml + " + overlayPath, Problems: fps}
+	}
 	if t.now == nil {
 		t.now = time.Now
 	}
@@ -136,6 +146,17 @@ func Load(o Options) (*Tenant, error) {
 	}
 	if t.Connections, err = loadConnections(filepath.Join(dir, "connections.yaml"), t.principals); err != nil {
 		return nil, err
+	}
+	if t.ledger, err = loadLedger(filepath.Join(dir, LedgerFile)); err != nil {
+		return nil, err
+	}
+	feeds := t.FeedsEnvelope(o.Stamp)
+	ps = graph.Validate(feeds)
+	if o.Check != nil {
+		ps = append(ps, o.Check(feeds)...)
+	}
+	if graph.HasErrors(ps) {
+		return nil, &ConfigError{File: "feeds (from portal.base.yaml + " + overlayPath + " and " + LedgerFile + ")", Problems: problemStrings(ps)}
 	}
 	return t, nil
 }
@@ -157,6 +178,9 @@ func LoadConfig(base, overlay, schemaDoc []byte) (map[string]any, error) {
 	}
 	merged := Merge(b, ov).(map[string]any)
 	if ps := checkMerged(merged); len(ps) > 0 {
+		return nil, &ConfigError{File: "merged", Problems: ps}
+	}
+	if _, ps := loadFeeds(merged); len(ps) > 0 {
 		return nil, &ConfigError{File: "merged", Problems: ps}
 	}
 	defaultMode(merged)

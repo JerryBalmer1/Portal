@@ -22,8 +22,8 @@ BeforeAll {
     # git show prints UTF-8; read it as UTF-8 so a byte comparison holds for non-ASCII text.
     [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
-    # The Graph.Node version the lift and the graph-node skill are pinned to (docs/design.md 4).
-    $script:GraphNodeTag = 'v0.2.3'
+    # The Graph.Node version the lift and the graph-node skill are pinned to (docs/design.md 4, 40).
+    $script:GraphNodeTag = 'v0.3.0'
     # Edits the lift carries, file => (upstream text, Portal's text). Up to v0.2.1 the ui: row of the id prefix
     # registry was one (docs/design.md 4, 31); since v0.2.3 Graph.Node registers ui: to Portal itself, so the lift is
     # upstream's but for the import path (docs/design.md 34). A new edit goes here and in design.md.
@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.5.1 and needs PowerShell 7.4' {
+    It 'is version 0.6.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.5.1'
+        $m.ModuleVersion | Should -Be '0.6.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,12 +302,12 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.5.1, the eleven Kinds, the eight edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.6.0, the thirteen Kinds, the nine edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.5\.1$'
-        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal') { $text | Should -Match "(?m)^  ${k}:" }
-        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page') { $text | Should -Match "(?m)^  ${e}:" }
+        $text | Should -Match '(?m)^version: 0\.6\.0$'
+        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card') { $text | Should -Match "(?m)^  ${k}:" }
+        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
     }
     It 'the FileSystem fixture passes graphnode validate and has its ontology beside it' {
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.5.1'
+        $s.version | Should -Be '0.6.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -1246,5 +1246,200 @@ Describe 'Dev mode' {
             $dom | Should -Match '<span class="pt-mode" id="mode" hidden="" data-mode="prod"'
         }
         finally { Stop-SidePortal $p }
+    }
+}
+
+Describe 'Feeds' {
+    # docs/design.md 40. A tenant of its own: admin root (-Bootstrap) and reader reed, its two feeds pointed at a port
+    # nothing listens on (so a push is 502 whatever runs on 8201 and 8202), and a ledger that already holds one push.
+    BeforeAll {
+        $script:FeedTenants = Join-Path $TestDrive 'feed-tenants'
+        $td = Join-Path $FeedTenants 'default'
+        $null = New-Item -ItemType Directory -Force -Path $td
+        Set-Content -LiteralPath (Join-Path $td 'portal.yaml') -Encoding utf8NoBOM -Value @'
+feeds:
+  - { id: cards-oci, url: "http://127.0.0.1:1/cards" }
+  - { id: cards-nuget, url: "http://127.0.0.1:1/v3/index.json" }
+'@
+        $script:FeedRoot = New-PortalToken -Name root -Bootstrap -Tenants $FeedTenants
+        Add-Content -LiteralPath (Join-Path $td 'principals.yaml') -Encoding utf8NoBOM -Value (
+            "  - id: 'ui:principal:reed'`n    name: 'reed'`n    type: user`n    role: reader`n    created: '2026-10-11T00:00:00.000Z'`n    createdBy: 'ui:principal:root'")
+        $script:FeedReed = New-PortalToken -Name reed -Tenants $FeedTenants
+        $script:Ledger = Join-Path $td 'ledger.jsonl'
+        $script:SeedHash = 'sha256:' + ('ab' * 32)
+        Set-Content -LiteralPath $Ledger -Encoding utf8NoBOM -Value ('{"at":"2026-10-11T00:00:00.000Z","principal":"ui:principal:root","name":"root","role":"admin","feed":"cards-oci","kind":"oci",' +
+            '"card":"Tool.Git","version":"0.1.0","type":"tool","hash":"' + $SeedHash + '","digest":"sha256:' + ('cd' * 32) + '","files":2,"result":"pushed","message":"Tool.Git 0.1.0 to cards-oci"}')
+        # A card folder: the fixture's two files, a nested one, and a dot file Publish-PortalCard leaves out.
+        $script:CardDir = Join-Path $TestDrive 'card'
+        Copy-Item -LiteralPath (Join-Path $Fixtures 'cards' 'Tool.Git') -Destination $CardDir -Recurse
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $CardDir 'docs')
+        Set-Content -LiteralPath (Join-Path $CardDir 'docs' 'read me.md') -Value '# Tool.Git' -Encoding utf8NoBOM
+        Set-Content -LiteralPath (Join-Path $CardDir '.notes') -Value 'not sent' -Encoding utf8NoBOM
+        (Get-Content -LiteralPath (Join-Path $CardDir 'manifest.yaml') -Raw).Replace('version: 0.1.0', 'version: 0.2.0') |
+            Set-Content -LiteralPath (Join-Path $CardDir 'manifest.yaml') -NoNewline -Encoding utf8NoBOM
+        $script:FeedWork = Join-Path $TestDrive 'feeds'
+        # The portal starts without the NuGet key, whatever the runner's environment holds.
+        $script:SavedNuGetKey = $env:PORTAL_NUGET_KEY
+        $env:PORTAL_NUGET_KEY = $null
+        $script:FeedPortal = Start-Portal -Port 18200 -Artifacts $FeedWork -Filesystem '' -Tenants $FeedTenants
+        $script:FeedUrl = $FeedPortal.Url
+        function Invoke-AsToken([string] $Token, [scriptblock] $Block) {
+            $saved = $env:PORTAL_TOKEN
+            try { $env:PORTAL_TOKEN = $Token; & $Block } finally { $env:PORTAL_TOKEN = $saved }
+        }
+        function Get-LedgerLines { @(Get-Content -LiteralPath $Ledger | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json -DateKind String }) }
+    }
+    AfterAll {
+        Stop-Portal -Artifacts $FeedWork; InModuleScope Portal { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 }
+        $env:PORTAL_NUGET_KEY = $SavedNuGetKey
+    }
+
+    It 'GET .../feeds is the two feeds of the merged config and the card the ledger holds, as a graph' {
+        $env = Invoke-RestMethod "$FeedUrl/api/tenants/default/feeds"
+        $env.module | Should -Be 'Portal'
+        @($env.nodes | Where-Object kind -EQ 'Feed' | ForEach-Object id) | Should -Be @('ui:feed:cards-oci', 'ui:feed:cards-nuget')
+        $oci = $env.nodes | Where-Object id -EQ 'ui:feed:cards-oci'
+        $oci.properties.kind | Should -Be 'oci'
+        $oci.properties.url | Should -Be 'http://127.0.0.1:1/cards'
+        $oci.properties.visibility | Should -Be 'private'
+        ($env.nodes | Where-Object id -EQ 'ui:feed:cards-nuget').properties.tokenEnv | Should -Be 'PORTAL_NUGET_KEY'
+        $card = $env.nodes | Where-Object id -EQ 'ui:card:cards-oci/Tool.Git@0.1.0'
+        $card.properties.hash | Should -Be $SeedHash
+        @($env.edges.id) | Should -Be @('ui:feed:cards-oci|ui:card:cards-oci/Tool.Git@0.1.0|has-card')
+        $file = Join-Path $TestDrive 'feeds.graph.json'
+        $env | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $file -Encoding utf8NoBOM
+        & $GraphNodeBin validate $file | Out-Null
+        $LASTEXITCODE | Should -Be 0
+    }
+    It 'Publish-PortalCard is 401 without a token, 403 for a reader and 404 for a feed the tenant lacks, writing no ledger line' {
+        $before = (Get-LedgerLines).Count
+        Invoke-AsToken '' { { Publish-PortalCard -Feed cards-oci -Path $CardDir -Url $FeedUrl } | Should -Throw '*-> 401*' }
+        Invoke-AsToken $FeedReed.Token { { Publish-PortalCard -Feed cards-oci -Path $CardDir -Url $FeedUrl } | Should -Throw '*-> 403*reader*' }
+        Invoke-AsToken $FeedRoot.Token { { Publish-PortalCard -Feed nope -Path $CardDir -Url $FeedUrl } | Should -Throw '*-> 404*no such feed*' }
+        Invoke-AsToken $FeedRoot.Token { Publish-PortalCard -Feed cards-oci -Path $CardDir -Url $FeedUrl -WhatIf }
+        (Get-LedgerLines).Count | Should -Be $before
+    }
+    It 'Publish-PortalCard sends the card''s files by path; a feed that is down is 502 and one failed ledger line' {
+        Invoke-AsToken $FeedRoot.Token { { Publish-PortalCard -Feed cards-oci -Path $CardDir -Url $FeedUrl } | Should -Throw '*-> 502*cards-oci*' }
+        $e = (Get-LedgerLines)[-1]
+        $e.result | Should -Be 'failed'
+        $e.principal | Should -Be 'ui:principal:root'
+        $e.role | Should -Be 'admin'
+        $e.feed | Should -Be 'cards-oci'
+        $e.card | Should -Be 'Tool.Git'
+        $e.version | Should -Be '0.2.0'
+        $e.files | Should -Be 3 -Because 'manifest.yaml, install.yaml and docs/read me.md; .notes is left out'
+        $e.hash | Should -Match '^sha256:[0-9a-f]{64}$'
+        $e.digest | Should -BeNullOrEmpty
+        @($e.PSObject.Properties.Name) | Should -Be @('at', 'principal', 'name', 'role', 'feed', 'kind', 'card', 'version', 'type', 'hash', 'digest', 'files', 'result', 'message')
+    }
+    It 'a card that fails Graph.Node''s manifest schema is 422 with its problems, and an invalid ledger line' {
+        $bad = Join-Path $TestDrive 'bad-card'
+        $null = New-Item -ItemType Directory -Force -Path $bad
+        Set-Content -LiteralPath (Join-Path $bad 'manifest.yaml') -Value "name: Tool.Git`nversion: one`ntype: tool`ndescription: x`ncolour: red" -Encoding utf8NoBOM
+        $saved = $env:PORTAL_TOKEN
+        $err = $null
+        try {
+            $env:PORTAL_TOKEN = $FeedRoot.Token
+            try { Publish-PortalCard -Feed cards-nuget -Path $bad -Url $FeedUrl } catch { $err = $_ }
+        }
+        finally { $env:PORTAL_TOKEN = $saved }
+        "$err" | Should -Match '-> 422'
+        "$err" | Should -Match 'schema manifest\.yaml:/version'
+        $e = (Get-LedgerLines)[-1]
+        $e.result | Should -Be 'invalid'
+        $e.feed | Should -Be 'cards-nuget'
+        $e.hash | Should -BeNullOrEmpty
+    }
+    It 'pushing the version the ledger holds is 409 before the feed is asked' {
+        $dup = Join-Path $TestDrive 'dup-card'
+        Copy-Item -LiteralPath (Join-Path $Fixtures 'cards' 'Tool.Git') -Destination $dup -Recurse
+        Invoke-AsToken $FeedRoot.Token { { Publish-PortalCard -Feed cards-oci -Path $dup -Url $FeedUrl } | Should -Throw '*-> 409*already in cards-oci*' }
+        (Get-LedgerLines)[-1].result | Should -Be 'duplicate'
+    }
+    It 'Artifacts/Feeds draws each feed and the cards it holds, from the graph, with no write control' {
+        $dom = Get-PageDom $FeedUrl '/default/artifacts/feeds'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $dom | Should -Match 'data-feed="ui:feed:cards-oci"'
+        $dom | Should -Match 'data-feed="ui:feed:cards-nuget"'
+        $dom | Should -Match '<tr data-card="ui:card:cards-oci/Tool.Git@0.1.0"><td>Tool.Git</td><td>0.1.0</td><td>tool</td><td><code[^>]*>abababababab</code></td>'
+        $dom | Should -Match 'No cards pushed yet\.'
+        $dom | Should -Match '2 feeds · 1 cards'
+        $feeds = [regex]::Match($dom, '(?s)<div class="pt-feeds">.*').Value
+        $feeds | Should -Not -Match '<button'
+    }
+    It 'ledger.jsonl and the feeds'' data/ are gitignored' {
+        foreach ($f in 'tenants/default/ledger.jsonl', 'tenants/default/data/registry/x') {
+            & git -C $Repo check-ignore -q $f
+            $LASTEXITCODE | Should -Be 0 -Because $f
+        }
+    }
+    It 'compose.yaml pins every image, publishes only the two feeds and only on 127.0.0.1, and keeps data under the tenant' {
+        $text = Get-Content -LiteralPath (Join-Path $Repo 'compose.yaml') -Raw
+        $images = @([regex]::Matches($text, '(?m)^\s+image:\s*(\S+)\s*$') | ForEach-Object { $_.Groups[1].Value })
+        $images | Should -Be @('registry:2.8.3', 'bagetter/bagetter:1.6.5', 'postgres:16.15-alpine')
+        $ports = @([regex]::Matches($text, '(?m)^\s+- "([^"/]*:\d+)"\s*$') | ForEach-Object { $_.Groups[1].Value })
+        $ports | Should -Be @('127.0.0.1:${PORTAL_REGISTRY_PORT:-8201}:5000', '127.0.0.1:${PORTAL_NUGET_PORT:-8202}:8080')
+        $postgres = [regex]::Match($text, '(?s)\n  postgres:\r?\n(.*)$').Groups[1].Value
+        $postgres | Should -Not -Match 'ports:'
+        $postgres | Should -Match 'pg_isready'
+        $postgres | Should -Match 'POSTGRES_DB: portal'
+        @([regex]::Matches($text, '(?m)^\s+- "\$\{PORTAL_FEEDS_DATA[^}]*\}/\w+:')).Count | Should -Be 3
+        $text | Should -Match '(?m)^name: portal-\$\{PORTAL_TENANT:-default\}\s*$'
+    }
+    It 'Invoke-Build Feeds refuses in mode prod before it builds, starts or writes anything' {
+        $t = Join-Path $TestDrive "feeds-prod-$([guid]::NewGuid().ToString('n'))"
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $t 'default')
+        Set-Content -LiteralPath (Join-Path $t 'default' 'portal.yaml') -Value 'mode: prod' -Encoding utf8NoBOM
+        $envFile = Join-Path $Repo '.env'
+        $envBefore = if (Test-Path -LiteralPath $envFile) { (Get-FileHash -LiteralPath $envFile).Hash } else { 'absent' }
+        $saved = @{ PORTAL_TENANTS = $env:PORTAL_TENANTS; PORTAL_TENANT = $env:PORTAL_TENANT }
+        $err = $null
+        try {
+            $env:PORTAL_TENANTS = $t; $env:PORTAL_TENANT = $null
+            try { Invoke-Build Feeds -File (Join-Path $Repo '.build.ps1') *> $null } catch { $err = "$_" }
+        }
+        finally { foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) } }
+        $err | Should -Match 'Feeds refuses: tenant default is in mode prod'
+        Join-Path $t 'default' 'data' | Should -Not -Exist
+        $envAfter = if (Test-Path -LiteralPath $envFile) { (Get-FileHash -LiteralPath $envFile).Hash } else { 'absent' }
+        $envAfter | Should -Be $envBefore
+        (Get-Content -LiteralPath (Join-Path $Repo '.build.ps1') -Raw) | Should -Match '(?m)^task Feeds FeedsGate, Build, \{'
+    }
+    It 'Initialize-PortalFeedEnv keeps the secrets .env holds and writes only those it lacks' {
+        $envFile = Join-Path $TestDrive 'feeds.env'
+        Set-Content -LiteralPath $envFile -Value "PORTAL_PORT=8200`nPORTAL_NUGET_KEY=kept" -NoNewline -Encoding utf8NoBOM
+        $saved = @{ PORTAL_NUGET_KEY = $env:PORTAL_NUGET_KEY; PORTAL_POSTGRES_PASSWORD = $env:PORTAL_POSTGRES_PASSWORD; PORTAL_TENANT = $env:PORTAL_TENANT; PORTAL_FEEDS_DATA = $env:PORTAL_FEEDS_DATA }
+        try {
+            $env:PORTAL_NUGET_KEY = $null; $env:PORTAL_POSTGRES_PASSWORD = $null
+            $r = InModuleScope Portal -Parameters @{ E = $envFile; T = (Join-Path $TestDrive 'fe-tenants') } { param($E, $T) Initialize-PortalFeedEnv -Tenant acme -Tenants $T -EnvFile $E }
+            @($r.Written) | Should -Be @('PORTAL_POSTGRES_PASSWORD')
+            $env:PORTAL_NUGET_KEY | Should -Be 'kept'
+            $env:PORTAL_POSTGRES_PASSWORD | Should -Match '^[0-9a-f]{64}$'
+            $env:PORTAL_FEEDS_DATA | Should -Be (Join-Path $TestDrive 'fe-tenants' 'acme' 'data')
+            Join-Path $TestDrive 'fe-tenants' 'acme' 'data' | Should -Exist
+            @(Get-Content -LiteralPath $envFile) | Should -Be @('PORTAL_PORT=8200', 'PORTAL_NUGET_KEY=kept', "PORTAL_POSTGRES_PASSWORD=$env:PORTAL_POSTGRES_PASSWORD")
+        }
+        finally { foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) } }
+    }
+
+    # Last in the block: it replaces the block's portal on 18200 (same artifacts) with one Invoke-PortalUp starts.
+    It 'Up reads PORTAL_NUGET_KEY from .env as Feeds does, never writing it: a NuGet push goes from 422 no_token to the feed' {
+        Invoke-AsToken $FeedRoot.Token { { Publish-PortalCard -Feed cards-nuget -Path $CardDir -Url $FeedUrl } | Should -Throw '*-> 422*PORTAL_NUGET_KEY, which is not set*' }
+        $envFile = Join-Path $TestDrive 'up.env'
+        Set-Content -LiteralPath $envFile -Value "PORTAL_PORT=8200`nexport PORTAL_NUGET_KEY='up-key'" -Encoding utf8NoBOM
+        $before = (Get-FileHash -LiteralPath $envFile).Hash
+        $saved = @{ PORTAL_TENANTS = $env:PORTAL_TENANTS; PORTAL_NUGET_KEY = $env:PORTAL_NUGET_KEY }
+        try {
+            $env:PORTAL_TENANTS = $FeedTenants; $env:PORTAL_NUGET_KEY = $null
+            $p = InModuleScope Portal -Parameters @{ A = $FeedWork; E = $envFile } { param($A, $E) Invoke-PortalUp -Port 18200 -Artifacts $A -Filesystem '' -EnvFile $E }
+            $p.Replaced | Should -Not -BeNullOrEmpty
+            $env:PORTAL_NUGET_KEY | Should -Be 'up-key'
+        }
+        finally { foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) } }
+        (Get-FileHash -LiteralPath $envFile).Hash | Should -Be $before
+        InModuleScope Portal -Parameters @{ E = $envFile } { param($E) Get-PortalEnvValue -Name PORTAL_POSTGRES_PASSWORD -EnvFile $E } | Should -BeNullOrEmpty
+        Invoke-AsToken $FeedRoot.Token { { Publish-PortalCard -Feed cards-nuget -Path $CardDir -Url $p.Url } | Should -Throw '*-> 502*cards-nuget*' }
+        (Get-LedgerLines)[-1].message | Should -Not -Match 'not set'
     }
 }

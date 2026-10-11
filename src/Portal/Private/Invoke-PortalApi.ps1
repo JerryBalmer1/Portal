@@ -2,7 +2,8 @@ function Invoke-PortalApi {
     <#
     .SYNOPSIS
     One call to the portal API. -Path is relative to the tenant, /api/tenants/<Get-PortalTenant>. PORTAL_TOKEN, when
-    set, is sent as the bearer token; without it the portal reads only, and a write is refused with 401. Returns the
+    set, is sent as the bearer token; without it the portal reads only, and a write is refused with 401. -Form sends a
+    multipart body (a card push) in place of a JSON -Body. Returns the
     JSON body as objects with stamps left as strings; throws on a non-2xx status with the spec Error (code, message,
     problems) as the error's TargetObject.
     #>
@@ -11,7 +12,8 @@ function Invoke-PortalApi {
         [Parameter(Mandatory)] [string] $Url,
         [Parameter(Mandatory)] [string] $Path,
         [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')] [string] $Method = 'GET',
-        $Body
+        $Body,
+        [System.Net.Http.MultipartFormDataContent] $Form
     )
     $Path = "/api/tenants/$(Get-PortalTenant)$Path"
     $request = @{ Uri = "$Url$Path"; Method = $Method; SkipHttpErrorCheck = $true; TimeoutSec = 30 }
@@ -20,6 +22,7 @@ function Invoke-PortalApi {
         $request.ContentType = 'application/json'
         $request.Body = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Depth 64 -Compress }
     }
+    if ($Form) { $request.Body = $Form }
     $response = Invoke-WebRequest @request
     # Stamps stay strings: ConvertFrom-Json would turn them into [datetime] (PowerShell 7.5+ can say not to).
     $convert = @{ Depth = 64 }

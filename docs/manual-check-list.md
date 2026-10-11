@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.5.1 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 in full with mode dev staged (Go 63 tests, Smoke passed, Pester 86 passed and 1 failed, the commit guard, by design); items 1.14, 1.15 and 3.6 run as written, each from its own `pwsh -NoProfile -File`, and their Expects are the output seen. Not rerun for 0.5.1: 0.1 (no toolchain change), 0.3, 1.1 to 1.13 and 3.1 to 3.5 (their code is unchanged; they now copy a mode-dev overlay, and Pester and Smoke cover them there). Not run: 2.1 to 2.8, which are interactive; 2.8 also runs Invoke-Build Dev, whose Up would have replaced the portal running on 8200. 2.8's sign-in, reader and DEMO paths were driven over the DevTools protocol in Pester.
+Verified for: 0.6.0 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 in full (Go 78 tests, Smoke passed, Pester 98 passed); items 1.16 and 3.8 run as written, each from its own `pwsh -NoProfile -File`, and 3.7 against Docker engine 29.5.3 (both runs, the rerun's two 409s included); their Expects are the output seen. Not run for 0.6.0: 2.9 (interactive, and tenants/default is in mode dev); 0.1, 0.3, 1.1 to 1.15 and 3.1 to 3.6 (their code is unchanged; Pester and Smoke cover them); 2.1 to 2.8, which are interactive.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/server`, `internal/store` and `internal/tenant` (63 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 87, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 86, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
+Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (78 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 98, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 97, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -412,6 +412,36 @@ finally { $env:PORTAL_TOKEN = $saved; Remove-Item $dir, $t -Recurse -Force -Erro
 ```
 Expect: `dev: tenant {"mode":"dev","name":"default"}`, `portal: warning: tenant default is in mode dev: auto-minted admin, local sign-in shortcut; not for demo or production`, `dev: dev-token 200 same token: True`, `dev: whoami with the dev token 200 admin`; then `demo: tenant {"mode":"demo","name":"default"}`, `portal: warning: tenant default is in mode demo and tokens.yaml still holds 1 token(s) of dev-bootstrap, refused until revoked or mode dev`, `demo: dev-token 404 no dev token: it exists only in mode dev, from 127.0.0.1, on a portal started by Invoke-Build Dev` and `demo: whoami with the dev token 401 the bearer token belongs to dev-bootstrap, whose tokens work only while tenant default's mode is dev; it is demo` (docs/design.md 39).
 
+### 1.16 Feeds as a graph; a push needs a writer and a feed the tenant has, and writes one ledger line
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-1.16-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"
+Set-Content "$t\default\portal.yaml" "feeds:`n  - { id: cards-oci, url: `"http://127.0.0.1:1/cards`" }"
+$admin = New-PortalToken -Name check -Bootstrap -Tenants $t
+$dir = Join-Path $env:TEMP 'portal-check-1.16'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' -Tenants $t
+$saved = $env:PORTAL_TOKEN
+try {
+    $env:PORTAL_TOKEN = $admin.Token
+    $feeds = Invoke-RestMethod "$($p.Url)/api/tenants/default/feeds"
+    "feeds: $(@($feeds.nodes | ForEach-Object { "$($_.id) $($_.properties.kind) $($_.properties.url)" }) -join '; ')"
+    foreach ($case in @(
+            @{ Name = 'anonymous'; Token = ''; Feed = 'cards-oci'; Card = '.\tests\fixtures\cards\Tool.Git' }
+            @{ Name = 'admin, feed down'; Token = $admin.Token; Feed = 'cards-oci'; Card = '.\tests\fixtures\cards\Tool.Git' }
+            @{ Name = 'admin, no such feed'; Token = $admin.Token; Feed = 'nope'; Card = '.\tests\fixtures\cards\Tool.Git' })) {
+        $env:PORTAL_TOKEN = $case.Token
+        try { $null = Publish-PortalCard -Feed $case.Feed -Path $case.Card -Url $p.Url; "$($case.Name): pushed" }
+        catch { "$($case.Name): $(($_.Exception.Message -split "`n")[0])" }
+    }
+    Get-Content "$t\default\ledger.jsonl" | ForEach-Object { $e = $_ | ConvertFrom-Json; "ledger: $($e.result) $($e.feed) $($e.card) $($e.version) files $($e.files) by $($e.principal)" }
+}
+finally { $env:PORTAL_TOKEN = $saved; Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `feeds: ui:feed:cards-oci oci http://127.0.0.1:1/cards; ui:feed:cards-nuget nuget http://127.0.0.1:8202/v3/index.json` (the overlay's url over the base's, the other feed as the base has it); `anonymous: ... -> 401: POST writes, and a write needs a bearer token; ...`; `admin, feed down: ... -> 502: feed cards-oci: Head "http://127.0.0.1:1/v2/cards/tool.git/manifests/0.1.0": dial tcp ...`; `admin, no such feed: ... -> 404: no such feed: nope; tenant default has cards-oci, cards-nuget`; and one line, `ledger: failed cards-oci Tool.Git 0.1.0 files 2 by ui:principal:check` (the 401 and the 404 write none; docs/design.md 40).
+
 ## 2. Page
 
 ### 2.1 The shell, and the FileSystem layer in colour on Graph/Explore
@@ -541,6 +571,13 @@ Invoke-Build Down
 ```
 Expect: Invoke-Build prints `minted dev-bootstrap (admin) in <repo>\tenants\default\tokens.yaml; replaced <n> older dev-bootstrap token(s)`, the Up line, then two `DEV ONLY` lines, the second with the token. The page has an amber bar under the banner, `DEV MODE — auto-minted admin, local sign-in shortcut. Not for demo or production. See README: Before you demo.`, with no close button, and a `DEV` badge in the banner. The avatar panel offers `Use dev token`; pressing it signs in and the avatar reads `dev-bootstrap · admin`. Add `rea` shows its row, created by `dev-bootstrap`. After the Add of `rea2`, rea's token is live: signed in with it, the avatar reads `rea · reader` and Add is greyed, its tooltip `admin only: rea is reader`.
 
+### 2.9 Artifacts/Feeds lists the feeds and the cards pushed to each
+```powershell
+# after item 3.7 (Invoke-Build Feeds), with that portal still on 8200
+Start-Process "http://127.0.0.1:8200/default/artifacts/feeds"
+```
+Expect: under Artifacts, Feeds is the first page. Two cards, `Cards (OCI)` and `Cards (NuGet)`, each with its kind, `private` and its URL, and in each a row `Tool.Git · 0.1.0 · tool · <12 hex> · <pushed> · dev-bootstrap` (or whoever pushed); hovering the hash shows the whole `sha256:` and the feed's digest. The toolbar reads `2 feeds · 2 cards`. No button pushes or deletes. The amber DEV MODE bar and the avatar behave as in 2.8.
+
 ## 3. PowerShell
 
 ### 3.1 Approve, PATCH a Theme, approve, diff, restart
@@ -665,3 +702,30 @@ try {
 finally { $env:PORTAL_TENANTS = $saved; Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue }
 ```
 Expect: Invoke-Build's own `ERROR: Dev refuses: ...` and `Build FAILED. 2 tasks, 1 errors`, then `Dev: Dev refuses: tenant default is in mode demo, not dev. Dev mints an admin and a local sign-in shortcut, so it runs only for a tenant whose portal.yaml says 'mode: dev'. Use Invoke-Build Up, which never mints anything; README, Before you demo.`, `identity files written: portal.yaml` (no principals.yaml or tokens.yaml: nothing was built or minted) and `Up mints: False`.
+
+### 3.7 Invoke-Build Feeds: the stock services up and the sample card in both feeds (Docker Desktop)
+```powershell
+# tenants/default in mode dev or demo; Docker Desktop running. Starts compose project portal-default and replaces the portal on 8200.
+Invoke-Build Feeds
+docker compose -p portal-default ps --format '{{.Service}} {{.State}} {{.Health}} {{.Ports}}'
+(Invoke-RestMethod http://127.0.0.1:8201/v2/cards/tool.git/tags/list).tags
+(Invoke-RestMethod http://127.0.0.1:8202/v3/package/tool.git/index.json).versions
+Get-Content .\tenants\default\ledger.jsonl | Select-Object -Last 2
+Invoke-Build Feeds   # again: both pushes are reported as 409, and the task still succeeds
+```
+Expect: `pushed Tool.Git 0.1.0 to cards-oci as <principal>: hash sha256:..., digest sha256:...`, the same for cards-nuget, then `Feeds: Tool.Git 0.1.0 in cards-oci (registry tag) and cards-nuget (feed version), listed by GET .../feeds` and `Build succeeded`. `ps` lists `nuget running`, `postgres running healthy` (no port) and `registry running healthy`, the two feeds on `127.0.0.1:8201` and `127.0.0.1:8202` only. The tags are `0.1.0`, the versions `0.1.0`, and the two ledger lines are `"result":"pushed"` with one `hash` between them. The second run prints `already holds it (409)` for each feed (docs/design.md 40).
+
+### 3.8 Invoke-Build Feeds refuses in mode prod
+```powershell
+$t = Join-Path $env:TEMP 'portal-check-3.8-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"; Set-Content "$t\default\portal.yaml" 'mode: prod'
+$saved = $env:PORTAL_TENANTS
+try {
+    $env:PORTAL_TENANTS = $t
+    try { Invoke-Build Feeds } catch { "Feeds: $($_.Exception.Message)" }
+    "written under the tenant: $(@(Get-ChildItem "$t\default").Name -join ', ')"
+}
+finally { $env:PORTAL_TENANTS = $saved; Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: Invoke-Build's own `ERROR: Feeds refuses: ...` and `Build FAILED. 2 tasks, 1 errors`, then `Feeds: Feeds refuses: tenant default is in mode prod. Feeds starts the stock registry, NuGet feed and Postgres in Docker and pushes a sample card, so it runs only for a tenant in mode dev or demo; a prod tenant's feeds are its own (portal.yaml feeds:).` and `written under the tenant: portal.yaml` (no `data/`, nothing started).

@@ -17,7 +17,7 @@ import (
 // Problem is one validation finding. Severity is "error" or "warning"; only
 // errors make an envelope or ontology invalid (design.md 12).
 type Problem struct {
-	Code     string `json:"code"` // schema | duplicate-node | duplicate-edge | dangling-edge | edge-id | edgeid | counts | kind | stamp | display | action
+	Code     string `json:"code"` // schema | duplicate-node | duplicate-edge | dangling-edge | edge-id | edgeid | counts | kind | stamp | display | action | duplicate-name
 	Path     string `json:"path"` // JSON pointer-ish location, or the element id
 	Message  string `json:"message"`
 	Severity string `json:"severity"` // error | warning

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.5.1
+  version: 0.6.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -11,7 +11,7 @@ info:
     a write needs a token the tenant's tokens.yaml holds (401 without one), and a token it does not hold is refused
     on any request (401). A token belongs to a principal (principals.yaml) whose role decides what it may do: reader
     reads only, contributor writes everything but identity and settings, admin writes all; a write the role does not
-    allow is 403. A principal creates principals of a role equal to or below its own (attenuation). Data layers are mounted read-only and queried; nothing here ever writes to a data layer. Source of
+    allow is 403. A principal creates principals of a role equal to or below its own (attenuation). Data layers are mounted read-only and queried; nothing here ever writes to a data layer. A contributor or admin publishes a card to one of the tenant's feeds, and every push is one line of the tenant's ledger. Source of
     truth for the API surface: the Go server (cmd/portal) is generated from this file by oapi-codegen v2.8.0 and
     the JS client in web/client.js is checked against it by the Go spec tests.
 security:
@@ -30,6 +30,8 @@ tags:
     description: The tenant's merged config, its menu, who is calling, and its service connections.
   - name: identity
     description: The tenant's principals and their bearer tokens. Reads are open, as every read is; writes are admin only.
+  - name: feeds
+    description: Where the tenant publishes Graph.Node manifest cards (an OCI registry or a NuGet v3 feed), what each holds, and the push. Every push is one line of tenants/<tenant>/ledger.jsonl.
 paths:
   /:
     get:
@@ -305,6 +307,69 @@ paths:
               schema: { $ref: "#/components/schemas/Envelope" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Invalid" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+  /api/tenants/{tenant}/feeds:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listFeeds
+      tags: [feeds]
+      summary: The tenant's feeds (the merged config's feeds) as an envelope of Feed nodes, ui:feed:<id>, in config order, with every card pushed to each as a Card node, ui:card:<feed>/<name>@<version> (version, type, content hash, digest, pushed, pushedBy), joined Feed to Card by has-card. The cards come from the tenant's ledger, its pushed entries.
+      responses:
+        "200":
+          description: The feeds and their cards (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/feeds/{feed}/push:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+      - name: feed
+        in: path
+        required: true
+        description: A feed id from GET .../feeds.
+        schema: { type: string }
+    post:
+      operationId: pushCard
+      tags: [feeds]
+      summary: >-
+        Publish one card: its manifest.yaml and the files of its folder. The manifest is checked with Graph.Node 0.3.0's
+        manifest schema (the lifted graph.ValidateManifest), and each file's path (the part's filename, relative to
+        the card's folder, forward slashes) must be clean. An oci feed gets an OCI artifact (repository: the feed URL's
+        path and the card's name in lower case; tag: the version), a nuget feed a .nupkg (id: the card's name). Contributor
+        or admin (403 for a reader, 401 without a token). A name and version the ledger or the feed already holds is 409.
+        Every push that names a feed the tenant has is one line of the tenant's ledger, whatever its result (pushed,
+        duplicate, invalid, failed); the 201 body is that line.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [manifest]
+              properties:
+                manifest:
+                  type: string
+                  format: binary
+                  description: The card's manifest.yaml.
+                file:
+                  type: array
+                  description: Every other file of the card's folder, one part each; the part's filename is the path relative to the folder.
+                  items: { type: string, format: binary }
+      responses:
+        "201":
+          description: Pushed; the ledger entry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LedgerEntry" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Invalid" }
         "502": { $ref: "#/components/responses/BadGateway" }
   /api/tenants/{tenant}/nodes:
@@ -594,7 +659,7 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     Conflict:
-      description: A node or edge with that id already exists.
+      description: A node or edge with that id already exists, or a feed already holds that card at that version.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -618,7 +683,7 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     BadGateway:
-      description: The service a connection names failed or answered with an error; message carries its status and message.
+      description: The service a connection or a feed names failed or answered with an error; message carries its status and message.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -767,6 +832,26 @@ components:
           nullable: true
           description: When New-PortalToken minted it; null for a legacy token.
         legacy: { type: boolean }
+    LedgerEntry:
+      type: object
+      description: One line of tenants/<tenant>/ledger.jsonl, one per push (docs/design.md 40).
+      required: [at, principal, name, role, feed, kind, card, version, type, hash, digest, files, result, message]
+      additionalProperties: false
+      properties:
+        at: { type: string, description: "When, UTC (2026-10-11T09:00:00.000Z)." }
+        principal: { type: string, nullable: true, description: "Who pushed: ui:principal:<name>; null for a legacy token." }
+        name: { type: string, description: "The principal's name, or a legacy token's." }
+        role: { type: string, description: "contributor or admin." }
+        feed: { type: string, description: "The feed id." }
+        kind: { type: string, enum: [oci, nuget] }
+        card: { type: string, nullable: true, description: "The card's name; null when the manifest did not say." }
+        version: { type: string, nullable: true }
+        type: { type: string, nullable: true, description: "emitter, skill, tool or rule." }
+        hash: { type: string, nullable: true, description: "sha256:<hex> over the card's files (one line per file sorted by path: path, tab, the file's sha256, newline); null for an invalid card." }
+        digest: { type: string, nullable: true, description: "What the feed stored: the OCI manifest digest or the .nupkg's sha256. Set only when pushed." }
+        files: { type: integer, description: "How many files, manifest.yaml included." }
+        result: { type: string, enum: [pushed, duplicate, invalid, failed] }
+        message: { type: string }
     Error:
       type: object
       required: [code, message]

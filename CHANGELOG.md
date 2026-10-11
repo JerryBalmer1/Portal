@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.6.0 — 2026-10-11
+
+- **Stock services.** `compose.yaml` (new), project `portal-<tenant>`, data under `<tenants>/<tenant>/data/` (gitignored):
+  - `registry:2.8.3`, an OCI registry, on 127.0.0.1:8201;
+  - `bagetter/bagetter:1.6.5`, a NuGet v3 feed, on 127.0.0.1:8202;
+  - `postgres:16.15-alpine`, database `portal` with a `pg_isready` health check, not published and not used yet.
+
+  `PORTAL_NUGET_KEY` and `PORTAL_POSTGRES_PASSWORD` live in `.env`.
+- **Feeds in the config.** `feeds:` in `portal.base.yaml` (`cards-oci`, `cards-nuget`): `id`, `label`, `kind` oci or nuget, `url`, `visibility` private or public, `token_env`. A tenant's `portal.yaml` overrides a feed by id or adds one; a bad feed stops the binary.
+- **Feeds as a graph.** Kinds `Feed` (`ui:feed:<id>`) and `Card` (`ui:card:<feed>/<name>@<version>`) and the edge `has-card` in `ontology.yaml`. `GET /api/tenants/{tenant}/feeds` serves them, the cards taken from the ledger.
+- **Push.** `POST /api/tenants/{tenant}/feeds/{feed}/push` takes multipart: `manifest` and one `file` part per file.
+  - It is contributor or admin only (401 and 403 from the existing middleware).
+  - The manifest is checked with Graph.Node 0.3.0's `graph.ValidateManifest` (422 with `schema` problems), and file paths with the new code `file`.
+  - The card goes on as an OCI artifact (ORAS-compatible, one layer per file) or a `.nupkg` (the card's files at the package root).
+  - A duplicate name and version is 409; a feed that fails is 502; an unset key is 422 `no_token`.
+- **Ledger.** `tenants/<tenant>/ledger.jsonl` (gitignored) gets one appended line per push: `at`, `principal`, `name`, `role`, `feed`, `kind`, `card`, `version`, `type`, `hash` (the content hash), `digest`, `files`, `result` (pushed, duplicate, invalid, failed), `message`. design.md 2 and CLAUDE.md name it, and the push, as the binary's only writes beyond `-artifacts` and the identity files.
+- **Page.** Artifacts/Feeds (new, first under Artifacts; `view: feeds`, `web/feeds.js`) shows each feed and its cards with version and hash. It is read-only.
+- **PowerShell.** `Publish-PortalCard -Feed -Path [-Url]` (ninth export) pushes a card folder and returns its ledger line. The private `Initialize-PortalFeedEnv` sets the Compose environment and writes the secrets to `.env` once. `Invoke-Build Up` reads `PORTAL_NUGET_KEY` from `.env` the same way (private `Get-PortalEnvValue`, read only), so a portal Up starts can push to cards-nuget.
+- **Invoke-Build Feeds.** It refuses in mode prod before building. Otherwise it brings up `compose.yaml` for the tenant, runs Up, pushes `tests/fixtures/cards/Tool.Git` (Portal.Tools' card) to both feeds and checks them.
+- **CLAUDE.md** names the lift's pinned tag as v0.3.0, and the ledger and push in the data-layer rule.
+- **Lift at Graph.Node v0.3.0.** `internal/graphnode`, `cmd/graphnode` (adds `validate-manifest`, `validate-index`, `index`) and the `graph-node` skill (0.3.0) are recopied; Pester's `$GraphNodeTag` is `v0.3.0`.
+- **Version.** 0.6.0 in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated.
+- **Tests.**
+  - Go: new `internal/feed` tests and the `feedtest` fakes; `internal/tenant/feeds_test.go`; `internal/server/feeds_test.go`; both new operations in the spec test.
+  - Pester: a new `Feeds` block.
+
+  The before and after counts are in the 0.6.0 report.
+
 ## 0.5.1 — 2026-10-11
 
 - **Tenant mode.** `mode: dev | demo | prod` in `tenants/<tenant>/portal.yaml`, prod when absent (`schema/portal.schema.json`).

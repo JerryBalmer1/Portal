@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://graphnode.jerrybalmer.dev/schemas/manifest.schema.json",
+  "title": "GraphNode Manifest",
+  "description": "The card one packaged thing (an emitter, skill, tool or rule) carries as manifest.yaml in its folder. YAML on disk; validated as its JSON equivalent (design.md 21).",
+  "type": "object",
+  "required": ["name", "version", "type", "description"],
+  "properties": {
+    "name":        { "$ref": "#/$defs/name" },
+    "version":     { "$ref": "#/$defs/semver" },
+    "type":        { "$ref": "#/$defs/type" },
+    "description": { "type": "string", "minLength": 1 },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "needs": {
+      "type": "array",
+      "description": "What the thing needs to run: another packaged thing, a runtime or a tool on PATH.",
+      "items": { "$ref": "#/$defs/need" }
+    },
+    "verbs": {
+      "type": "array",
+      "description": "What the thing does, each with the strongest effect it can have.",
+      "items": { "$ref": "#/$defs/verb" }
+    },
+    "pins": {
+      "type": "object",
+      "description": "Exact versions of other packaged things this one was built against, name -> semver, e.g. {\"Graph.Node\": \"0.3.0\"}.",
+      "propertyNames": { "$ref": "#/$defs/name" },
+      "additionalProperties": { "$ref": "#/$defs/semver" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9-]*([.][A-Za-z][A-Za-z0-9-]*)+$",
+      "description": "Dotted: two or more segments, each a letter then letters, digits or hyphens, e.g. Emitter.Terraform, Graph.Node."
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)([.](0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?([+][0-9A-Za-z-]+([.][0-9A-Za-z-]+)*)?$",
+      "description": "Semantic Versioning 2.0.0, e.g. 0.3.0, 1.0.0-rc.1."
+    },
+    "type": {
+      "type": "string",
+      "enum": ["emitter", "skill", "tool", "rule"]
+    },
+    "need": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name":          { "type": "string", "minLength": 1, "description": "a packaged thing's dotted name, or a runtime or tool (PowerShell, terraform)" },
+        "version-range": { "type": "string", "minLength": 1, "description": "the versions that work, e.g. >=7.4, ^0.3.0, >=1.5 <2.0; absent means any" },
+        "os":            { "type": "string", "enum": ["windows", "linux", "any"], "description": "where the need applies; absent means any" }
+      },
+      "additionalProperties": false
+    },
+    "verb": {
+      "type": "object",
+      "required": ["name", "effect"],
+      "properties": {
+        "name":        { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "effect":      { "type": "string", "enum": ["read", "write", "destroy"], "description": "the strongest thing the verb can do: read only, write or change, or delete" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

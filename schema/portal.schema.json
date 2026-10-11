@@ -36,10 +36,28 @@
     "menu": {
       "type": "array",
       "items": { "$ref": "#/$defs/item" }
+    },
+    "feeds": {
+      "type": "array",
+      "description": "Where cards are published (docs/design.md 40). An overlay overrides a feed by id, key by key, or adds one; the merged feeds each need kind and url, which the binary checks after the merge.",
+      "items": { "$ref": "#/$defs/feed" }
     }
   },
   "$defs": {
     "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "feed": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id", "description": "The feed's name: the {feed} of .../feeds/{feed}/push, and ui:feed:<id>." },
+        "label": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["oci", "nuget"] },
+        "url": { "type": "string", "pattern": "^https?://", "description": "oci: the registry and repository namespace (http://127.0.0.1:8201/cards). nuget: the v3 service index (http://127.0.0.1:8202/v3/index.json)." },
+        "visibility": { "enum": ["private", "public"], "default": "private", "description": "Recorded on the Feed node; not enforced in 0.6.0." },
+        "token_env": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "The environment variable holding the feed's API key, read at push time, never stored or served." }
+      }
+    },
     "item": {
       "type": "object",
       "required": ["id"],
@@ -50,7 +68,7 @@
         "icon": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
         "path": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$" },
         "kind": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$", "description": "The node Kind the page lists (Graph.Node's kind pattern)." },
-        "view": { "enum": ["table", "screen", "connections", "users", "agents", "tokens"] },
+        "view": { "enum": ["table", "screen", "connections", "users", "agents", "tokens", "feeds"] },
         "screen": { "type": "string", "pattern": "^ui:.+", "description": "With view screen: the screen node drawn." },
         "sections": { "type": "array", "items": { "$ref": "#/$defs/id" } },
         "filter": { "type": "array", "items": { "$ref": "#/$defs/id" } },

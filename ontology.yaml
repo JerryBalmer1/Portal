@@ -1,5 +1,5 @@
 module: Portal
-version: 0.5.1
+version: 0.6.0
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -71,7 +71,7 @@ kinds:
       - { name: path, type: string, required: true, description: "Route under the tenant: <service>/<page>." }
       - { name: order, type: integer, description: "Position among its siblings, ascending." }
       - { name: nodeKind, type: string, description: "The Kind the page lists through GET /api/tenants/{tenant}/nodes?kind=." }
-      - { name: view, type: string, description: "table (absent means table), screen, connections, users, agents or tokens: which page renderer draws it." }
+      - { name: view, type: string, description: "table (absent means table), screen, connections, users, agents, tokens or feeds: which page renderer draws it." }
       - { name: screen, type: string, description: "With view screen: the screen node the page draws (ui:canvas, ui:designer)." }
       - { name: sections, type: array, description: "With view screen on a Designer: the section slugs drawn; absent means all." }
       - { name: filter, type: array, description: "Values of properties.kind the page offers as toolbar filters (Instances: container, compose, kubernetes, host)." }
@@ -83,6 +83,26 @@ kinds:
       - { name: role, type: string, required: true, description: "reader (GET only), contributor (every write but identity and settings) or admin (all)." }
       - { name: created, type: string, required: true, description: "When it was created, UTC (2026-10-11T09:00:00.000Z)." }
       - { name: createdBy, type: string, description: "Id of the principal that created it. Absent only on the tenant's first admin, made by New-PortalToken -Bootstrap." }
+  Feed:
+    description: Where cards are published (docs/design.md 40). Built from the merged config's feeds (portal.base.yaml, then tenants/<tenant>/portal.yaml) and served by GET /api/tenants/{tenant}/feeds with the cards pushed to it; never on the screen graph. POST .../feeds/<id>/push publishes a card, contributor or admin.
+    idRule: "ui:feed:<feed id>"
+    properties:
+      - { name: kind, type: string, required: true, description: "oci (an OCI registry; a card is an OCI artifact) or nuget (a NuGet v3 feed; a card is a .nupkg)." }
+      - { name: url, type: string, required: true, description: "oci: the registry and repository namespace. nuget: the v3 service index." }
+      - { name: visibility, type: string, required: true, description: "private or public. Recorded, not enforced in 0.6.0." }
+      - { name: order, type: integer, description: "Position in the config's feeds list." }
+      - { name: tokenEnv, type: string, description: "The environment variable holding the feed's API key; never the key." }
+  Card:
+    description: A Graph.Node manifest card as one feed holds it, from the tenant's ledger (tenants/<tenant>/ledger.jsonl, one line per push). Its name is the card's name. Joined from its Feed by has-card; served with the feeds only.
+    idRule: "ui:card:<feed id>/<card name>@<version>"
+    properties:
+      - { name: feed, type: string, required: true, description: "The feed id." }
+      - { name: version, type: string, required: true, description: "The card's version (Semantic Versioning 2.0.0)." }
+      - { name: type, type: string, required: true, description: "emitter, skill, tool or rule, from the card." }
+      - { name: hash, type: string, required: true, description: "sha256:<hex> over the card's files: one line per file, sorted by path, <path> TAB <sha256 of the file> LF. The same whatever feed holds it." }
+      - { name: digest, type: string, description: "The feed's own name for what it stored: the OCI manifest digest, or the .nupkg's sha256." }
+      - { name: pushed, type: string, required: true, description: "When it was pushed, UTC (2026-10-11T09:00:00.000Z)." }
+      - { name: pushedBy, type: string, required: true, description: "The name of the principal who pushed it." }
 edgeKinds:
   contains:
     description: A Container holds a Container or a Widget.
@@ -108,6 +128,10 @@ edgeKinds:
     description: A rail Service to its pages, or a Page to the tabs of its item page.
     from: [Service, Page]
     to: [Page]
+  has-card:
+    description: A Feed to a Card pushed to it.
+    from: [Feed]
+    to: [Card]
   has-state:
     description: Any screen node, or a rail Service or Page, to its display State.
     from: [Container, Widget, Layout, Category, Ref, Service, Page]

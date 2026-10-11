@@ -5,6 +5,9 @@
 //	graphnode validate-ontology <ontology.yaml>                   exit 1 if any error
 //	graphnode prefixes                                            print the registered id prefixes as JSON
 //	graphnode check-id <prefix> <id>                              exit 1 if id does not have the prefix's shape
+//	graphnode validate-manifest <manifest.yaml>                   exit 1 if any error
+//	graphnode validate-index <index.yaml>                         exit 1 if any error
+//	graphnode index <root>                                        write <root>/index.yaml from every manifest.yaml under root; exit 1, writing nothing, if any card is invalid or two share a name
 //	graphnode schema [name]                                       print a schema, or list names
 //	graphnode version
 //
@@ -15,12 +18,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
-	"go.yaml.in/yaml/v3"
 )
 
-const version = "0.2.3"
+const version = "0.3.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -48,10 +52,10 @@ func main() {
 			report(graph.ValidateBytes(data))
 			return
 		}
-		report(graph.ValidateWithOntology(data, readOntology(ontology)))
+		report(graph.ValidateWithOntology(data, readYAML(ontology)))
 	case "validate-ontology":
 		need(3)
-		report(graph.ValidateOntology(readOntology(os.Args[2])))
+		report(graph.ValidateOntology(readYAML(os.Args[2])))
 	case "prefixes":
 		b, _ := json.MarshalIndent(graph.IDPrefixes(), "", "  ")
 		os.Stdout.Write(b)
@@ -62,6 +66,22 @@ func main() {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+	case "validate-manifest":
+		need(3)
+		_, ps, err := graph.LoadManifest(os.Args[2])
+		die(err)
+		report(ps)
+	case "validate-index":
+		need(3)
+		report(graph.ValidateIndex(readYAML(os.Args[2])))
+	case "index":
+		need(3)
+		idx, ps, err := graph.BuildIndex(os.Args[2], time.Now())
+		die(err)
+		if !graph.HasErrors(ps) {
+			die(graph.SaveIndex(filepath.Join(os.Args[2], graph.IndexFile), idx))
+		}
+		report(ps)
 	case "schema":
 		if len(os.Args) == 2 {
 			for _, n := range graph.SchemaNames() {
@@ -89,38 +109,13 @@ func report(ps []graph.Problem) {
 	}
 }
 
-// readOntology loads an ontology.yaml (or .json) as plain JSON-shaped data.
-func readOntology(path string) any {
+// readYAML loads an ontology.yaml or index.yaml (or .json) as plain JSON-shaped data.
+func readYAML(path string) any {
 	data, err := os.ReadFile(path)
 	die(err)
-	var doc any
-	die(yaml.Unmarshal(data, &doc))
-	return normaliseYAML(doc)
-}
-
-// normaliseYAML turns map[any]any (older yaml decoders) into map[string]any so
-// the schema validator sees plain JSON-shaped data.
-func normaliseYAML(v any) any {
-	switch t := v.(type) {
-	case map[string]any:
-		for k, val := range t {
-			t[k] = normaliseYAML(val)
-		}
-		return t
-	case map[any]any:
-		m := make(map[string]any, len(t))
-		for k, val := range t {
-			m[fmt.Sprint(k)] = normaliseYAML(val)
-		}
-		return m
-	case []any:
-		for i, val := range t {
-			t[i] = normaliseYAML(val)
-		}
-		return t
-	default:
-		return v
-	}
+	doc, err := graph.DecodeYAML(data)
+	die(err)
+	return doc
 }
 
 func need(n int) {
@@ -138,5 +133,5 @@ func die(err error) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: graphnode validate <graph.json> [--ontology <ontology.yaml>] | validate-ontology <ontology.yaml> | prefixes | check-id <prefix> <id> | schema [name] | version")
+	fmt.Fprintln(os.Stderr, "usage: graphnode validate <graph.json> [--ontology <ontology.yaml>] | validate-ontology <ontology.yaml> | prefixes | check-id <prefix> <id> | validate-manifest <manifest.yaml> | validate-index <index.yaml> | index <root> | schema [name] | version")
 }

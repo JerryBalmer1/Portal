@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://graphnode.jerrybalmer.dev/schemas/index.schema.json",
+  "title": "GraphNode Index",
+  "description": "A repo's index.yaml: one entry per manifest.yaml found under the repo root. Derived by New-GraphIndex or graphnode index, never written by hand (design.md 21).",
+  "type": "object",
+  "required": ["repo", "generated", "entries"],
+  "properties": {
+    "repo":      { "type": "string", "minLength": 1, "description": "the repo root's folder name" },
+    "generated": { "$ref": "node.schema.json#/$defs/utcStamp" },
+    "entries":   { "type": "array", "items": { "$ref": "#/$defs/entry" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["path", "name", "version", "type"],
+      "properties": {
+        "path":    { "type": "string", "pattern": "^([.]|[^/\\\\]+(/[^/\\\\]+)*)$", "description": "the card's folder relative to the repo root, forward slashes; the root itself is ." },
+        "name":    { "$ref": "manifest.schema.json#/$defs/name" },
+        "version": { "$ref": "manifest.schema.json#/$defs/semver" },
+        "type":    { "$ref": "manifest.schema.json#/$defs/type" },
+        "tags":    { "$ref": "manifest.schema.json#/properties/tags" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -291,6 +291,11 @@ body.pt-rail-collapsed { --pt-rail-w: 52px; }
 .pt-content.pt-fill > .gr-box { flex: 1; min-height: 420px; }
 .pt-card { background: var(--gr-card); border: var(--gr-border); border-radius: var(--gr-radius); box-shadow: var(--gr-glow); }
 .pt-table-card { overflow: auto; }
+.pt-feeds { display: flex; flex-direction: column; gap: 16px; }
+.pt-feed-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px; }
+.pt-feed-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.pt-feed-head code { font-size: 12px; color: var(--gr-text-muted); overflow-wrap: anywhere; }
+.pt-feed-empty { margin: 0; padding: 0 12px 12px; color: var(--gr-text-muted); }
 .pt-empty-state { padding: 40px 28px; text-align: center; color: var(--gr-text-muted); }
 .pt-empty-state h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--gr-text); }
 .pt-empty-state p { margin: 0 auto; max-width: 52ch; font-size: 13px; }

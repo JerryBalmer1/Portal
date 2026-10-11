@@ -1,0 +1,59 @@
+# Portal's stock services for one tenant (docs/design.md 40): an OCI registry and a NuGet v3 feed, the two feeds
+# portal.base.yaml declares, and Postgres for Portal's own use later (0.6.0 only provisions it). Invoke-Build Feeds
+# brings them up as project portal-<tenant> with PORTAL_TENANT and PORTAL_FEEDS_DATA set; by hand:
+#   docker compose -p portal-default up -d --wait
+# Data lives under the tenant: <tenants>/<tenant>/data/{registry,nuget,postgres} (gitignored). Only the two feeds are
+# published, on 127.0.0.1, because the portal binary runs on the host and pushes to them; Postgres is not published.
+# PORTAL_NUGET_KEY and PORTAL_POSTGRES_PASSWORD come from .env (gitignored); Invoke-Build Feeds writes them there,
+# random, the first time. Images are pinned to an exact version, never latest.
+name: portal-${PORTAL_TENANT:-default}
+
+services:
+  registry:
+    # Distribution's reference registry, the 2.x line the brief names: ~10 MB, single binary, OCI image manifests.
+    image: registry:2.8.3
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORTAL_REGISTRY_PORT:-8201}:5000"
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "false"
+    volumes:
+      - "${PORTAL_FEEDS_DATA:-./tenants/default/data}/registry:/var/lib/registry"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5000/v2/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  nuget:
+    # BaGetter, the maintained fork of BaGet: a NuGet v3 server in one container, SQLite and files on disk (~90 MB).
+    image: bagetter/bagetter:1.6.5
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORTAL_NUGET_PORT:-8202}:8080"
+    environment:
+      ApiKey: "${PORTAL_NUGET_KEY:?set PORTAL_NUGET_KEY in .env; Invoke-Build Feeds writes one}"
+      Storage__Type: FileSystem
+      Storage__Path: /data
+      Database__Type: Sqlite
+      Database__ConnectionString: "Data Source=/data/db/bagetter.db"
+      Search__Type: Database
+      AllowPackageOverwrites: "false"
+    volumes:
+      - "${PORTAL_FEEDS_DATA:-./tenants/default/data}/nuget:/data"
+
+  postgres:
+    image: postgres:16.15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: portal
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: "${PORTAL_POSTGRES_PASSWORD:?set PORTAL_POSTGRES_PASSWORD in .env; Invoke-Build Feeds writes one}"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - "${PORTAL_FEEDS_DATA:-./tenants/default/data}/postgres:/var/lib/postgresql/data"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "portal", "-d", "portal"]
+      interval: 5s
+      timeout: 3s
+      retries: 12

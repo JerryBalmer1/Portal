@@ -19,6 +19,8 @@ export const ROUTES = Object.freeze({
   postPrincipal: { method: 'POST', path: '/api/tenants/{tenant}/principals' },
   listTokens: { method: 'GET', path: '/api/tenants/{tenant}/tokens' },
   revokeToken: { method: 'DELETE', path: '/api/tenants/{tenant}/tokens/{id}' },
+  listFeeds: { method: 'GET', path: '/api/tenants/{tenant}/feeds' },
+  pushCard: { method: 'POST', path: '/api/tenants/{tenant}/feeds/{feed}/push' },
   listNodes: { method: 'GET', path: '/api/tenants/{tenant}/nodes' },
   getScreen: { method: 'GET', path: '/api/tenants/{tenant}/screen' },
   postNode: { method: 'POST', path: '/api/tenants/{tenant}/nodes' },
@@ -55,7 +57,7 @@ export function setToken(token) {
 }
 
 export function createClient(tenant, base = '') {
-  async function call(op, { params, query, body } = {}) {
+  async function call(op, { params, query, body, form } = {}) {
     const r = ROUTES[op];
     const all = { tenant, ...params };
     const path = r.path.replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(all[k]));
@@ -70,6 +72,8 @@ export function createClient(tenant, base = '') {
       init.headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
     }
+    // A FormData body sets its own multipart Content-Type and boundary.
+    if (form !== undefined) init.body = form;
     let res;
     try {
       res = await fetch(url, init);
@@ -103,6 +107,15 @@ export function createClient(tenant, base = '') {
     postPrincipal: (req) => call('postPrincipal', { body: req }),
     listTokens: () => call('listTokens'),
     revokeToken: (id) => call('revokeToken', { params: { id } }),
+    listFeeds: () => call('listFeeds'),
+    // pushCard(feed, manifest, files): manifest a Blob of manifest.yaml, files [{path, blob}]. Nothing on the page
+    // pushes in 0.6.0; Portal.Agent and Publish-PortalCard do.
+    pushCard: (feed, manifest, files = []) => {
+      const form = new FormData();
+      form.append('manifest', manifest, 'manifest.yaml');
+      for (const f of files) form.append('file', f.blob, f.path);
+      return call('pushCard', { params: { feed }, form });
+    },
     listNodes: (kind) => call('listNodes', { query: { kind } }),
     getScreen: () => call('getScreen'),
     postNode: (node) => call('postNode', { body: node }),

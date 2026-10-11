@@ -1,18 +1,18 @@
 ---
 name: graph-node
-description: How to produce, declare, validate and read graph/1 envelopes with GraphNode, the base graph shape shared by every graph module (emitters such as Graph.Emitter.FileSystem, Graph.Emitter.Network, Graph.Emitter.Terraform, Graph.Emitter.AzureDevOps; consumers such as GraphRenderer). Use any time this repo writes or reads a graph.json envelope or an ontology.yaml, builds nodes, edges or node ids, or reports GraphNode problem codes.
-version: 0.2.3
+description: How to produce, declare, validate and read graph/1 envelopes with GraphNode, the base graph shape shared by every graph module (emitters such as Graph.Emitter.FileSystem, Graph.Emitter.Network, Graph.Emitter.Terraform, Graph.Emitter.AzureDevOps; consumers such as GraphRenderer). Use any time this repo writes or reads a graph.json envelope, an ontology.yaml, a manifest.yaml card or an index.yaml, builds nodes, edges or node ids, or reports GraphNode problem codes.
+version: 0.3.0
 ---
 
 # GraphNode for emitters and consumers
 
-GraphNode owns the shape: one Node, one Edge, one Envelope (`schema: graph/1`), the schema your `ontology.yaml` must satisfy, the registry of node id prefixes, and a validator in PowerShell and Go. Your repo produces or reads that shape; it never redefines it. If the shape does not fit what you need, propose a change to GraphNode; do not work around it locally.
+GraphNode owns the shape: one Node, one Edge, one Envelope (`schema: graph/1`), the schema your `ontology.yaml` must satisfy, the registry of node id prefixes, the `manifest.yaml` card every packaged thing carries and the `index.yaml` derived from the cards, and a validator in PowerShell and Go. Your repo produces or reads that shape; it never redefines it. If the shape does not fit what you need, propose a change to GraphNode; do not work around it locally.
 
-`reference/` beside this file holds a complete example to open: `envelope.example.json` (a valid envelope) and `ontology.example.yaml` (the ontology it names; in your repo the file is `ontology.yaml`, which is the name the example envelope uses).
+`reference/` beside this file holds complete examples to open: `envelope.example.json` (a valid envelope), `ontology.example.yaml` (the ontology it names; in your repo the file is `ontology.yaml`, which is the name the example envelope uses) and `manifest.example.yaml` (a valid card; in your repo the file is `manifest.yaml`).
 
 ## When to use
 
-Any time a repo produces or reads graph/1 envelopes: building nodes and edges from a source, choosing node ids, writing a layer, writing or changing `ontology.yaml`, validating output in tests or CI, or loading layers to draw, diff or merge them.
+Any time a repo produces or reads graph/1 envelopes: building nodes and edges from a source, choosing node ids, writing a layer, writing or changing `ontology.yaml`, validating output in tests or CI, loading layers to draw, diff or merge them, or writing the `manifest.yaml` card of a packaged emitter, skill, tool or rule and deriving its repo's `index.yaml`.
 
 ## Depend on GraphNode
 
@@ -22,12 +22,12 @@ PowerShell (7.4+). Until GraphNode is on a feed, import it from the sibling chec
 Import-Module C:\__Code\Graph.Node\src\GraphNode\GraphNode.psd1
 ```
 
-Once it is on a feed, declare it in your psd1 instead: `RequiredModules = @(@{ ModuleName = 'GraphNode'; ModuleVersion = '0.2.3' })`. Do not copy GraphNode's files into your module.
+Once it is on a feed, declare it in your psd1 instead: `RequiredModules = @(@{ ModuleName = 'GraphNode'; ModuleVersion = '0.3.0' })`. Do not copy GraphNode's files into your module.
 
 Go (1.24+). Import the package and pin it to a tag in `go.mod`, never `latest` or a branch:
 
 ```
-go get github.com/JerryBalmer1/GraphNode/graph@v0.2.3
+go get github.com/JerryBalmer1/GraphNode/graph@v0.3.0
 ```
 
 The package embeds the schemas, so `graph.Validate` needs no files on disk.
@@ -146,7 +146,7 @@ Go and CI:
 - `graph.Validate(env)` or `graph.ValidateBytes(data)` returns `[]graph.Problem` (`Code`, `Path`, `Message`, `Severity`), nil when there is nothing to report; `graph.HasErrors(ps)` is the validity test. `graph.ValidateOntology(doc)` checks a decoded ontology. `graph.ValidateWithOntology(data, doc)` does both plus `graph.CheckActionRuns(env, doc)`.
 - `graphnode validate <graph.json> [--ontology <ontology.yaml>]` and `graphnode validate-ontology <ontology.yaml>` print a JSON array of `{code, path, message, severity}` (`[]` when clean) and exit 0 when there is no error (warnings only, or nothing), 1 on any error, 2 on a usage or read error. `graphnode prefixes` prints the id prefix registry; `graphnode check-id <prefix> <id>` exits 1 and prints why when the id does not fit. `graphnode schema` lists the schema names; `graphnode schema <name>` prints one; `graphnode version` prints the version.
 
-Problem codes (the same in both validators; a code one reports and the other does not is a GraphNode bug, report it):
+Problem codes (the same in both validators; a code one reports and the other does not is a GraphNode bug, report it; the codes for cards and indexes are under "Write a manifest card"):
 
 | Code | Means |
 |---|---|
@@ -168,7 +168,7 @@ What the validators do not check yet: that a node's or edge's Kind is declared i
 
 - `Import-Graph .\graph.json` returns the envelope with `nodes`, `edges` and `findings` always present (empty arrays when missing). Validate it with `Test-Graph` before trusting it.
 - `Import-Graph` (PowerShell's JSON reader) turns ISO-8601 strings such as `layer`, `startedAt` and `finishedAt` into `[datetime]`. A valid `Z` stamp exports back unchanged and `Test-Graph` accepts it; an offset stamp (invalid anyway) would come back rewritten in the local time zone. Compare layers as the strings in the file.
-- `Get-GraphSchema envelope` (or `node`, `edge`, `ontology`, `action-run`, `category`) returns a schema as a hashtable; `-Raw` returns the JSON text; `-List` lists all six.
+- `Get-GraphSchema envelope` (or `node`, `edge`, `ontology`, `manifest`, `index`, `action-run`, `category`) returns a schema as a hashtable; `-Raw` returns the JSON text; `-List` lists all eight.
 - Go: `graph.Load(path)` or `graph.Decode(r)` returns `*graph.Envelope`, filling empty lists, with `Source` (`*graph.EnvelopeSource`) nil when the envelope has no `source` block; `env.NodeIndex()` maps id to index. `graph.SchemaNames()` and `graph.SchemaBytes(name)` expose the embedded schemas. `graph.ParseEdgeID(id)` returns the decoded from, to and kind; `graph.PrefixOf(id)` returns the registered prefix an id carries.
 - Tolerate every optional field being absent. Resolve display, edge rules and actions from the ontology the envelope names, not from the nodes; for display, take the Kind's block, then lay over it the first `when` rule whose `properties` all equal the node's. An edge whose far end has another module's prefix points into that module's layer.
 
@@ -181,6 +181,57 @@ What the validators do not check yet: that a node's or edge's Kind is declared i
 
 Any other Kind is yours and is declared in your `ontology.yaml`. Never add your own Kinds to GraphNode.
 
+## Write a manifest card
+
+Every packaged thing, an emitter, a skill, a tool or a rule (one folder each in Portal.Emitters, Portal.Skills, Portal.Tools and Portal.Ontology), carries a card, `manifest.yaml`, in its own folder. It says what the thing is, what it needs and what it can do, and is checked against GraphNode's `manifest.schema.json`. `reference/manifest.example.yaml` is a complete one:
+
+```yaml
+name: Emitter.Example
+version: 0.1.0
+type: emitter
+description: Reads an example source and writes one graph/1 envelope per run.
+tags: [example, network]
+needs:
+  - { name: PowerShell, version-range: ">=7.4", os: any }
+  - { name: Graph.Node, version-range: ^0.3.0 }
+  - { name: example-cli, version-range: ">=1.2 <2.0", os: windows }
+verbs:
+  - { name: Get-ExampleGraph, description: Read the source and return an envelope., effect: read }
+  - { name: Export-ExampleGraph, description: Write the envelope to a layer folder., effect: write }
+  - { name: Remove-ExampleCache, description: Delete the local cache., effect: destroy }
+pins:
+  Graph.Node: 0.3.0
+```
+
+- Required: `name`, `version`, `type`, `description`. Optional: `tags`, `needs`, `verbs`, `pins`. No other key, at the top or inside a need or verb: an unknown key fails rather than being ignored.
+- `name` is dotted: two or more segments, each a letter then letters, digits or hyphens (`Emitter.Terraform`, `Emitter.Git.Repository`). No spaces, no leading or trailing dot. It must be unique among the cards of the repo; the index fails on a repeat.
+- `version` is Semantic Versioning 2.0.0, three numbers with optional `-pre` and `+build` (`0.17.1`, `1.0.0-rc.1`): no `v`, no leading zeros, never two parts (`0.3` is not a version, and YAML reads it as a number). Use the version the thing itself reports (a psd1 `ModuleVersion`, a skill's `version:`).
+- `type` is `emitter`, `skill`, `tool` or `rule`. `description` is one non-empty line.
+- `tags` are strings with no repeats.
+- `needs` lists what it needs to run: another packaged thing by its dotted name, or a runtime or tool (`PowerShell`, `terraform`). `name` is required; `version-range` is a free string (`>=7.4`, `^0.3.0`, `>=1.2 <2.0`), absent meaning any; `os` is `windows`, `linux` or `any`, absent meaning any. Quote a range that starts with `>` or `<` in YAML. Build-only tools (a compiler, Docker) are not needs.
+- `verbs` lists what it can do, one per exported command or CLI subcommand. `name` and `effect` are required, `description` optional. `effect` is the strongest thing the verb can do: `read` (reads only), `write` (creates or changes files, caches or remote state) or `destroy` (can delete). A command that only reads unless a switch deletes something is `destroy`.
+- `pins` maps a dotted name to the exact version it was built against or copied from (`Graph.Node: 0.3.0`, the GraphNode whose `graph-node` skill you carry). An exact semver, never a range; ranges go in `needs`.
+
+Check a card:
+- PowerShell: `Test-GraphManifest -Path .\manifest.yaml` (or the folder holding it; Get-ChildItem output pipes in) returns `Valid`, `Problems` (each `Code`, `Path`, `Message`, `Severity`) and `Path`.
+- Go: `m, problems, err := graph.LoadManifest(path)` returns a `*graph.Manifest` (`Name`, `Version`, `Type`, `Description`, `Tags`, `Needs []graph.ManifestNeed`, `Verbs []graph.ManifestVerb`, `Pins`), nil when there is an error problem; `err` is for a file that cannot be read. `graph.ValidateManifest(doc)` checks a decoded card; `graph.DecodeYAML(data)` decodes YAML into the plain form the validators take.
+- CLI: `graphnode validate-manifest <manifest.yaml>` prints the problems as JSON and exits 0 clean, 1 on an error, 2 on a file it cannot read.
+
+Every card problem is `schema`, with a JSON pointer into the card: `/` for a missing required key or an unknown key (the message names it), `/type` for an unknown type, `/needs/0/os`, `/pins/Graph.Node`. A file that is not YAML is `schema` at `/`. A bad key under `pins` is reported at `/`, with the key in the message.
+
+Derive the index. A repo's `index.yaml` sits at its root and is never written by hand:
+- `New-GraphIndex -Root <repo>`, or `graphnode index <root>`, or `graph.BuildIndex(root, time.Now())` then `graph.SaveIndex(filepath.Join(root, graph.IndexFile), idx)`, walks the root for every `manifest.yaml` (skipping `.git` and `node_modules`), validates each, and writes `index.yaml`: `repo` (the root's folder name), `generated` (UTC ending `Z`) and `entries`, one `{path, name, version, type, tags}` per card, sorted by `path`, the card's folder relative to the root with forward slashes (`emitters/Terraform`; `.` for a card at the root). `New-GraphIndex` returns the file.
+- Any invalid card, or a second card with a name already taken, fails it: nothing is written and an existing `index.yaml` is left as it was. `New-GraphIndex` throws `index not written; <n> problem(s): ...`, `graphnode index` prints the problems and exits 1. Each problem's path is the card's file relative to the root, a colon, then the pointer: `emitters/Terraform/manifest.yaml:/version`.
+- Regenerate it in the same change as any card change. Read it with any YAML reader; check it with `graphnode validate-index <index.yaml>` or `graph.ValidateIndex(doc)` (Go types `graph.Index`, `graph.IndexEntry`).
+
+`Test-GraphManifest` and `New-GraphIndex` read YAML through the `graphnode` binary, so they always need it built in the GraphNode checkout, and throw `Test-GraphManifest needs the graphnode binary: build the graphnode binary; see README` (or `New-GraphIndex needs ...`) without it. There is no pure-PowerShell card check.
+
+| Code | Means |
+|---|---|
+| `schema` | A card breaks `manifest.schema.json` (a missing or unknown key, a bad name, version, type, os, effect or pin), or is not YAML; or an index breaks `index.schema.json`. |
+| `duplicate-name` | Building an index: this card's `name` is already the name of an earlier card (by path); the message names it. |
+| `stamp` | An index's `generated` is not a UTC stamp ending `Z`. |
+
 ## What not to do
 
 - No per-emitter node types. One Node shape with a `kind` string; what a Kind carries goes in `properties` and is declared in `ontology.yaml`.
@@ -189,6 +240,7 @@ Any other Kind is yours and is declared in your `ontology.yaml`. Never add your 
 - No hand-built edge ids. Use `New-GraphEdge`, `graph.NewEdge` or `graph.EdgeID`.
 - No Kind, edge Kind or finding Kind that is not declared in your `ontology.yaml`.
 - No `Category` nodes from an emitter, and no edits to another module's layers.
+- No hand-written or hand-edited `index.yaml`; derive it with `New-GraphIndex` or `graphnode index`.
 
 ## Changes
 
@@ -196,3 +248,4 @@ Any other Kind is yours and is declared in your `ontology.yaml`. Never add your 
 - 0.2.0: problems carry `severity` (`error`, `warning`) and only errors fail; Kind `display` checked (`#rrggbb` colour, shape circle|square|diamond|hexagon, integer `size`), edge Kind `display` is `{color, style}`, new code `display`; id prefix registry (`schemas/ids.md`), `Get-GraphIdPrefix`, `Test-GraphId`, `graphnode prefixes` and `check-id`, `graph.IDPrefixes`, `ValidID`, `PrefixOf`, and a dangling edge to another module's prefix is a warning; `%` and `|` in edge id parts are percent-encoded, new code `edgeid`, `graph.ParseEdgeID`; action `inputs` as `[{name, type, required}]` and `returns: {type}`, ActionRun `result`, `Test-Graph -Ontology` and `graphnode validate --ontology` check ActionRuns, new code `action`, `graph.ValidateWithOntology`, `CheckActionRuns`, `HasErrors`. 0.1.0 shapes and `inputs` maps are warnings until 0.3.0.
 - 0.2.1: `ui:` is registered to Graph.Portal, not GraphRenderer; `alert:` and `ledger:` are registered to Claude.Agent.Alerts, with their shapes checked by `Test-GraphId`, `graph.ValidID` and `graphnode check-id` (`schemas/ids.md`, `Get-GraphIdPrefix`, `graph.IDPrefixes`, `graphnode prefixes`).
 - 0.2.3: `agent:` (Graph.Emitter.Agent), `runner:` (Claude.Agent.Runner), `git:` (Graph.Emitter.Git.Repository) and `ref:` (Graph.Emitter.Reference) registered with shape checks; `ui:` owned by Portal; shapes `triangle` and `star`; Kind `display.when` overrides display by property value; a dangling edge onto the envelope's own module's prefix is a warning in pure `Test-Graph`, an error with `-Strict` / Go; envelope `source` block `{emitter, version, target, stamp}`, `New-GraphEnvelope -Source`, `graph.EnvelopeSource`; list-valued properties stay lists in the builders.
+- 0.3.0: manifest cards: `manifest.yaml` per packaged emitter, skill, tool or rule (`manifest.schema.json`: `name`, `version`, `type`, `description`, optional `tags`, `needs`, `verbs`, `pins`) and the derived repo `index.yaml` (`index.schema.json`); `Test-GraphManifest`, `New-GraphIndex`; `graphnode validate-manifest`, `validate-index`, `index`; Go `Manifest`, `ManifestNeed`, `ManifestVerb`, `Index`, `IndexEntry`, `ManifestFile`, `IndexFile`, `DecodeYAML`, `LoadManifest`, `ValidateManifest`, `ValidateIndex`, `BuildIndex`, `MarshalIndex`, `SaveIndex`; new code `duplicate-name`; `reference/manifest.example.yaml`.

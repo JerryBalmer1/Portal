@@ -3,7 +3,7 @@ package schemas
 
 import "embed"
 
-// FS holds node, edge, envelope, ontology and kinds/*.schema.json.
+// FS holds node, edge, envelope, ontology, manifest, index and kinds/*.schema.json.
 //
 //go:embed *.schema.json kinds/*.schema.json
 var FS embed.FS

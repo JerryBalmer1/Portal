@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/JerryBalmer1/Portal/internal/feed"
 	"github.com/JerryBalmer1/Portal/internal/gen/api"
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 	"github.com/JerryBalmer1/Portal/internal/store"
@@ -33,6 +34,7 @@ type Server struct {
 	p        *store.Portal
 	t        *tenant.Tenant
 	gh       tenant.GitHub
+	feeds    tenant.Pusher
 	web      fs.FS
 	devToken string
 }
@@ -48,12 +50,18 @@ type Options struct {
 	// PORTAL_TOKEN. It is served only while it is a token of dev-bootstrap
 	// in a tenant of mode dev, to a loopback caller (docs/design.md 39).
 	DevToken string
+	// Feeds pushes cards; nil means feed.Client, the network and
+	// os.Getenv. Tests inject fakes of a registry and a NuGet feed.
+	Feeds tenant.Pusher
 }
 
 // New returns the handler serving p for tenant t, and the embedded page.
 // Every request passes the bearer-token middleware first.
 func New(p *store.Portal, t *tenant.Tenant, o Options) http.Handler {
-	s := &Server{p: p, t: t, gh: o.GitHub, web: web.FS, devToken: o.DevToken}
+	s := &Server{p: p, t: t, gh: o.GitHub, feeds: o.Feeds, web: web.FS, devToken: o.DevToken}
+	if s.feeds == nil {
+		s.feeds = feed.Client{}
+	}
 	r := chi.NewRouter()
 	r.NotFound(notFound)
 	r.MethodNotAllowed(methodNotAllowed)

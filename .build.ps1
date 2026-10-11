@@ -6,6 +6,9 @@
 #                           Invoke-Build Dev          (only for a tenant in mode dev: mint dev-bootstrap, an admin,
 #                                                      set PORTAL_TOKEN to its token and run Up; prints the token once,
 #                                                      DEV ONLY. Up itself never mints anything)
+#                           Invoke-Build Feeds        (not in mode prod: the stock feeds and Postgres up in Docker for the
+#                                                      tenant, compose.yaml; then Up, and one sample card pushed to each
+#                                                      feed end to end; docs/design.md 40)
 #                           Invoke-Build Status       (port, URL and boot stamp of the running portal)
 #                           Invoke-Build Down         (stop it)
 #                           Invoke-Build Generate     (regenerate internal/gen from api/openapi.yaml)
@@ -103,6 +106,69 @@ task DevMint DevGate, {
 task Dev DevGate, DevMint, Up, {
     print Yellow 'DEV ONLY. dev-bootstrap is an admin. Not for demo or production; README, Before you demo.'
     print Yellow "DEV ONLY token (PORTAL_TOKEN for this process; the page's avatar offers it as Use dev token): $($script:DevMinted.Token)"
+}
+
+# Feeds (docs/design.md 40). FeedsGate refuses, before anything is built, started or written, when the tenant Up serves
+# is in mode prod: the stock services are for dev and demo, as Dev is for dev only. Feeds then sets the compose
+# environment (Initialize-PortalFeedEnv: the tenant's data directory, and the NuGet key and Postgres password from .env,
+# written there at random the first time), runs `docker compose -p portal-<tenant> up -d --wait` over compose.yaml,
+# waits for the NuGet service index, runs Up so the portal holds PORTAL_NUGET_KEY, and pushes the sample card
+# (tests/fixtures/cards/Tool.Git, copied from Portal.Tools) to cards-oci and cards-nuget with Publish-PortalCard.
+# A card already there (409) is reported, not failed, so Feeds can run again. Then it checks that GET .../feeds lists
+# the card in both, that the registry has the tag and that the NuGet feed has the version. The token is PORTAL_TOKEN,
+# else in mode dev a fresh dev-bootstrap token (as DevMint mints it); in mode demo PORTAL_TOKEN must be set.
+task FeedsGate {
+    $m = Import-Module $module -Force -PassThru
+    $tenant = & $m { Get-PortalTenant }
+    $mode = & $m { Get-PortalTenantMode }
+    if ($mode -eq 'prod') {
+        throw "Feeds refuses: tenant $tenant is in mode prod. Feeds starts the stock registry, NuGet feed and Postgres in Docker and pushes a sample card, so it runs only for a tenant in mode dev or demo; a prod tenant's feeds are its own (portal.yaml feeds:)."
+    }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'Feeds needs docker (Docker Desktop) on PATH' }
+}
+
+task Feeds FeedsGate, Build, {
+    $m = Import-Module $module -Force -PassThru
+    $mode = & $m { Get-PortalTenantMode }
+    $fe = & $m { Initialize-PortalFeedEnv }
+    if ($fe.Written) { print Yellow "wrote $($fe.Written -join ' and ') to .env (gitignored)" }
+    $compose = Join-Path $repo 'compose.yaml'
+    exec { docker compose -p "portal-$($fe.Tenant)" -f $compose up -d --wait }
+    print Green "portal-$($fe.Tenant): registry, nuget, postgres up; data under $($fe.Data)"
+    $deadline = [datetime]::UtcNow.AddSeconds(60)
+    while ($true) {
+        try { $null = Invoke-RestMethod 'http://127.0.0.1:8202/v3/index.json' -TimeoutSec 3; break }
+        catch { if ([datetime]::UtcNow -gt $deadline) { throw "the NuGet feed did not answer http://127.0.0.1:8202/v3/index.json within 60 s: $_" }; Start-Sleep -Milliseconds 500 }
+    }
+    if (-not $env:PORTAL_TOKEN) {
+        if ($mode -ne 'dev') { throw "Feeds pushes with PORTAL_TOKEN, a contributor's or admin's token for tenant $($fe.Tenant); set it (mode $mode mints nothing)" }
+        $env:PORTAL_TOKEN = (& $m { New-PortalDevToken }).Token
+        print Yellow 'PORTAL_TOKEN was unset: minted a dev-bootstrap token (DEV ONLY), as Invoke-Build Dev does'
+    }
+    $up = @{ NoReplace = [bool]$NoReplace }
+    if ($Port) { $up.Port = $Port }
+    $p = & $m { param($a) Invoke-PortalUp @a } $up
+    print Green "portal at $($p.Url) (process $($p.ProcessId)) holds PORTAL_NUGET_KEY"
+    $card = Join-Path $repo 'tests' 'fixtures' 'cards' 'Tool.Git'
+    foreach ($feed in 'cards-oci', 'cards-nuget') {
+        try {
+            $e = Publish-PortalCard -Feed $feed -Path $card -Url $p.Url
+            print Green "pushed $($e.card) $($e.version) to $feed as $($e.name): hash $($e.hash), digest $($e.digest)"
+        }
+        catch {
+            if ($_.FullyQualifiedErrorId -notlike 'Portal.409*') { throw }
+            print Yellow "$feed already holds it (409): $($_.Exception.Message)"
+        }
+    }
+    $listed = Invoke-RestMethod "$($p.Url)/api/tenants/$($fe.Tenant)/feeds"
+    foreach ($feed in 'cards-oci', 'cards-nuget') {
+        if (-not ($listed.nodes | Where-Object { $_.id -eq "ui:card:$feed/Tool.Git@0.1.0" })) { throw "GET .../feeds lists no Tool.Git 0.1.0 in $feed" }
+    }
+    $tags = Invoke-RestMethod 'http://127.0.0.1:8201/v2/cards/tool.git/tags/list'
+    if ('0.1.0' -notin @($tags.tags)) { throw "the registry has no cards/tool.git:0.1.0 (tags: $($tags.tags -join ', '))" }
+    $versions = Invoke-RestMethod 'http://127.0.0.1:8202/v3/package/tool.git/index.json'
+    if ('0.1.0' -notin @($versions.versions)) { throw "the NuGet feed has no Tool.Git 0.1.0 (versions: $($versions.versions -join ', '))" }
+    print Green "Feeds: Tool.Git 0.1.0 in cards-oci (registry tag) and cards-nuget (feed version), listed by GET .../feeds; $($p.Url)/$($fe.Tenant)/artifacts/feeds"
 }
 
 task Status {

@@ -8,7 +8,7 @@ Everything on screen is a graph in the Graph.Node envelope (`graph/1`, module `P
 
 ## 2. No write to any data layer, ever
 
-A mounted layer is read from disk or from a request body, validated, and held in memory read-only. No route writes it, patches it or appends to it, in memory or on disk; `GET /api/layers/{name}/nodes` returns a filtered copy. The only files the binary writes are under `-artifacts`: `snaps/<stamp>.graph.json` and `snaps/ontology.yaml` (since 0.2.0 nothing under `state/`, entry 20). Since 0.5.0 (entry 38) it also writes the tenant's two identity files, `tenants/<tenant>/principals.yaml` and `tokens.yaml`, on an admin's Add principal and Revoke; neither is a data layer. Pester "never writes to a mounted layer" hashes the fixture before and after. This is Graph.Node design 11's "a layer is never edited" seen from a consumer.
+A mounted layer is read from disk or from a request body, validated, and held in memory read-only. No route writes it, patches it or appends to it, in memory or on disk; `GET /api/layers/{name}/nodes` returns a filtered copy. The only files the binary writes are under `-artifacts`: `snaps/<stamp>.graph.json` and `snaps/ontology.yaml` (since 0.2.0 nothing under `state/`, entry 20). Since 0.5.0 (entry 38) it also writes the tenant's two identity files, `tenants/<tenant>/principals.yaml` and `tokens.yaml`, on an admin's Add principal and Revoke; neither is a data layer. Since 0.6.0 (entry 40) it appends one line per push to the tenant's `tenants/<tenant>/ledger.jsonl`, and sends a pushed card to a feed (an OCI registry or a NuGet feed) over HTTP; neither a ledger nor a feed is a data layer. Pester "never writes to a mounted layer" hashes the fixture before and after. This is Graph.Node design 11's "a layer is never edited" seen from a consumer.
 
 ## 3. PORTAL_MODE=production hides Designer and nothing else
 
@@ -16,7 +16,7 @@ With `PORTAL_MODE=production`, `GET /api/screen` leaves out every node that `is-
 
 ## 4. Graph.Node is lifted, not imported
 
-`internal/graphnode/schemas` (byte for byte) and `internal/graphnode/graph` (its non-test files) plus `cmd/graphnode` (import path rewritten) are copies of Graph.Node at tag `v0.2.3` (1807fd7, since 0.3.6, entry 34; `v0.2.1`, f804420, from 0.3.3, entry 31; `v0.2.0`, ee4df2c, before), with one registered edit up to v0.2.1 and none since v0.2.3, whose `ui:` row is already Portal's (entry 34): the `ui:` row of the id prefix registry (`graph/ids.go` and its prose twin `schemas/ids.md`) names `Portal` as owner, with Portal's shape, instead of reserving it (for GraphRenderer at v0.2.0, for this repo's 0.1.0 name at v0.2.1), because Portal issues every `ui:` id. Pester "Lifted Graph.Node" compares each file with `git show <tag>:<path>` after applying exactly that edit, so any other drift fails; the `graph-node` skill and `tests/fixtures/invalid.graph.json` are compared with the same tag. 0.2.0 pinned the lift to a tag rather than HEAD (the brief), so another session's uncommitted or later work in Graph.Node never moves it; a new tag is a new recopy task. The 0.1.0 text follows. The brief asks for the validator to be lifted; importing `github.com/JerryBalmer1/GraphNode` would need a tag that does not exist or a `replace` onto the sibling checkout, which the brief rules out for tests. This contradicts the copied graph-node skill's "do not copy GraphNode's files into your module"; the brief wins and the cost is drift, which Pester "Lifted Graph.Node" catches by comparing every lifted file against `git show HEAD:<path>` in `../Graph.Node`. It compares against HEAD, not the working tree, because another session was mid-way through Graph.Node 0.2.0 while this was built (uncommitted schema, CLI and fixture changes); a lift follows what Graph.Node has committed. When 0.2.0 is committed the test fails and the copy is redone in one task. Graph.Node's `validate.go` is not gofmt-clean upstream; the copy keeps its bytes.
+`internal/graphnode/schemas` (byte for byte) and `internal/graphnode/graph` (its non-test files) plus `cmd/graphnode` (import path rewritten) are copies of Graph.Node at tag `v0.3.0` (fa8fbf3, since 0.6.0, entry 40; `v0.2.3`, 1807fd7, from 0.3.6, entry 34; `v0.2.1`, f804420, from 0.3.3, entry 31; `v0.2.0`, ee4df2c, before), with one registered edit up to v0.2.1 and none since v0.2.3, whose `ui:` row is already Portal's (entry 34): the `ui:` row of the id prefix registry (`graph/ids.go` and its prose twin `schemas/ids.md`) names `Portal` as owner, with Portal's shape, instead of reserving it (for GraphRenderer at v0.2.0, for this repo's 0.1.0 name at v0.2.1), because Portal issues every `ui:` id. Pester "Lifted Graph.Node" compares each file with `git show <tag>:<path>` after applying exactly that edit, so any other drift fails; the `graph-node` skill and `tests/fixtures/invalid.graph.json` are compared with the same tag. 0.2.0 pinned the lift to a tag rather than HEAD (the brief), so another session's uncommitted or later work in Graph.Node never moves it; a new tag is a new recopy task. The 0.1.0 text follows. The brief asks for the validator to be lifted; importing `github.com/JerryBalmer1/GraphNode` would need a tag that does not exist or a `replace` onto the sibling checkout, which the brief rules out for tests. This contradicts the copied graph-node skill's "do not copy GraphNode's files into your module"; the brief wins and the cost is drift, which Pester "Lifted Graph.Node" catches by comparing every lifted file against `git show HEAD:<path>` in `../Graph.Node`. It compares against HEAD, not the working tree, because another session was mid-way through Graph.Node 0.2.0 while this was built (uncommitted schema, CLI and fixture changes); a lift follows what Graph.Node has committed. When 0.2.0 is committed the test fails and the copy is redone in one task. Graph.Node's `validate.go` is not gofmt-clean upstream; the copy keeps its bytes.
 
 ## 5. Display lives in State and Theme nodes only
 
@@ -359,3 +359,97 @@ Choices made without asking:
     - `Invoke-Build Dev` refusing and writing nothing, and Up not minting;
     - the boot lines;
     - in Chrome over DevTools: the amber bar, Use dev token to `dev-bootstrap · admin` and an Add, a reader signed in through the box unable to Add, the DEMO bar with no shortcut and a dropped dev token, and no bar in prod.
+
+## 40. Feeds: the stock registry, NuGet feed and Postgres; push through the API; a ledger line per push
+
+0.6.0's brief:
+- Three stock services in Docker Compose: an OCI registry, a NuGet v3 feed and Postgres 16. Volumes sit under a tenant-scoped path, and no host port is published beyond the portal's own. Postgres is only provisioned, with a database and a health check.
+- `feeds:` in `portal.base.yaml`, overridable per tenant.
+- Every feed is a node, and Artifacts → Feeds lists the feeds from the graph.
+- `POST /api/tenants/<t>/feeds/<feed>/push` takes a manifest card. The card is checked with Graph.Node 0.3.0's validator, the push is contributor or admin only, it goes to the underlying feed, writes one ledger entry, and a duplicate name and version is 409.
+- A read-only Feeds page.
+- `Invoke-Build Feeds`, which refuses in mode prod.
+
+Three points clashed with this repo's rules or with the host, and Jerry chose:
+
+- **The binary pushes to feeds and appends a ledger.** Entry 2 limited the binary's writes to `-artifacts` and the two identity files. A push sends a card to a feed over HTTP, and its ledger line needs a home. Asked, Jerry chose `tenants/<tenant>/ledger.jsonl` beside the identity files, gitignored, so it outlives clearing `artifacts/`. The options passed over were `artifacts/ledger/` (lost with `artifacts/`) and a Postgres table now (Postgres's use brought forward, and a driver added). Entry 2 and CLAUDE.md now name the ledger and the push. A feed is not a data layer, so "no write to any data layer" holds as written.
+- **The two feeds are published on 127.0.0.1.** The portal binary runs on the host, so with nothing published it could not reach the registry or the NuGet feed. Asked, Jerry chose loopback-only ports: the registry on 127.0.0.1:8201 and the NuGet feed on 127.0.0.1:8202. Postgres is not published. Running the portal itself in Compose was the option passed over.
+- **Docker was not running** when the work started, so `Invoke-Build Feeds` ran end to end only once Jerry had started Docker Desktop (the report has the result).
+
+Choices made without asking:
+
+- **The lift moves to Graph.Node v0.3.0** (`fa8fbf3`). The brief names Graph.Node 0.3.0 and says to reuse its validator, and CLAUDE.md recopies the lift when a tag is named (entry 4). `internal/graphnode/schemas`, `internal/graphnode/graph` (its non-test files), `cmd/graphnode/main.go` and `.claude/skills/graph-node` are `git show v0.3.0:<path>`, the Go files with the import path rewritten. There is still no registered edit. v0.3.0 adds:
+  - `schemas/manifest.schema.json` and `index.schema.json`;
+  - `graph.DecodeYAML`, `ValidateManifest`, `LoadManifest`, `BuildIndex`;
+  - the CLI's `validate-manifest`, `validate-index` and `index`;
+  - the skill at 0.3.0 with `reference/manifest.example.yaml`.
+
+  The push calls `graph.DecodeYAML` and `graph.ValidateManifest` on the uploaded bytes. Nothing of the manifest rules is restated here.
+- **compose.yaml is new.** Portal had no Compose file, so there were no existing services for the new ones to sit beside.
+  - The project is `portal-<tenant>`.
+  - Data is in `<tenants>/<tenant>/data/{registry,nuget,postgres}`, through `PORTAL_FEEDS_DATA`. `tenants/*/data/` is gitignored.
+- **Images**, each pinned to an exact tag:
+  - `registry:2.8.3`: the last 2.x of Distribution's reference registry, as the brief names `registry:2`. It is about 10 MB and stores OCI image manifests.
+  - `bagetter/bagetter:1.6.5`: BaGetter, the maintained fork of BaGet (BaGet's last release was 2021). It is one container with SQLite and files on disk, about 90 MB, and serves the NuGet v3 protocol with the API-key push.
+    - Passed over: NuGet.Server (v2, .NET Framework, Windows only); Sleet (a static feed with no push endpoint); ProGet, Nexus and Forgejo (several hundred MB, built for many formats).
+  - `postgres:16.15-alpine`: the newest 16.x when this was written (2026-09-21), Alpine for size. It runs database `portal`, user `portal`, `pg_isready` as the health check, and `PGDATA` in a subdirectory of the volume. The binary does not connect to it yet.
+- **Secrets in .env.** `PORTAL_NUGET_KEY` (BaGetter's `ApiKey`) and `PORTAL_POSTGRES_PASSWORD` come from the environment or the repo's `.env`. Compose reads `.env` for interpolation and refuses without them.
+  - The first `Invoke-Build Feeds` writes both to `.env` as 32 random bytes in hex (private `Initialize-PortalFeedEnv`).
+  - The portal reads `PORTAL_NUGET_KEY` at push time, through the feed's `token_env`, the same way connections read theirs (entry 36). It is never stored or served.
+- **`feeds:` in the config.** Each feed is `{id, label, kind: oci|nuget, url, visibility: private|public, token_env}`.
+  - The brief's "name" is `id`, because the merge keys lists on `id` (entry 36). A tenant overrides one feed key by key, or adds one.
+  - After the merge each feed needs a kind and an http(s) url, and ids are unique. A failure stops the binary.
+  - `url` is the registry plus the repository namespace for oci (`http://127.0.0.1:8201/cards`), and the service index for nuget.
+  - `visibility` defaults to private. It is recorded on the node and not enforced: Portal's reads are all open (entry 38), and the services are loopback only.
+- **Feeds are a graph.**
+  - A Kind `Feed`, id `ui:feed:<id>`: `kind`, `url` and `visibility` required, `order` and `tokenEnv` optional.
+  - A Kind `Card`, id `ui:card:<feed>/<name>@<version>`: `feed`, `version`, `type`, `hash`, `pushed` and `pushedBy` required, `digest` optional.
+  - An edge `has-card`, Feed to Card.
+
+  "Register the prefix the same way existing Kinds are" means `ontology.yaml`. Portal issues only `ui:`, and the id registry is in the read-only lift. The edge was first named `holds`, but an existing test uses `holds` as its example of an unknown edge Kind, and `has-card` matches `has-page`. `GET .../feeds` serves the envelope, built from the config and the ledger's pushed lines. It is checked at boot with Graph.Node and the portal ontology, like the menu, and never written or snapped.
+- **Artifacts → Feeds was not on the rail.** Artifacts had Exports and Bundles only, so Feeds was added as its first page, with a new `view: feeds` drawn by `web/feeds.js`. That is a page renderer, like `users` and `tokens` (entry 38), not a panel type, so entry 1 is untouched. Each feed is a card (kind, visibility, URL) with a row per card: name, version, type, hash prefix (the whole hash and the digest on hover), pushed and by. There are no write controls; the dev bar and the avatar are unchanged.
+- **The push.**
+  - The body is `multipart/form-data`: one `manifest` part and one `file` part per other file, whose filename is its path in the card's folder with forward slashes. Go's `Part.FileName` keeps only the base name, so the path is read from `Content-Disposition` itself.
+  - The checks, in order:
+    - the middleware's 401 and 403;
+    - the feed (404);
+    - the body (400);
+    - the card: Graph.Node's problems (code `schema`, paths `manifest.yaml:/...`), then each path (code `file`: clean, relative, no `..`, no case-folded duplicate, nothing the .nupkg format reserves at the root) (422);
+    - a duplicate (409);
+    - the feed (502, or 422 `no_token` when the key's variable is unset).
+  - Pushes are serialized per tenant, and each one is bounded at 2 minutes.
+  - `Publish-PortalCard -Feed -Path [-Url]` is the ninth exported function: it sends a folder (dot files skipped) and returns the ledger entry. It exists because every task's work lives in the module (entry 24).
+- **Duplicates.** The ledger is checked first: a pushed line with that feed, name and version is 409, and the feed is not asked. Then the feed itself: OCI `HEAD /v2/<repo>/manifests/<tag>`, NuGet's flat container version list, and the feed's own 409 on the push. A feed holding a version the ledger does not know is 409 too. The same card in the other feed is not a duplicate.
+- **OCI packaging.** A card is an OCI artifact in the shape ORAS writes, so `oras pull 127.0.0.1:8201/cards/tool.git:0.1.0` restores the folder:
+  - an image manifest with `artifactType: application/vnd.graphnode.card.v1`;
+  - the empty config (`application/vnd.oci.empty.v1+json`, `{}`);
+  - one layer per file (`application/vnd.graphnode.card.file.v1`), titled by its path (`org.opencontainers.image.title`), `manifest.yaml` first;
+  - annotations for the card's name, version, description, type, content hash, author (the pusher) and created time.
+
+  The repository is the feed URL's path plus the card's name in lower case (`cards/tool.git`). The tag is the version, with SemVer's `+` written `_`. A name that is not a valid repository component is 422. The push is the distribution API's monolithic upload (HEAD, POST, PUT per missing blob, then PUT the manifest), written on `net/http` with no new dependency. The digest is the manifest's.
+- **NuGet packaging.** A card is a `.nupkg`, the only thing a NuGet v3 feed accepts. It holds:
+  - `<name>.nuspec`: id the card's name, version its version, authors the pusher, description its description, tags `graphnode-card <type> <tags>`;
+  - `[Content_Types].xml`;
+  - every file of the card at its own path, `manifest.yaml` at the root.
+
+  So extracting the package (nuget, `Save-PSResource`) gives back the card's folder. There is no `lib/`, so nothing mistakes a card for a library. The zip is deterministic (fixed times), so one card always packs to the same bytes. The push is NuGet's `PUT <PackagePublish/2.0.0>` multipart with `X-NuGet-ApiKey`. The digest is the .nupkg's SHA-256.
+- **Content hash.** `sha256:` over one line per file, sorted by path: the path, a tab, the file's SHA-256, a newline. It names the card's content whatever the feed or packaging, so a card pushed to both feeds carries one hash. The feed's own name for what it stored is a separate `digest`.
+- **The ledger.** `tenants/<tenant>/ledger.jsonl` holds one JSON line per push that names a feed the tenant has, whatever its result. Refusals before that (401, 403, a feed the tenant lacks, a malformed body) write none.
+  - Each line has `{at, principal, name, role, feed, kind, card, version, type, hash, digest, files, result, message}`. `result` is `pushed`, `duplicate`, `invalid` or `failed`. `principal` is null for a legacy token. A field that does not apply is null, never absent.
+  - Each line is appended in one write and synced.
+  - At boot the file is read and checked: a line that is not an entry, or a pushed line without its card, stops the binary and names the line.
+  - The lines are not nodes and carry no ids: `ledger:` belongs to Claude.Agent.Alerts. The Card nodes on `GET .../feeds` are derived from the pushed lines. Ledger → Entries still lists Kind `ledger.entry`, which nothing emits.
+- **`Invoke-Build Feeds`.**
+  - FeedsGate refuses in mode prod, before Build, as DevGate refuses outside dev. It also needs `docker` on PATH.
+  - Feeds then sets the Compose environment and runs `docker compose -p portal-<tenant> up -d --wait`, which waits for the health checks of the registry (`wget /v2/`) and Postgres (`pg_isready`).
+  - It waits for the NuGet service index, then runs Up, so the portal holds `PORTAL_NUGET_KEY`.
+  - It pushes `tests/fixtures/cards/Tool.Git` (Portal.Tools' `tools/Git` at `c330712`, copied) to both feeds with `Publish-PortalCard`, and checks `GET .../feeds`, the registry's tag list and the NuGet version list.
+  - A 409 on a rerun is reported, not failed.
+  - The token is `PORTAL_TOKEN`. When that is unset, a tenant in mode dev gets a fresh dev-bootstrap token, as DevMint mints it, and a tenant in mode demo must set it.
+  - Up still never mints. Since 0.6.0's follow-up, Up (`Invoke-PortalUp`) also takes `PORTAL_NUGET_KEY` from `.env` when the environment lacks it, through the same private reader Feeds uses (`Get-PortalEnvValue`). It only reads; it never writes `.env`. So a portal started by Up or by Feeds can push to cards-nuget.
+- **Coverage.**
+  - Go, `internal/feed`: the card checked with Graph.Node, the paths, the content hash, the OCI ref and manifest, the .nupkg, and pushes to a fake registry and a fake NuGet feed (`internal/feed/feedtest`), each twice for `ErrExists`.
+  - Go, `internal/tenant`: the feeds merge, bad feeds stopping the boot, one ledger line per push with every key, a reload, and a bad ledger stopping the boot.
+  - Go, `internal/server`: both operations against the spec, the multipart request included; contributor, admin and legacy pushes, with 401 and 403; 409; the feeds envelope against Graph.Node and the portal ontology; the ledger file's shape.
+  - Pester: the feeds envelope through `graphnode validate`; `Publish-PortalCard`'s 401, 403, 404, 422, 409 and 502, with their ledger lines and `-WhatIf`; the page in Chrome; Compose's pins, ports and volumes; the gitignore; Feeds refusing in mode prod and writing nothing; the `.env` secrets; Up taking `PORTAL_NUGET_KEY` from `.env` (a NuGet push goes from 422 `no_token` to the feed, and `.env` is unchanged).
+- **Version 0.6.0** in `Portal.psd1`, `ontology.yaml` (Kinds `Feed` and `Card`, edge `has-card`), `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated.

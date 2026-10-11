@@ -8,7 +8,8 @@
 // from .../config, the avatar from .../auth/whoami,
 // and each page from its Page node: a table of nodes of its Kind, a screen
 // node drawn by screen.js, the service connections (docs/design.md 36), or
-// the tenant's principals and tokens (docs/design.md 38).
+// the tenant's principals and tokens (docs/design.md 38), or its feeds and
+// the cards they hold (docs/design.md 40).
 // The route is the URL, /<tenant>/<service>/<page>[/<id>], so a deep link
 // survives a refresh. Which service is expanded, whether the rail is
 // collapsed and what the search box holds are the viewer's pointers, like a
@@ -19,11 +20,12 @@ import * as nodes from '/static/nodes.js';
 import * as connections from '/static/connections.js';
 import * as principals from '/static/principals.js';
 import * as tokens from '/static/tokens.js';
+import * as feeds from '/static/feeds.js';
 import { icon } from '/static/icons.js';
 import { refusal } from '/static/toast.js';
 
 // Page renderers by a Page's view; screen is drawn by screen.js.
-const VIEWS = { table: nodes, connections, users: principals, agents: principals, tokens };
+const VIEWS = { table: nodes, connections, users: principals, agents: principals, tokens, feeds };
 
 const tenant = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || 'default');
 const client = createClient(tenant);
