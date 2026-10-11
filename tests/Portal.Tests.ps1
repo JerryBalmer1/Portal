@@ -1233,7 +1233,7 @@ Describe 'Dev mode' {
         }
         finally { Stop-SidePortal $p }
     }
-    It 'in mode prod the page shows no bar and no badge' {
+    It 'in mode prod the page shows no bar, no badge and no Use dev token' {
         $t = New-ModeTenant prod
         $p = $null
         try {
@@ -1244,6 +1244,19 @@ Describe 'Dev mode' {
             if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
             $dom | Should -Match '<p class="pt-modebar" id="modebar" role="status" hidden="" data-mode="prod"></p>'
             $dom | Should -Match '<span class="pt-mode" id="mode" hidden="" data-mode="prod"'
+            $js = @'
+(async () => {
+  const wait = async (f, what) => { for (let i = 0; i < 100; i++) { const v = f(); if (v) return v; await new Promise((r) => setTimeout(r, 100)); } throw new Error('timed out waiting for ' + what); };
+  const avatar = document.getElementById('avatar');
+  await wait(() => avatar.dataset.principal, 'the avatar');
+  avatar.click();
+  await wait(() => document.querySelector('#account form.pt-token-form'), 'the sign-in form');
+  return JSON.stringify({ devOffered: !!document.querySelector('#account button[data-dev-token]'), devBox: !!document.querySelector('#account .pt-dev-signin') });
+})()
+'@
+            $seen = Invoke-PageScript -Url $p.Url -Route '/default/identity/users' -Token '' -Script $js | ConvertFrom-Json
+            $seen.devOffered | Should -BeFalse
+            $seen.devBox | Should -BeFalse
         }
         finally { Stop-SidePortal $p }
     }
