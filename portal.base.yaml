@@ -11,9 +11,18 @@
 # says otherwise: screen draws a screen node, connections lists the tenant's
 # service connections. A page's children are the tabs of its item page,
 # /<tenant>/<service>/<page>/<id>.
+#
+# theme is the shell's own settings, not a node's display (that is State and
+# Theme nodes, docs/design.md 5). graph.wheelZoomSpeed scales the Canvas's
+# mouse-wheel zoom step: 1.0 is the product's step, 2 twice as fast, 0.5 half
+# (0.1 to 5; docs/design.md 37).
 product:
   name: Portal
   help: https://github.com/JerryBalmer1/Portal#readme
+
+theme:
+  graph:
+    wheelZoomSpeed: 1.0
 
 menu:
   - id: overview

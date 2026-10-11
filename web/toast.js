@@ -1,0 +1,46 @@
+// Toast: a short message over the page's corner, for a write the portal
+// refused. An error body is never drawn inside a panel; a 401 (or any write
+// a panel could not make) says so here and the panel keeps drawing what the
+// graph holds (docs/design.md 37).
+
+// READ_ONLY is the tooltip on every write control while the principal is
+// anonymous.
+export const READ_ONLY = 'sign in to write';
+
+let box = null;
+
+// toast shows err's code, message and problems (an Error object from
+// client.js), or text, for a few seconds, newest at the bottom.
+export function toast(err, ms = 5000) {
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'pt-toasts';
+    box.setAttribute('role', 'status');
+    box.setAttribute('aria-live', 'polite');
+    document.body.appendChild(box);
+  }
+  const t = document.createElement('div');
+  t.className = 'pt-toast';
+  if (typeof err === 'string') {
+    t.textContent = err;
+  } else {
+    const code = (err && err.code) || 'error';
+    t.dataset.code = code;
+    const problems = ((err && err.problems) || []).map((p) => `\n${p.code} ${p.path}: ${p.message}`).join('');
+    t.textContent = `${code}: ${(err && err.message) || String(err)}${problems}`;
+  }
+  box.appendChild(t);
+  setTimeout(() => t.remove(), ms);
+  return t;
+}
+
+// guard disables a write control while the viewer reads only, with the
+// read-only tooltip; it returns the control.
+export function guard(el, readOnly) {
+  if (readOnly) {
+    el.disabled = true;
+    el.title = READ_ONLY;
+    el.dataset.readonly = 'true';
+  }
+  return el;
+}

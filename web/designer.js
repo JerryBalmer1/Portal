@@ -8,6 +8,10 @@
 // PORTAL_MODE=production leaves it out of GET /api/screen, so it is never
 // drawn there. Each section is a collapsible block whose open or closed is a
 // State node, ui:state:designer:<slug> for the seed's (docs/design.md 28).
+// While the viewer reads only (ctx.readOnly) every button that would write
+// is disabled with the read-only tooltip, and a refused write is a toast,
+// never drawn in the Designer (docs/design.md 37).
+import { toast, guard } from '/static/toast.js';
 
 // SECTIONS are the Designer's blocks in order: slug, heading, open by
 // default. internal/store's DesignerSections seeds the same seven, and a Go
@@ -86,7 +90,7 @@ export function mount(el, ctx) {
       await fn(new FormData(ev.target));
       await ctx.refresh();
     } catch (err) {
-      status.textContent = `${err.message}${(err.problems || []).map((p) => `\n${p.code} ${p.path}: ${p.message}`).join('')}`;
+      toast(err);
     }
   };
   const bounds = (f) => ({ x: Number(f.get('x')), y: Number(f.get('y')), w: Number(f.get('w')), h: Number(f.get('h')) });
@@ -99,13 +103,14 @@ export function mount(el, ctx) {
     .filter((n) => (n.kind === 'Container' || n.kind === 'Widget') && !ix.isMenuEntry(n.id) && n.id !== screen.root)
     .map((n) => [n.id, `${n.name || n.id} (${n.kind})`]);
 
+  const ro = !!ctx.readOnly;
   const panel = form('Add Panel', [
     ['name', 'text', 'tree'],
     ['category', panelOptions],
     ['parent', containerOptions],
     ['source', 'text', 'filesystem'],
     ['x', 'number', 0], ['y', 'number', 9], ['w', 'number', 6], ['h', 'number', 6],
-  ], run(async (f) => {
+  ], ro, run(async (f) => {
     const cat = ix.nodes.get(f.get('category'));
     const id = `ui:${slug(f.get('name'))}`;
     await write(
@@ -120,7 +125,7 @@ export function mount(el, ctx) {
     ['mode', [['grid', 'grid'], ['flow', 'flow'], ['canvas', 'canvas']]],
     ['columns', 'number', 12],
     ['x', 'number', 0], ['y', 'number', 9], ['w', 'number', 12], ['h', 'number', 6],
-  ], run(async (f) => {
+  ], ro, run(async (f) => {
     const id = `ui:${slug(f.get('name'))}`;
     const layout = `ui:layout:${slug(f.get('name'))}`;
     const props = { mode: f.get('mode') };
@@ -141,7 +146,7 @@ export function mount(el, ctx) {
     ['name', 'text', 'Tree'],
     ['refines', categoryOptions],
     ['description', 'text', ''],
-  ], run(async (f) => {
+  ], ro, run(async (f) => {
     const name = f.get('name').trim();
     const id = `ui:category:${name}`;
     const props = { label: name };
@@ -151,12 +156,12 @@ export function mount(el, ctx) {
 
   // Approve writes the screen as a snap; the next start boots from it. The
   // screen does not change, so the page is not redrawn and the result stays.
-  const approve = form('Approve', [['note', 'text', '']], async (ev) => {
+  const approve = form('Approve', [['note', 'text', '']], ro, async (ev) => {
     ev.preventDefault();
     try {
       status.textContent = approval(await ctx.client.postSnap(new FormData(ev.target).get('note')));
     } catch (err) {
-      status.textContent = `${err.message}${(err.problems || []).map((p) => `\n${p.code} ${p.path}: ${p.message}`).join('')}`;
+      toast(err);
     }
   });
 
@@ -166,7 +171,7 @@ export function mount(el, ctx) {
   const menu = form('Add Menu Entry', [
     ['name', 'text', 'Designer'],
     ['opens', shownOptions],
-  ], run(async (f) => {
+  ], ro, run(async (f) => {
     if (!menuCat) throw { code: 'no-menu', message: 'no Category named Menu on screen: POST ui:category:Menu first' };
     const name = f.get('name').trim();
     const id = `ui:menu:${slug(name)}`;
@@ -181,7 +186,7 @@ export function mount(el, ctx) {
   // A page may draw some sections only (Designer/Export: approve), by the
   // slugs its Page node's sections property lists; absent draws all.
   const shown = SECTIONS.filter((s) => !Array.isArray(ctx.sections) || ctx.sections.includes(s.slug));
-  wrap.append(...shown.map((s) => section(ctx, s, bodies[s.slug], status)), status);
+  wrap.append(...shown.map((s) => section(ctx, s, bodies[s.slug])), status);
   return { wrap };
 }
 
@@ -190,7 +195,7 @@ export function mount(el, ctx) {
 // section's State node: PATCH its collapsed when it is on screen, else POST
 // it and its has-state edge. The block then follows the written State in
 // place rather than redrawing the page, so a Canvas is not laid out again.
-function section(ctx, s, body, status) {
+function section(ctx, s, body) {
   const sid = `ui:state:${ctx.node.id.replace(/^ui:/, '')}:${s.slug}`;
   const node = ctx.ix.nodes.get(sid);
   let exists = !!node;
@@ -206,6 +211,7 @@ function section(ctx, s, body, status) {
   toggle.type = 'button';
   toggle.className = 'gr-btn';
   body.classList.add('pt-section-body');
+  guard(toggle, ctx.readOnly);
   const paint = () => {
     box.classList.toggle('pt-collapsed', collapsed);
     toggle.textContent = collapsed ? 'expand' : 'collapse';
@@ -224,7 +230,7 @@ function section(ctx, s, body, status) {
       collapsed = next;
       paint();
     } catch (err) {
-      status.textContent = `${err.message}${(err.problems || []).map((p) => `\n${p.code} ${p.path}: ${p.message}`).join('')}`;
+      toast(err);
     }
   });
   paint();
@@ -289,8 +295,8 @@ function drawable(c, ix) {
 
 // form builds a small labelled form; a field is [name, type, default] or
 // [name, [[value, label], ...]] for a select. Its button says the section's
-// title; the heading is the section's.
-function form(title, fields, onSubmit) {
+// title; the heading is the section's. readOnly disables the button.
+function form(title, fields, readOnly, onSubmit) {
   const f = document.createElement('form');
   f.className = 'gr-form';
   for (const [name, type, def] of fields) {
@@ -315,6 +321,7 @@ function form(title, fields, onSubmit) {
   btn.className = 'gr-btn';
   btn.type = 'submit';
   btn.textContent = title;
+  guard(btn, readOnly);
   f.appendChild(btn);
   f.addEventListener('submit', onSubmit);
   return f;

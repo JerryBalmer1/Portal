@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.4.0 on 2026-10-10, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: items 0.1 not re-run (go.mod unchanged), 0.2 in full (Go 46 tests, Smoke passed, Pester 68 passed after the repos endpoint took a token; 1.10 re-run then), 0.3 not run (the hook refuses an agent's call quoting the commands; Pester runs the same six), 1.1 to 1.11 and 3.1 to 3.5 run as written and their Expects are the output seen, 2.1 run (three PNGs, canvas coloured 58/58 with the sibling's layer). 2.2 to 2.5 are interactive and were not run as written; the same paths were checked in Chrome against a live portal on another port (sign-in by token, Service connections Test showing `no_token` once signed in, Designer Sections and Export, the Workflows item tabs, Instances filter chips, rail collapse to 52 px).
+Verified for: 0.4.1 on 2026-10-10, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: items 0.2 in full (Go 47 tests, Smoke passed, Pester 69 passed), 1.11 and 1.12 run as written and their Expects are the output seen. Not re-run for 0.4.1, as their code did not change: 0.1, 0.3, 1.1 to 1.10, 2.1 and 3.1 to 3.5 (last verified for 0.4.0). 2.2 to 2.6 are interactive and were not run as written. 2.6's steps were driven by script in Chrome against the same setup (overlay `wheelZoomSpeed: 3`, fixture layer): as anonymous the Canvas's collapse and all 13 Designer buttons were disabled with `sign in to write`, the forced collapse toasted `unauthorized: PATCH writes, and a write needs a bearer token; without one the portal reads only` with the Canvas still drawn (52/52 coloured, no error in the panel), the Canvas recorded `data-wheel-sensitivity` 0.6, and signed in as `check` all 13 were live and the badge gone. A real wheel notch was not tried.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/server`, `internal/store` and `internal/tenant` (46 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke"}` and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 68, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
+Expect: go test ends `ok` for `cmd/portal`, `internal/server`, `internal/store` and `internal/tenant` (47 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke"}` and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 69, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -289,11 +289,33 @@ Expect: `list: {"name":"github","tokenSet":false,"token_env":"PORTAL_CHECK_GH","
 ```powershell
 Import-Module .\src\Portal\Portal.psd1 -Force
 $t = Join-Path $env:TEMP 'portal-check-1.11-tenants'
-$null = New-Item -ItemType Directory -Force "$t\default"; Set-Content "$t\default\portal.yaml" 'theme: dark'
+$null = New-Item -ItemType Directory -Force "$t\default"; Set-Content "$t\default\portal.yaml" 'colours: dark'
+try { Start-Portal -Port 18200 -Artifacts (Join-Path $env:TEMP 'portal-check-1.11') -Filesystem '' -Tenants $t -TimeoutSec 5 } catch { "refused: $($_.Exception.Message)" }
+Set-Content "$t\default\portal.yaml" 'theme: { graph: { wheelZoomSpeed: 10 } }'
 try { Start-Portal -Port 18200 -Artifacts (Join-Path $env:TEMP 'portal-check-1.11') -Filesystem '' -Tenants $t -TimeoutSec 5 } catch { "refused: $($_.Exception.Message)" }
 finally { Remove-Item $t, (Join-Path $env:TEMP 'portal-check-1.11') -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: `refused: The portal did not start on port 18200 within 5 s. ... portal: <path>\default\portal.yaml: /: additional properties 'theme' not allowed`.
+Expect: `refused: The portal did not start on port 18200 within 5 s. ... portal: <path>\default\portal.yaml: /: additional properties 'colours' not allowed`, then the same with `/theme/graph/wheelZoomSpeed: got 10, want 5` (0.4.1: `theme` is a known key, held to 0.1..5, docs/design.md 37).
+
+### 1.12 The config's wheel zoom speed, base and overlay; an anonymous collapse is 401
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-1.12-tenants'
+$dir = Join-Path $env:TEMP 'portal-check-1.12'
+$null = New-Item -ItemType Directory -Force "$t\default"; Copy-Item .\tenants\default\portal.yaml "$t\default" -Force
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem -Tenants $t
+try {
+    "base: $((Invoke-RestMethod "$($p.Url)/api/tenants/default/config").theme.graph.wheelZoomSpeed)"
+    $r = Invoke-WebRequest "$($p.Url)/api/tenants/default/nodes/ui:canvas" -Method Patch -ContentType 'application/json' -Body '{"state":{"collapsed":true}}' -SkipHttpErrorCheck
+    "anonymous collapse: $([int]$r.StatusCode) $(($r.Content | ConvertFrom-Json).code)"
+}
+finally { Stop-Portal -Artifacts $dir }
+Set-Content "$t\default\portal.yaml" 'theme: { graph: { wheelZoomSpeed: 2.5 } }'
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem -Tenants $t
+try { "overlay: $((Invoke-RestMethod "$($p.Url)/api/tenants/default/config").theme.graph.wheelZoomSpeed)" }
+finally { Stop-Portal -Artifacts $dir; Remove-Item $t, $dir -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `base: 1`, `anonymous collapse: 401 unauthorized`, `overlay: 2.5` (docs/design.md 37).
 
 ## 2. Page
 
@@ -336,7 +358,7 @@ Start-Process "$($p.Url)/default/designer/sections"
 Read-Host 'Give the avatar the printed token; expand Add Category and add Tree refining Canvas; expand Add Menu Entry and add Designer opening designer; press Enter here to stop'
 Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 ```
-Expect: after Add Category the Categories list shows `└ Tree (refines Canvas)` under Canvas and the category and refines dropdowns offer `· Tree`; Add Menu Entry answers with no error and the entry is a screen node (`GET /api/tenants/default/screen` holds `ui:menu:designer`), though since 0.4.0 the shell's rail is the tenant's menu and does not draw it (docs/design.md 36); neither add reloads the page. Without the token, either add shows `unauthorized`.
+Expect: after Add Category the Categories list shows `└ Tree (refines Canvas)` under Canvas and the category and refines dropdowns offer `· Tree`; Add Menu Entry answers with no error and the entry is a screen node (`GET /api/tenants/default/screen` holds `ui:menu:designer`), though since 0.4.0 the shell's rail is the tenant's menu and does not draw it (docs/design.md 36); neither add reloads the page. Without the token every button in the Designer is disabled, with the tooltip `sign in to write` (since 0.4.1, docs/design.md 37).
 
 ### 2.4 Designer sections collapse, and stay as left across Approve and a restart
 ```powershell
@@ -378,6 +400,23 @@ Read-Host 'Click Graph, then Workflows; hover Policy; press Collapse and hover L
 Stop-Portal -Artifacts $dir; Remove-Item $dir, "$env:PORTAL_TENANTS\default\connections.yaml" -Recurse -Force -ErrorAction SilentlyContinue
 ```
 Expect: the page opens at `/default/overview/summary` with Overview open in the rail. Clicking Graph opens its pages in place and closes Overview's, and Workflows does the same to Graph. Hovering a closed service shows its pages in a flyout beside it. Collapse leaves icons only, and a hover still shows the flyout. After F5 on Service connections the same page, breadcrumb and open Settings come back. Test before signing in shows `unauthorized: ...needs a bearer token` in red. After the avatar takes the token it reads `check` with accent initials, and Test then shows `no_token: ...GITHUB_TOKEN, which is not set` (a count of repositories when `GITHUB_TOKEN` is set). A wrong token is dropped with `unauthorized` in the avatar panel.
+
+### 2.6 Read-only for anonymous; refused writes are toasts; the wheel zoom speed
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
+$null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"
+Set-Content "$env:PORTAL_TENANTS\default\portal.yaml" 'theme: { graph: { wheelZoomSpeed: 3 } }'
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
+"token: $((New-PortalToken -Name check).Token)"
+$dir = Join-Path $env:TEMP 'portal-check-2.6'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
+Start-Process "$($p.Url)/default/graph/explore"
+Read-Host 'Hover collapse; open Designer > Sections and hover Approve; back on Graph > Explore, in DevTools remove the collapse button''s disabled attribute and press it; wheel over the Canvas; give the avatar the printed token and reload; press Enter here to stop'
+Stop-Portal -Artifacts $dir; Remove-Item $dir, "$env:PORTAL_TENANTS\default\portal.yaml" -Recurse -Force -ErrorAction SilentlyContinue
+```
+Expect: as anonymous the Canvas's `collapse` and every Designer button (section toggles, Approve, the four Adds) are greyed and show `sign in to write` on hover, and the toolbar says `read-only: sign in to write`. The collapse forced past `disabled` shows a toast at the bottom right, `unauthorized: PATCH writes, and a write needs a bearer token; without one the portal reads only`, for 5 s; the Canvas keeps drawing the graph and no error text appears in the panel. Signed in as `check`, the buttons are live and the badge is gone. With `wheelZoomSpeed: 3` the Canvas host carries `data-wheel-sensitivity="0.6"` (0.2 with the committed `{}`), and one wheel notch zooms about three times as far.
 
 ## 3. PowerShell
 

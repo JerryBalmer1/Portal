@@ -12,6 +12,7 @@ import * as canvas from '/static/canvas.js';
 import * as table from '/static/table.js';
 import * as detail from '/static/detail.js';
 import * as designer from '/static/designer.js';
+import { toast, guard } from '/static/toast.js';
 
 // The base Categories: the only names bound to code.
 const RENDERERS = { Canvas: canvas, Table: table, Detail: detail, Designer: designer };
@@ -98,8 +99,9 @@ export function sourceLayer(ix, node, seen = new Set()) {
 }
 
 // draw puts one screen node into el: a Container with what it holds, or a
-// Widget, in its glass box. ctx is {client, bus, screen, ontology, layers,
-// ix, refresh} and, for a Designer, sections (the slugs to draw).
+// Widget, in its glass box. ctx is {client, bus, config, screen, ontology,
+// layers, ix, readOnly, refresh} and, for a Designer, sections (the slugs to
+// draw).
 export function draw(ctx, node, el) {
   const box = node.kind === 'Container' ? drawContainer(ctx, node, null) : drawWidget(ctx, node, null);
   if (box) el.appendChild(box);
@@ -165,7 +167,9 @@ function drawWidget(ctx, w, mode) {
 
 // chrome is the card with a head: title, Category, collapse toggle.
 // Collapsing writes the node's State through PATCH; display never lives on
-// the node itself.
+// the node itself. While the viewer reads only (ctx.readOnly) the toggle is
+// disabled; a refused PATCH is a toast, and the panel keeps what it draws
+// (docs/design.md 37).
 function chrome(ctx, n) {
   const box = document.createElement('div');
   box.className = 'gr-box';
@@ -182,13 +186,15 @@ function chrome(ctx, n) {
   toggle.className = 'gr-btn';
   const collapsed = !!ctx.ix.state(n.id).collapsed;
   toggle.textContent = collapsed ? 'expand' : 'collapse';
+  guard(toggle, ctx.readOnly);
   toggle.addEventListener('click', async () => {
     try {
       await ctx.client.patchNode(n.id, { state: { collapsed: !collapsed } });
-      await ctx.refresh();
     } catch (err) {
-      showError(body, err);
+      toast(err);
+      return;
     }
+    await ctx.refresh();
   });
   head.append(title, badge, toggle);
   const body = document.createElement('div');

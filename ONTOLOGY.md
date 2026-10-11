@@ -2,7 +2,7 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.4.0, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.4.1, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 
@@ -11,11 +11,13 @@ Module `Portal`, version 0.4.0, id prefix `ui:` (registered to Portal in Graph.N
 | Tenant | Who the portal is run for. One process serves one, `PORTAL_TENANT` (default `default`); every API path names it, `/api/tenants/<tenant>/...`, and any other tenant is 404. Its files are under `tenants/<tenant>/` (docs/design.md 36). |
 | Base config | `portal.base.yaml`: the product's defaults (product name, help link, menu), embedded in the binary and never edited by a tenant. |
 | Overlay | `tenants/<tenant>/portal.yaml`: what a tenant changes, deep-merged over the base (mappings key by key, lists of items with an `id` item by item, anything else replaced). Base and overlay both pass `schema/portal.schema.json` at boot, and the merge must name the product and give every menu entry a label and a path, or the binary stops. |
+| Shell theme | The config's `theme` block, the shell's own settings: not a node and not node display, which stays in State and Theme nodes. `graph.wheelZoomSpeed` (number, 0.1 to 5, base 1.0) scales the Canvas's mouse-wheel zoom step; an overlay may override it, and a value outside the range stops the binary at boot (docs/design.md 37). |
 | Menu | The shell's left rail, built from the merged config's `menu` tree and served by `GET /api/tenants/<tenant>/menu` as an envelope of Service and Page nodes. Not the screen graph: it is never written or snapped. |
 | Service | Kind. One rail entry (`ui:rail:<service>`): `path`, `order`, `dock` (`bottom` pins it to the foot of the rail: Settings). Its pages hang off it by `has-page`; its icon is its State's `icon`. |
 | Page | Kind. One page of a Service (`ui:rail:<service>:<page>`), routed at `/<tenant>/<path>`. `view` says what draws it: `table` (the nodes of `nodeKind`), `screen` (the screen node `screen` names, a Designer's `sections` only when given) or `connections`. `filter` lists `properties.kind` values offered as chips. A Page's own Pages are the tabs of its item page, `/<tenant>/<path>/<id>`. |
 | Token | A bearer token that may write to a tenant, stored only as its SHA-256 in `tenants/<tenant>/tokens.yaml` (gitignored; `New-PortalToken` adds one). |
 | Principal | Who a request is: a token's name, or `anonymous` with no token, which reads only. `GET /api/tenants/<tenant>/auth/whoami`. A token the tenant does not hold is refused (401). |
+| Read-only | What the page does for a principal that may not write (`writes` false: `anonymous`). Every control that would write (collapse, expand, Approve, the Designer's adds and section toggles) is disabled with the tooltip `sign in to write`. A write the portal still refuses (401) is a toast; the panel keeps drawing what the graph holds and never shows the error body (docs/design.md 37). |
 | Marker | The holder the banner names, or `none`. Nothing issues markers yet; whoami's `marker` is always null (docs/design.md 36). |
 | Service connection | An entry of `tenants/<tenant>/connections.yaml` (gitignored): `name`, `type` (`github`), `url`, `token_env`, the environment variable holding its secret. The API lists connections without secrets. A github connection's repositories come back as `git.repository` nodes, id `ui:conn:<connection>/<owner>/<repo>`, to a caller with a token only: the call spends the tenant's secret. |
 | Screen graph | The envelope `GET /api/tenants/<tenant>/screen` returns: module `Portal`, `root` `ui:root`, every panel a node. Held in memory; it reaches disk only as a snap. |

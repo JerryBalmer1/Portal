@@ -338,6 +338,10 @@ body.pt-rail-collapsed { --pt-rail-w: 52px; }
 .pt-container > .gr-box-body > .pt-host { position: relative; }
 .pt-container > .gr-box-body { overflow: auto; }
 .pt-designer .pt-depth { color: var(--gr-text-muted); }
+.gr-btn[data-readonly="true"]:disabled { cursor: not-allowed; }
+.pt-toasts { position: fixed; right: 16px; bottom: 16px; z-index: 50; display: flex; flex-direction: column; gap: 8px; max-width: min(420px, calc(100vw - 32px)); }
+.pt-toast { padding: 10px 14px; border-radius: 8px; border: var(--gr-border); background: var(--gr-card); color: var(--gr-text); font-size: 13px; white-space: pre-wrap; box-shadow: 0 6px 24px rgba(0,0,0,0.45); }
+.pt-toast[data-code="unauthorized"] { border-color: var(--gr-bad); }
 
 @media (max-width: 760px) {
   body { --pt-rail-w: 52px; }

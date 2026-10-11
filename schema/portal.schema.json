@@ -14,6 +14,20 @@
         "help": { "type": "string", "description": "URL the banner's help opens." }
       }
     },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The shell's own settings. Node display stays in State and Theme nodes (docs/design.md 5).",
+      "properties": {
+        "graph": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "wheelZoomSpeed": { "type": "number", "minimum": 0.1, "maximum": 5, "default": 1.0, "description": "Scales the Canvas's mouse-wheel zoom step: 1.0 is the product's step." }
+          }
+        }
+      }
+    },
     "menu": {
       "type": "array",
       "items": { "$ref": "#/$defs/item" }

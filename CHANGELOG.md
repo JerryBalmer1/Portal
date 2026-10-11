@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-10-10
+
+- Read-only page for an anonymous viewer. While whoami says the principal may not write, every control that would write is disabled with the tooltip `sign in to write`: a panel's collapse/expand, the Designer's section toggles, Approve, Add Panel, Add Container, Add Category and Add Menu Entry. A write the portal still refuses (401, or any refusal) is a toast at the bottom right (`web/toast.js`), never an error body inside a panel; the collapse toggle used to print the error JSON into the panel, and the Designer's status line printed refusals. A refused collapse no longer redraws the page (docs/design.md 37).
+- Config `theme.graph.wheelZoomSpeed` (default 1.0 in `portal.base.yaml`, 0.1 to 5 in `schema/portal.schema.json` and the spec's `Config`). A tenant overlay may override it; a value outside the range stops the binary. The Canvas sets Cytoscape's `wheelSensitivity` to 0.2 × the speed (docs/design.md 37).
+- `theme` is now a known top-level config key, so the bad-overlay example in tests and manual item 1.11 is `colours: dark`. New manual items 1.12 and 2.6.
+- Go tests 47, Pester 69.
+
 ## 0.4.0 — 2026-10-10
 
 - The page is a DevOps-style shell. The banner holds the product, a breadcrumb that mirrors the URL, search, the marker (`none`), help and the avatar. The left rail holds the services: a click opens a service's pages in place and closes the others, a hover on a closed service shows a flyout, the chevron collapses the rail to icons, and Settings is pinned at the foot. The main pane has a title, a toolbar and the content. Routes are `/<tenant>/<service>/<page>[/<id>]` and deep links survive a refresh. Dark theme: cards on a near-black grid (docs/design.md 36).

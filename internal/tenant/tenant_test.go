@@ -63,6 +63,35 @@ func TestBaseOnly(t *testing.T) {
 	}
 }
 
+// theme.graph.wheelZoomSpeed is 1.0 in the base and a tenant may override
+// it within 0.1..5 (docs/design.md 37).
+func TestWheelZoomSpeed(t *testing.T) {
+	speed := func(c map[string]any) any {
+		return c["theme"].(map[string]any)["graph"].(map[string]any)["wheelZoomSpeed"]
+	}
+	c, err := LoadConfig(portal.BaseYAML, nil, portal.ConfigSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := speed(c); got != 1.0 {
+		t.Errorf("base wheelZoomSpeed %v (%T), want 1.0", got, got)
+	}
+	for overlay, want := range map[string]float64{
+		"theme: { graph: { wheelZoomSpeed: 2.5 } }\n": 2.5,
+		"theme: { graph: { wheelZoomSpeed: 0.1 } }\n": 0.1,
+		"theme: { graph: { wheelZoomSpeed: 5 } }\n":   5,
+	} {
+		c, err := LoadConfig(portal.BaseYAML, []byte(overlay), portal.ConfigSchema)
+		if err != nil {
+			t.Errorf("%q: %v", overlay, err)
+			continue
+		}
+		if got := speed(c); got != want {
+			t.Errorf("%q: wheelZoomSpeed %v, want %v", overlay, got, want)
+		}
+	}
+}
+
 // An overlay changes what it names: maps merge, a menu item merges on id,
 // a new id is appended, a list without ids is replaced.
 func TestBasePlusOverlay(t *testing.T) {
@@ -118,10 +147,14 @@ menu:
 // A bad overlay stops the load, naming the file and the place.
 func TestBadOverlayFailsBoot(t *testing.T) {
 	for overlay, want := range map[string]string{
-		"theme: dark\n":                             "'theme' not allowed",
-		"product: { name: 1 }\n":                    "/product/name",
-		"menu:\n  - { label: No id }\n":             "/menu/0",
-		"menu:\n  - { id: overview, view: grid }\n": "/menu/0/view",
+		"colours: dark\n": "'colours' not allowed",
+		"theme: dark\n":   "/theme",
+		"theme: { graph: { wheelZoomSpeed: 10 } }\n":   "/theme/graph/wheelZoomSpeed",
+		"theme: { graph: { wheelZoomSpeed: 0.05 } }\n": "/theme/graph/wheelZoomSpeed",
+		"theme: { graph: { wheelZoom: 2 } }\n":         "'wheelZoom' not allowed",
+		"product: { name: 1 }\n":                       "/product/name",
+		"menu:\n  - { label: No id }\n":                "/menu/0",
+		"menu:\n  - { id: overview, view: grid }\n":    "/menu/0/view",
 		"menu:\n  - id: extra\n    label: Extra\n    path: elsewhere\n    children: [{ id: p, label: P, path: extra/p, kind: k }]\n": "/menu/13/path",
 		"menu:\n  - id: extra\n    label: Extra\n    path: extra\n    children: [{ id: p, label: P, path: extra/p }]\n":              "/menu/13/children/0/kind",
 		"menu: [": "yaml",

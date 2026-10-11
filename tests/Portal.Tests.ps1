@@ -91,9 +91,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.4.0 and needs PowerShell 7.4' {
+    It 'is version 0.4.1 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.4.0'
+        $m.ModuleVersion | Should -Be '0.4.1'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -238,10 +238,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.4.0, the ten Kinds, the eight edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.4.1, the ten Kinds, the eight edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.4\.0$'
+        $text | Should -Match '(?m)^version: 0\.4\.1$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -393,7 +393,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.4.0'
+        $s.version | Should -Be '0.4.1'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -441,8 +441,11 @@ Describe 'Live portal' {
         if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
         $designer = [regex]::Match($dom, '<div class="pt-designer">.*', 'Singleline').Value
         @([regex]::Matches($designer, '<h4>([^<]*)</h4>') | ForEach-Object { $_.Groups[1].Value }) | Should -Be @($Sections.Title)
-        @([regex]::Matches($designer, '<button class="gr-btn" type="submit">([^<]*)</button>') | ForEach-Object { $_.Groups[1].Value }) |
+        @([regex]::Matches($designer, '<button class="gr-btn" type="submit"[^>]*>([^<]*)</button>') | ForEach-Object { $_.Groups[1].Value }) |
             Should -Be @('Approve', 'Add Panel', 'Add Container', 'Add Category', 'Add Menu Entry')
+        # Headless Chrome reads as anonymous: every write button is disabled with the read-only tooltip (docs/design.md 37).
+        @([regex]::Matches($designer, '<button [^>]*>') | Where-Object { $_.Value -notmatch '\bdisabled\b' -or $_.Value -notmatch 'title="sign in to write"' }) |
+            Should -BeNullOrEmpty
         foreach ($sec in $Sections) {
             $tag = [regex]::Match($designer, "<section class=""([^""]*)"" data-section=""$($sec.Slug)"">").Groups[1].Value
             ($tag -split ' ') -contains 'pt-collapsed' | Should -Be (-not $sec.Open) -Because $sec.Slug
@@ -459,6 +462,26 @@ Describe 'Live portal' {
         $stats.Groups[1].Value | Should -Be 'filesystem'
         $stats.Groups[2].Value | Should -Be "filesystem · $($fs.counts.nodes) nodes · $($fs.counts.edges) edges · $($fs.stamp)"
         $dom | Should -Match ([regex]::Escape(">screen $(@($s.nodes).Count) · $(@($s.edges).Count) · "))
+    }
+    It 'an anonymous collapse is 401 and the canvas still draws the graph, its collapse disabled' {
+        $r = Invoke-WebRequest "$Url/api/tenants/default/nodes/ui:canvas" -Method PATCH -ContentType 'application/json' `
+            -Body '{"state":{"collapsed":true}}' -SkipHttpErrorCheck
+        [int]$r.StatusCode | Should -Be 401
+        ($r.Content | ConvertFrom-Json).code | Should -Be 'unauthorized'
+        $s = Get-PortalScreen -Url $Url
+        @($s.nodes | Where-Object { $_.id -eq 'ui:state:canvas' -and $_.properties.collapsed }) | Should -BeNullOrEmpty
+        $dom = Get-PageDom $Url '/default/graph/explore'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $box = [regex]::Match($dom, '<div class="gr-box pt-widget"[^>]*data-id="ui:canvas"[^>]*>.*', 'Singleline').Value
+        $box | Should -Not -BeNullOrEmpty
+        $box | Should -Not -Match 'pt-collapsed'
+        $box | Should -Match '<button class="gr-btn" disabled="" title="sign in to write" data-readonly="true">collapse</button>'
+        $drawn = [regex]::Match($box, 'data-coloured="(\d+)/(\d+)"')
+        $drawn.Success | Should -BeTrue
+        [int]$drawn.Groups[2].Value | Should -BeGreaterThan 0
+        $box | Should -Not -Match 'class="gr-error"'
+        # The base's theme.graph.wheelZoomSpeed 1.0 keeps the product's wheel step.
+        $box | Should -Match 'data-wheel-sensitivity="0.2"'
     }
     It 'a section State PATCH round-trips through New-PortalSnap and back' {
         $null = New-PortalSnap -Url $Url
@@ -630,9 +653,13 @@ Describe 'Tenants and tokens' {
     It 'a tenant overlay that fails the schema stops the binary, naming the file' {
         $dir = Join-Path $TestDrive 'badtenant'
         $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'default')
-        Set-Content -LiteralPath (Join-Path $dir 'default' 'portal.yaml') -Value 'theme: dark'
+        Set-Content -LiteralPath (Join-Path $dir 'default' 'portal.yaml') -Value 'colours: dark'
         { Start-Portal -Port 18200 -Artifacts (Join-Path $TestDrive 'badtenant-art') -Filesystem '' -Tenants $dir -TimeoutSec 5 } |
-            Should -Throw "*portal.yaml*'theme' not allowed*"
+            Should -Throw "*portal.yaml*'colours' not allowed*"
+        # theme.graph.wheelZoomSpeed is held to 0.1..5 in an overlay too (docs/design.md 37).
+        Set-Content -LiteralPath (Join-Path $dir 'default' 'portal.yaml') -Value 'theme: { graph: { wheelZoomSpeed: 10 } }'
+        { Start-Portal -Port 18200 -Artifacts (Join-Path $TestDrive 'badtenant-art2') -Filesystem '' -Tenants $dir -TimeoutSec 5 } |
+            Should -Throw '*portal.yaml*/theme/graph/wheelZoomSpeed*'
     }
 }
 

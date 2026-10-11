@@ -21,6 +21,16 @@ const SHAPES = new Set([
 // the first two are not Cytoscape names.
 const SHAPE_ALIASES = { circle: 'ellipse', square: 'round-rectangle' };
 const EDGE_STYLES = new Set(['solid', 'dashed', 'dotted']);
+// The product's wheel zoom step (Cytoscape's wheelSensitivity), scaled by
+// the config's theme.graph.wheelZoomSpeed (docs/design.md 37).
+const WHEEL_STEP = 0.2;
+
+// wheelZoomSpeed is the merged config's theme.graph.wheelZoomSpeed, 1 when
+// absent; the schema holds it to 0.1..5 at boot, and the page clamps too.
+export function wheelZoomSpeed(config) {
+  const v = Number(config && config.theme && config.theme.graph && config.theme.graph.wheelZoomSpeed);
+  return Number.isFinite(v) ? Math.min(5, Math.max(0.1, v)) : 1;
+}
 
 export function mount(el, ctx) {
   const root = document.createElement('div');
@@ -58,7 +68,9 @@ export function mount(el, ctx) {
   h.ro.observe(body);
   ctx.client.getLayerNodes(src.layer, { kind: src.kind, from: src.from }).then((graph) => {
     if (h.gone) return;
-    h.cy = cytoscape({ container: root, elements: elements(ont, graph), wheelSensitivity: 0.2, maxZoom: 2.2 });
+    const wheel = WHEEL_STEP * wheelZoomSpeed(ctx.config);
+    el.dataset.wheelSensitivity = String(Number(wheel.toFixed(4)));
+    h.cy = cytoscape({ container: root, elements: elements(ont, graph), wheelSensitivity: wheel, maxZoom: 2.2 });
     restyle(h, ont);
     h.cy.layout({ name: 'cose', animate: false, fit: true }).run();
     requestAnimationFrame(fit);

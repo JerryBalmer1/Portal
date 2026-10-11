@@ -494,7 +494,7 @@ async function drawScreen(page) {
   badge.title = 'the screen graph: nodes, edges, stamp';
   badge.textContent = `screen ${screen.nodes.length} · ${screen.edges.length} · ${screen.layer}`;
   ui.toolbar.replaceChildren(stats, badge);
-  if (who && who.anonymous) {
+  if (!(who && who.writes)) {
     const ro = document.createElement('span');
     ro.className = 'pt-readonly';
     ro.textContent = 'read-only: sign in to write';
@@ -505,7 +505,10 @@ async function drawScreen(page) {
     ui.content.appendChild(errorCard({ code: 'not_on_screen', message: `${id} is not on the screen${screen.nodes.some((n) => n.kind === 'Category' && n.name === 'Designer') ? ' (PORTAL_MODE=production hides the Designer)' : ''}` }));
     return;
   }
-  const ctx = { client, bus, screen, ontology, layers, ix, sections: page.properties.sections, refresh: () => drawScreen(page) };
+  // readOnly: the principal may not write, so every write control is
+  // disabled (docs/design.md 37).
+  const readOnly = !(who && who.writes);
+  const ctx = { client, bus, config, screen, ontology, layers, ix, readOnly, sections: page.properties.sections, refresh: () => drawScreen(page) };
   screenView.destroyAll();
   screenView.draw(ctx, node, ui.content);
 }
