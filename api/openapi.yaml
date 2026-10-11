@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.14.1
+  version: 0.14.2
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -761,7 +761,9 @@ paths:
       summary: >-
         Publish one card: its manifest.yaml and the files of its folder. The manifest is checked with Graph.Node 0.4.0's
         manifest schema (an emitter card needs module, repo and emits) (the lifted graph.ValidateManifest), and each file's path (the part's filename, relative to
-        the card's folder, forward slashes) must be clean. An oci feed gets an OCI artifact (repository: the feed URL's
+        the card's folder, forward slashes; RFC 2047 encoded words, as .NET sends a non-ASCII name, decoded first) must be
+        clean, each segment a Unicode letter, decimal digit or underscore and then those, combining marks, dots, spaces and
+        hyphens. An oci feed gets an OCI artifact (repository: the feed URL's
         path and the card's name in lower case; tag: the version), a nuget feed a .nupkg (id: the card's name). Contributor
         or admin (403 for a reader, 401 without a token). A name and version the ledger or the feed already holds is 409.
         Every push that names a feed the tenant has is one line of the tenant's ledger, whatever its result (pushed,

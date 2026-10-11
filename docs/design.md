@@ -983,3 +983,21 @@ Choices made without asking:
 - **The ledger layer fixture** is entry 45's again (12 entries, 44 to 55), as committed in 0.10.0. The tenant fixture gains the two results.
 - **Version 0.14.1:** no operation, Kind or edge changes. `LedgerEntry` loses `lineId` and gains `writer`, and the portal chain's ids change.
 
+## 52. Card files with non-ASCII names (0.14.2)
+
+Portal.Emitters' `Push-AllCards` pushed Emitter.Terraform and was refused with 422: `files/156 "=?utf-8?B?dGVzdHMvZml4dHVyZXMvaGNsL2VuYy3ml6XmnKwvbWFpbi50Zg==?=" must match ^[A-Za-z0-9_][A-Za-z0-9._ -]*$`. The path is `tests/fixtures/hcl/enc-日本/main.tf`. .NET's multipart, which PowerShell uses, sends a non-ASCII filename as RFC 2047 encoded words, and Go's `mime.ParseMediaType` hands them on undecoded. Even decoded, the segment `enc-日本` failed the ASCII rule.
+
+What was asked, as built:
+- **The push endpoint decodes encoded-word filenames** (`server.filenameOf`) before the card is checked. RFC 2231's `filename*` was already decoded by `mime`, and a raw UTF-8 filename is taken as sent.
+- **A segment may hold Unicode letters and digits** (`feed.segment`, now `^[\p{L}\p{Nd}_][\p{L}\p{M}\p{Nd}._ -]*$`). It still starts with a letter, digit or underscore, and the separators are still dot, space and hyphen. Control characters, `.`, `..` and empty segments are still refused.
+- **Tests.** Go's `TestNonASCIIFilenamesArePushedAsTheirPath` pushes that exact encoded name and the raw UTF-8 path, and checks the card's hash against the decoded path. `TestNewCardTakesUnicodeSegments` lists what is taken and what is refused. Pester's Feeds block pushes a card holding that file with `Publish-PortalCard`, and checks that .NET puts that encoded word on the wire. Manual check 1.24 runs the same push.
+
+Choices made without asking:
+- **Only a filename that is wholly encoded words is decoded**: one that starts with `=?` and ends with `?=`, which is what .NET sends. A filename that only contains `=?...?=` somewhere is taken as sent. The segment rule refuses `=` and `?` anyway.
+- **A malformed encoded word stays as sent**, as `mime.WordDecoder` leaves it, so the segment rule refuses it with 422 and names the file. A charset Go cannot decode (anything but UTF-8, ISO-8859-1 and US-ASCII) is a 400, since the body cannot be read as a card.
+- **"Digits" means decimal digits (`\p{Nd}`)**, any script's. Superscripts, circled numbers and Roman numerals (`\p{No}`, `\p{Nl}`) are not taken.
+- **Combining marks (`\p{M}`) are taken after the first character.** A decomposed name (macOS writes `é` as `e` and U+0301) or an Indic script needs them, and a mark cannot stand first.
+- **No Unicode normalisation.** A path is pushed as its bytes, so NFC and NFD spellings of one name are two paths. The duplicate check is still `strings.ToLower`.
+- **Other Unicode spaces and format characters are refused**, such as U+3000 and U+200B, and so are punctuation and symbols other than `_ . -` and space. A path that is not UTF-8 is refused by name ("is not UTF-8").
+- **No feed change.** Go's `archive/zip` sets the UTF-8 flag on a non-ASCII entry name, so a `.nupkg` holds the path. An OCI layer carries the path in its `org.opencontainers.image.title` annotation, which is a JSON string.
+- **Version 0.14.2:** no operation, Kind or edge changes. pushCard's summary states the decoding and the segment rule.

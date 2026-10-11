@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 )
@@ -57,8 +58,10 @@ func (e *InvalidError) Error() string {
 
 func (e *InvalidError) Unwrap() error { return ErrInvalid }
 
-// segment is one segment of a file path a card may hold.
-var segment = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._ -]*$`)
+// segment is one segment of a file path a card may hold: a Unicode letter,
+// decimal digit or underscore first, then those, combining marks, dots,
+// spaces and hyphens (docs/design.md 52). No control character matches.
+var segment = regexp.MustCompile(`^[\p{L}\p{Nd}_][\p{L}\p{M}\p{Nd}._ -]*$`)
 
 // reserved are paths at a card's root that a .nupkg uses itself.
 var reserved = map[string]bool{"[content_types].xml": true, "_rels": true, "package": true}
@@ -118,6 +121,8 @@ func checkPath(p string) string {
 	switch {
 	case p == "":
 		return "a file has no path"
+	case !utf8.ValidString(p):
+		return fmt.Sprintf("%q is not UTF-8", p)
 	case strings.Contains(p, `\`):
 		return fmt.Sprintf("%q: use forward slashes", p)
 	case strings.HasPrefix(p, "/") || path.Clean(p) != p:

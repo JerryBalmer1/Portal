@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -210,6 +211,38 @@ func TestDuplicateNameAndVersionIs409(t *testing.T) {
 	// The same name at another version, or in the other feed, is not a duplicate.
 	h.doForm(t, testToken, s.URL, push, cardParts(t, "0.2.0"), 201)
 	h.doForm(t, testToken, s.URL, "/api/tenants/default/feeds/cards-oci/push", cardParts(t, "0.1.0"), 201)
+}
+
+// TestNonASCIIFilenamesArePushedAsTheirPath sends Emitter.Terraform's path
+// tests/fixtures/hcl/enc-日本/main.tf as PowerShell sent it (an RFC 2047
+// encoded word) and raw UTF-8 (docs/design.md 52): both are that path, and
+// the card's hash is the hash of the decoded path.
+func TestNonASCIIFilenamesArePushedAsTheirPath(t *testing.T) {
+	h := newHarness(t)
+	s, _, _ := feedsPortal(t)
+	const real = "tests/fixtures/hcl/enc-日本/main.tf"
+	for i, sent := range []string{"=?utf-8?B?dGVzdHMvZml4dHVyZXMvaGNsL2VuYy3ml6XmnKwvbWFpbi50Zg==?=", real} {
+		version := fmt.Sprintf("0.3.%d", i)
+		parts := append(cardParts(t, version), part{"file", sent, "terraform {}\n"})
+		var e tenant.LedgerEntry
+		if err := json.Unmarshal(h.doForm(t, testToken, s.URL, "/api/tenants/default/feeds/cards-oci/push", parts, 201), &e); err != nil {
+			t.Fatal(err)
+		}
+		files := []feed.File{{Path: parts[1].filename, Data: []byte(parts[1].data)}, {Path: real, Data: []byte(parts[2].data)}}
+		want, err := feed.NewCard([]byte(parts[0].data), files)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e.Files != 3 || e.Hash == nil || *e.Hash != want.Hash {
+			t.Errorf("%q: files %d hash %v, want 3 and %s", sent, e.Files, e.Hash, want.Hash)
+		}
+	}
+	// A malformed encoded word stays as sent, and the segment rule refuses it;
+	// a charset Go cannot decode is a 400, the body unreadable.
+	parts := append(cardParts(t, "0.3.8"), part{"file", "=?utf-8?B?not base64!?=", "x"})
+	h.doForm(t, testToken, s.URL, "/api/tenants/default/feeds/cards-oci/push", parts, 422)
+	parts = append(cardParts(t, "0.3.9"), part{"file", "=?koi8-r?B?w8/E?=", "x"})
+	h.doForm(t, testToken, s.URL, "/api/tenants/default/feeds/cards-oci/push", parts, 400)
 }
 
 func TestFeedsEnvelopeIsAValidGraphOfFeedsAndCards(t *testing.T) {

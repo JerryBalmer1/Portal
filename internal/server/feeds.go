@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/JerryBalmer1/Portal/internal/feed"
@@ -69,7 +70,9 @@ func (s *Server) PushCard(w http.ResponseWriter, r *http.Request, name api.Tenan
 // readCard reads the push body: exactly one part named manifest, and any
 // number named file, each file's path its filename as sent. Go's
 // Part.FileName keeps only the base name, so the path is read from the
-// Content-Disposition header itself.
+// Content-Disposition header itself. A filename sent as RFC 2047 encoded
+// words, as .NET's multipart (PowerShell's) sends a non-ASCII one, is
+// decoded (filenameOf); RFC 2231's filename* mime decodes itself.
 func readCard(w http.ResponseWriter, r *http.Request) ([]byte, []feed.File, error) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 	mr, err := r.MultipartReader()
@@ -98,7 +101,11 @@ func readCard(w http.ResponseWriter, r *http.Request) ([]byte, []feed.File, erro
 			}
 			manifest = data
 		case "file":
-			files = append(files, feed.File{Path: params["filename"], Data: data})
+			name, err := filenameOf(params["filename"])
+			if err != nil {
+				return nil, nil, err
+			}
+			files = append(files, feed.File{Path: name, Data: data})
 		default:
 			return nil, nil, fmt.Errorf("unknown part %q", params["name"])
 		}
@@ -107,4 +114,18 @@ func readCard(w http.ResponseWriter, r *http.Request) ([]byte, []feed.File, erro
 		return nil, nil, errors.New("no manifest part")
 	}
 	return manifest, files, nil
+}
+
+// filenameOf is a part's filename as the card's path: a value that is
+// wholly RFC 2047 encoded words ("=?utf-8?B?...?=", one or more) is decoded,
+// any other value is the path as sent (docs/design.md 52).
+func filenameOf(v string) (string, error) {
+	if !strings.HasPrefix(v, "=?") || !strings.HasSuffix(v, "?=") {
+		return v, nil
+	}
+	d, err := new(mime.WordDecoder).DecodeHeader(v)
+	if err != nil {
+		return "", fmt.Errorf("filename %q: %v", v, err)
+	}
+	return d, nil
 }

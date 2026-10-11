@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.14.1 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0: item 0.2 (Go 114 tests, Smoke passed with ratio 0.844, Pester 125 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); items 1.20 and 1.23 run as written from their own `pwsh -NoProfile -File`, their Expect the output seen; 2.13 and 2.16's Expects follow the fixtures and are checked by Pester's Ledger and Actions blocks in headless Chrome, not clicked by hand. Before that, for 0.14.0 on 2026-10-11, Windows 11 (10.0.26200): item 0.2 (Go 112 tests, Smoke passed with ratio 0.844, Pester 124 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); items 1.20 and 1.23 run as written from their own `pwsh -NoProfile -File`, their Expect the output seen; 2.13, 2.14 and 2.16 checked by Pester's Ledger, Environments graph and Actions blocks in headless Chrome, nobody has clicked 2.16 by hand. Before that, for 0.13.0 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 (Go 107 tests, Smoke passed with ratio 0.844, Pester 118 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); item 1.19 run as written from its own `pwsh -NoProfile -File`, its Expect the output seen; 2.12's catalogue, filtered list, emitter page and two layer pages seen by --dump-dom from its own setup (its colours not seen by eye), and checked by Pester's Emitters block in headless Chrome. Every other item as verified for 0.12.1: item 0.2 (Go 106 tests, Smoke passed with ratio 0.844, Pester 116 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); items 1.21 and 1.22 run as written from their own `pwsh -NoProfile -File`, their Expect the output seen; 2.15's list, filtered list and item page seen by --dump-dom over the real alert layer on a throwaway demo-mode tenant, its menu as Pester's orphan alert checks it; 2.14 checked by Pester's Environments graph block in headless Chrome (counts, hulls, chips, selection, menus); nobody has clicked through 2.14 or 2.15 by hand. Other items were last verified as their own entries say, for 0.12.0 and earlier.
+Verified for: 0.14.2 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 (Go 116 tests, Smoke passed with ratio 0.844, Pester 126 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); item 1.24 run as written from its own `pwsh -NoProfile -File`, its Expect the output seen. Every other item as verified for 0.14.1. Before that, for 0.14.1 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0: item 0.2 (Go 114 tests, Smoke passed with ratio 0.844, Pester 125 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); items 1.20 and 1.23 run as written from their own `pwsh -NoProfile -File`, their Expect the output seen; 2.13 and 2.16's Expects follow the fixtures and are checked by Pester's Ledger and Actions blocks in headless Chrome, not clicked by hand. Before that, for 0.14.0 on 2026-10-11, Windows 11 (10.0.26200): item 0.2 (Go 112 tests, Smoke passed with ratio 0.844, Pester 124 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); items 1.20 and 1.23 run as written from their own `pwsh -NoProfile -File`, their Expect the output seen; 2.13, 2.14 and 2.16 checked by Pester's Ledger, Environments graph and Actions blocks in headless Chrome, nobody has clicked 2.16 by hand. Before that, for 0.13.0 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 (Go 107 tests, Smoke passed with ratio 0.844, Pester 118 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); item 1.19 run as written from its own `pwsh -NoProfile -File`, its Expect the output seen; 2.12's catalogue, filtered list, emitter page and two layer pages seen by --dump-dom from its own setup (its colours not seen by eye), and checked by Pester's Emitters block in headless Chrome. Every other item as verified for 0.12.1: item 0.2 (Go 106 tests, Smoke passed with ratio 0.844, Pester 116 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); items 1.21 and 1.22 run as written from their own `pwsh -NoProfile -File`, their Expect the output seen; 2.15's list, filtered list and item page seen by --dump-dom over the real alert layer on a throwaway demo-mode tenant, its menu as Pester's orphan alert checks it; 2.14 checked by Pester's Environments graph block in headless Chrome (counts, hulls, chips, selection, menus); nobody has clicked through 2.14 or 2.15 by hand. Other items were last verified as their own entries say, for 0.12.0 and earlier.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (107 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.844 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 118, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 117, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
+Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (116 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.844 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 126, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 125, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -701,6 +701,42 @@ try {
 finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
 ```
 Expect: `no token: 401`, `principal in the body: 400`, `nuke: 422`, `compose: 422`; `asked: action.request ledger:6 restart env:container/claude-agent-dev/mitm ui:principal:check requested seq 6` (after the fixture's three requests and two results); `line 6: {"kind":"action.request","id":"ledger:6","action":"restart","subject":"env:container/claude-agent-dev/mitm","principal":"ui:principal:check","requested":"<now>","status":"requested","seq":6,"prev":"<64 hex>"}` (the contract's members in order, then seq and prev); with the ledger layer mounted, `count 4: requested 2, done 1, failed 1`, then `ledger:6 restart requested`, `ledger:3 stop requested`, `ledger:2 restart failed ledger:5`, `ledger:1 logs done ledger:4`; `result: ledger:5 answers ledger:2 failed exit 1 by Emitter.Ledger 0.4.0 at ledger.jsonl:5`; `one: ledger:1; four: 404; nine: 404` (line 4 is a result, not a request); after the Runner's line is appended, without a restart, `count 4: requested 1, done 2, failed 1` with `ledger:6 restart done ledger:7`; `next ask: ledger:8, prev is the Runner's line: True`; `chain: count 8 valid True`; `page: 200` (docs/design.md 50, 51). Portal runs nothing: the results are lines of the fixture and the one the block appends as the Runner would.
+
+### 1.24 A card file with a non-ASCII path: .NET sends it as an RFC 2047 encoded word, the portal pushes it as its path
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-1.24-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"
+Set-Content "$t\default\portal.yaml" "feeds:`n  - { id: cards-oci, url: `"http://127.0.0.1:1/cards`" }"
+$admin = New-PortalToken -Name check -Bootstrap -Tenants $t
+$card = Join-Path $env:TEMP 'portal-check-1.24-card'
+Remove-Item $card -Recurse -Force -ErrorAction SilentlyContinue
+Copy-Item .\tests\fixtures\cards\Tool.Git $card -Recurse
+$null = New-Item -ItemType Directory -Force "$card\tests\fixtures\hcl\enc-日本"
+Set-Content "$card\tests\fixtures\hcl\enc-日本\main.tf" 'terraform {}'
+$dir = Join-Path $env:TEMP 'portal-check-1.24'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' -Tenants $t
+$saved = $env:PORTAL_TOKEN
+try {
+    $env:PORTAL_TOKEN = $admin.Token
+    try { $null = Publish-PortalCard -Feed cards-oci -Path $card -Url $p.Url; 'unicode: pushed' }
+    catch { "unicode: $(($_.Exception.Message -split "`n")[0])" }
+    Get-Content "$t\default\ledger.jsonl" | ForEach-Object { $e = $_ | ConvertFrom-Json; "ledger: $($e.result) $($e.card) $($e.version) files $($e.files)" }
+    # A non-ASCII path that climbs out, sent by .NET's own Add: decoded first, then refused.
+    $form = [System.Net.Http.MultipartFormDataContent]::new()
+    $m = [System.Net.Http.ByteArrayContent]::new([IO.File]::ReadAllBytes("$card\manifest.yaml"))
+    $form.Add($m, 'manifest', 'manifest.yaml')
+    $form.Add([System.Net.Http.ByteArrayContent]::new([byte[]](120)), 'file', '日本/../x')
+    $c = [System.Net.Http.HttpClient]::new()
+    $c.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $admin.Token)
+    $r = $c.PostAsync("$($p.Url)/api/tenants/default/feeds/cards-oci/push", $form).GetAwaiter().GetResult()
+    "climb: $([int]$r.StatusCode) $(($r.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json).problems[0].message)"
+}
+finally { $env:PORTAL_TOKEN = $saved; Stop-Portal -Artifacts $dir; Remove-Item $dir, $t, $card -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `unicode: ... -> 502: feed cards-oci: Head "http://127.0.0.1:1/v2/cards/tool.git/manifests/0.1.0": dial tcp ...` (the card passed its checks; only the feed, which is down, failed it, where 0.14.1 answered 422 for `files/1 "=?utf-8?B?...?="`); `ledger: failed Tool.Git 0.1.0 files 3` (manifest.yaml, install.yaml and tests/fixtures/hcl/enc-日本/main.tf); `climb: 422 "日本/../x" is not a clean path relative to the card's folder` (decoded first, then refused; docs/design.md 52).
 
 ### 2.1 The shell, and the FileSystem layer in colour on Graph/Explore
 ```powershell

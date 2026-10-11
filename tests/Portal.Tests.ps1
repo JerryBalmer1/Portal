@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.14.1 and needs PowerShell 7.4' {
+    It 'is version 0.14.2 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.14.1'
+        $m.ModuleVersion | Should -Be '0.14.2'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,10 +302,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.14.1, the twenty-two Kinds, the twenty-three edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.14.2, the twenty-two Kinds, the twenty-three edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.14\.1$'
+        $text | Should -Match '(?m)^version: 0\.14\.2$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry', 'Alerts', 'Alert', 'Actions') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in', 'has-alert', 'about', 'raised-in', 'has-action', 'answered-by', 'answers') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.14.1'
+        $s.version | Should -Be '0.14.2'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -1397,6 +1397,24 @@ feeds:
         $lines = @(Get-Content -LiteralPath $Ledger | Where-Object { $_ })
         $e.seq | Should -Be $lines.Count
         $e.prev | Should -Be ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($lines[-2]))).ToLowerInvariant())
+    }
+    It 'Publish-PortalCard sends a non-ASCII path as .NET encodes it, and the portal takes it as the path (docs/design.md 52)' {
+        $uni = Join-Path $TestDrive 'unicode-card'
+        Copy-Item -LiteralPath (Join-Path $Fixtures 'cards' 'Tool.Git') -Destination $uni -Recurse
+        $hcl = Join-Path $uni 'tests' 'fixtures' 'hcl' 'enc-日本'
+        $null = New-Item -ItemType Directory -Force -Path $hcl
+        Set-Content -LiteralPath (Join-Path $hcl 'main.tf') -Value 'terraform {}' -Encoding utf8NoBOM
+        (Get-Content -LiteralPath (Join-Path $uni 'manifest.yaml') -Raw).Replace('version: 0.1.0', 'version: 0.2.1') |
+            Set-Content -LiteralPath (Join-Path $uni 'manifest.yaml') -NoNewline -Encoding utf8NoBOM
+        # What .NET puts on the wire for that filename: the encoded word Push-AllCards was refused for in 0.14.1.
+        $cd = [System.Net.Http.Headers.ContentDispositionHeaderValue]::new('form-data')
+        $cd.FileName = '"tests/fixtures/hcl/enc-日本/main.tf"'
+        "$cd" | Should -Match 'filename="=\?utf-8\?B\?dGVzdHMvZml4dHVyZXMvaGNsL2VuYy3ml6XmnKwvbWFpbi50Zg==\?="'
+        Invoke-AsToken $FeedRoot.Token { { Publish-PortalCard -Feed cards-oci -Path $uni -Url $FeedUrl } | Should -Throw '*-> 502*cards-oci*' }
+        $e = (Get-LedgerLines)[-1]
+        $e.result | Should -Be 'failed' -Because 'the card passed its checks and only the feed, which is down, failed it'
+        $e.version | Should -Be '0.2.1'
+        $e.files | Should -Be 3 -Because 'manifest.yaml, install.yaml and tests/fixtures/hcl/enc-日本/main.tf'
     }
     It 'a card that fails Graph.Node''s manifest schema is 422 with its problems, and an invalid ledger line' {
         $bad = Join-Path $TestDrive 'bad-card'

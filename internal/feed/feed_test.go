@@ -92,6 +92,24 @@ func TestNewCardRefusesPathsItCannotPackage(t *testing.T) {
 	}
 }
 
+// docs/design.md 52: a segment may hold Unicode letters, digits and
+// combining marks, with the first-character and separator rules kept.
+func TestNewCardTakesUnicodeSegments(t *testing.T) {
+	m, _ := fixtureCard(t)
+	for _, p := range []string{"tests/fixtures/hcl/enc-日本/main.tf", "日本/読む.md", "café/x", "café/x", "Ünïcode_١٢٣.txt", "données/a b.txt"} {
+		if _, err := feed.NewCard(m, []feed.File{{Path: p, Data: []byte("x")}}); err != nil {
+			t.Errorf("%q: %v", p, err)
+		}
+	}
+	for _, p := range []string{"日本/-x", "日本/.x", "́x", "a/b\x00c", "a/b\nc", "a/\u0085x", "a/b​c", "a/\xff", "日本//x", "日本/../x", "日本/a:b", "日本/a　b"} {
+		_, err := feed.NewCard(m, []feed.File{{Path: p, Data: []byte("x")}})
+		var bad *feed.InvalidError
+		if !errors.As(err, &bad) || bad.Problems[0].Code != "file" {
+			t.Errorf("%q: want a file problem, got %v", p, err)
+		}
+	}
+}
+
 func TestContentHashIgnoresOrderAndSeesEveryByte(t *testing.T) {
 	a := []feed.File{{Path: "a", Data: []byte("1")}, {Path: "b", Data: []byte("2")}}
 	b := []feed.File{a[1], a[0]}

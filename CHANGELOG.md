@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.2 — 2026-10-11
+
+- **Card files with non-ASCII names** (docs/design.md 52). `POST .../feeds/{feed}/push` decodes a filename sent as RFC 2047 encoded words, as .NET's multipart (PowerShell's) sends a non-ASCII one. Portal.Emitters' Emitter.Terraform push was refused for `=?utf-8?B?...?=`, its `tests/fixtures/hcl/enc-日本/main.tf`.
+- **A path segment may hold Unicode letters, decimal digits and (after the first character) combining marks.** The first-character and separator rules are kept. Control characters, `..`, empty segments and invalid UTF-8 are refused.
+- **Go** 114 to 116: `TestNonASCIIFilenamesArePushedAsTheirPath` and `TestNewCardTakesUnicodeSegments`.
+- **Pester** 125 to 126: the `Feeds` block pushes a card holding `enc-日本/main.tf` with `Publish-PortalCard`.
+
 ## 0.14.1 — 2026-10-11
 
 - **One ledger, one seq space** (docs/design.md 51). Portal.Agent's committed shape: `action.request` and `action.result` both live in `tenants/<t>/ledger.jsonl` as one chain, appended by Portal and by the Runner with the same lock, `seq` and `prev`. 0.14.0's split chains are undone.
