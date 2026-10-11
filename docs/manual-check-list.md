@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.11.0 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 (Go 96 tests, Smoke passed with ratio 0.844; its Pester step failed one test on the port race of Boot order, and a rerun of `tests/Invoke-Tests.ps1` passed 109); item 1.21 run as written from its own `pwsh -NoProfile -File`, its Expect the output seen; 2.14 checked by Pester's Environments graph block in headless Chrome (DOM and DevTools: the hulls, chips, selection and pins, a drag and double-click, the menu by mouse and by keys, the Instances row) and a headless screenshot of the same fixtures, not by hand. Not run for 0.11.0: 3.7 (Docker is not running here); 0.1, 0.3, 1.1 to 1.20 and 3.1 to 3.6, 3.8 (their code is unchanged or covered by Pester and Smoke); 2.1 to 2.13, which are interactive.
+Verified for: 0.12.0 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 (Go 103 tests, Smoke passed with ratio 0.844, Pester 115 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); item 1.22 run as written from its own `pwsh -NoProfile -File`, its Expect the output seen; 2.15 checked by Pester's Alerts block in headless Chrome (DOM and DevTools: the rows, colours, chips, the item page, the badge, the subjects' alerts rows, the menu by mouse and keyboard), and by --dump-dom of the list, an alert's page, entry 52, the decision's row, claude-agent-dev and the agent page on a throwaway demo-mode tenant; nobody has clicked through 2.15 by hand. Other items were last verified as their own entries say, for 0.11.0 and earlier.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (96 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.844 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 109, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 108, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
+Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (103 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.844 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 115, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 114, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -594,6 +594,36 @@ finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $d
 ```
 Expect: `before: 0 nodes`; with the real layer, `nodes: environment.instance claude-agent-dev, environment.instance claude-agent-dev/agent, environment.instance claude-agent-dev/ledger, environment.instance claude-agent-dev/mitm, Principal ui:principal:dev-bootstrap` and `edges: member-of claude-agent-dev/agent -> claude-agent-dev; member-of claude-agent-dev/ledger -> claude-agent-dev; member-of claude-agent-dev/mitm -> claude-agent-dev; runs-as claude-agent-dev -> ui:principal:dev-bootstrap` (its hosts edge names a run no mounted layer holds, so it is left out); with the tagged copy, the runs and the ledger, the same nodes and `Run agent:run/2026-10-09T02:50:43.7976027Z`, the edges and `hosts claude-agent-dev -> agent:run/2026-10-09T02:50:43.7976027Z` first, no Step, Decision or ledger entry; `run: layer agent-runs, ledger 9`; `page: 200` (docs/design.md 46).
 
+### 1.22 Alerts: the fixture's five alerts critical first, the open counts, subjects as Portal serves them; the alert layer is not the ledger
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-1.22-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"
+Set-Content "$t\default\portal.yaml" 'mode: demo'
+$admin = New-PortalToken -Name check -Bootstrap -Tenants $t
+$dir = Join-Path $env:TEMP 'portal-check-1.22'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Tenants $t
+try {
+    $u = "$($p.Url)/api/tenants/default"
+    $env:PORTAL_TOKEN = $admin.Token
+    "before: $((Invoke-RestMethod "$u/alerts").nodes[0].properties.count) alerts"
+    foreach ($m in @('agent-runs', 'ledger', 'agent-alerts')) { $null = Mount-PortalLayer -Name $m -Path ".\tests\fixtures\layers\$m" -Url $p.Url }
+    $a = Invoke-RestMethod "$u/alerts"
+    $root = $a.nodes | Where-Object id -EQ 'ui:alerts'
+    "open: critical $($root.properties.open.critical), warning $($root.properties.open.warning), info $($root.properties.open.info)"
+    $a.nodes | Where-Object kind -EQ 'Alert' | ForEach-Object { "$($_.properties.severity) $($_.properties.rule) $($_.properties.state) about $($_.properties.about)" }
+    "served: $(($a.nodes | Where-Object { $_.kind -notin 'Alerts', 'Alert' } | ForEach-Object { "$($_.kind) $($_.id)" }) -join ', ')"
+    "critical: $(((Invoke-RestMethod "$u/alerts?severity=critical").nodes | Where-Object kind -EQ 'Alert').Count)"
+    "agent chain: layer $(((Invoke-RestMethod "$u/ledger").nodes | Where-Object id -EQ 'ui:ledger:agent').properties.layer)"
+    "nope: $([int](Invoke-WebRequest "$u/alerts/nope" -SkipHttpErrorCheck).StatusCode)"
+    "page: $([int](Invoke-WebRequest "$($p.Url)/default/compliance/alerts" -SkipHttpErrorCheck).StatusCode)"
+}
+finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `before: 0 alerts`; `open: critical 1, warning 1, info 1`; the five in order `critical policy-deny resolved about ledger:52`, `critical policy-deny open about agent:run/2026-10-09T02:50:43.7976027Z/step-3/pre`, `warning run-denied acknowledged about agent:run/2026-10-09T02:50:43.7976027Z`, `warning egress-check open about ledger:46`, `info image-by-tag open about claude-agent-dev`; `served: LedgerEntry ledger:52, Run agent:run/2026-10-09T02:50:43.7976027Z, Decision agent:run/2026-10-09T02:50:43.7976027Z/step-3/pre, LedgerEntry ledger:46` (no environment layer is mounted, and the alert layer's copy of claude-agent-dev is never served); `critical: 2`; `agent chain: layer ledger` (not the alert layer, though its stamp is later and it holds copies of two entries); `nope: 404`; `page: 200` (docs/design.md 47).
+
 ## 2. Page
 
 ### 2.1 The shell, and the FileSystem layer in colour on Graph/Explore
@@ -828,15 +858,39 @@ Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Tenants $t
 try {
     $env:PORTAL_TOKEN = $admin.Token
-    $null = Mount-PortalLayer -Name agent-runs -Path .	estsixtures\layersgent-runs -Url $p.Url
-    $null = Mount-PortalLayer -Name ledger -Path .	estsixtures\layers\ledger -Url $p.Url
-    $null = Mount-PortalLayer -Name agent-environment -Path .	estsixtures\layersgent-environment-tagged -Url $p.Url
+    $null = Mount-PortalLayer -Name agent-runs -Path .\tests\fixtures\layers\agent-runs -Url $p.Url
+    $null = Mount-PortalLayer -Name ledger -Path .\tests\fixtures\layers\ledger -Url $p.Url
+    $null = Mount-PortalLayer -Name agent-environment -Path .\tests\fixtures\layers\agent-environment-tagged -Url $p.Url
     Start-Process "$($p.Url)/default/environments/graph#claude-agent-dev"
     Read-Host 'Read the graph; drag agent, double-click it; click the dev chip, then a tag; reload; right-click claude-agent-dev and mitm (and Shift+F10 on a focused node); open Instances and right-click a row, then Show graph; press Enter here to stop'
 }
 finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
 ```
 Expect: the rail lists Environments/Graph above Instances and marks it current. The toolbar reads `4 nodes · 2 one edge away · 5 edges · 1 without env`, then the env chips (all, dev, qa, prod, unset), the tag chips (all, agent, compose, egress) and `selected claude-agent-dev · 5 neighbours pinned`. The graph settles at once: the compose node orange, the three containers blue circles, dev-bootstrap and the run small, dim hexagons; `member-of` solid, `runs-as` dashed, `hosts` dotted; an amber hull `env dev` holding the compose node, agent and mitm, with dotted inner hulls `stack` and `egress`, and a grey dashed hull `env unset` round the ledger keeper; a legend below. The compose node is outlined and it and its five neighbours have dashed outlines (pinned). Dragging agent moves and pins it; double-clicking releases it. The dev chip hides the ledger keeper and its edge. A reload keeps `#claude-agent-dev` selected. Right-click on claude-agent-dev: Details (`/default/environments/instances/claude-agent-dev`), Show graph, Runs (`/default/layers/agent-runs#agent%3Arun%2F...`, that row marked) and Ledger (`/default/ledger/agent?run=...`, 9 entries); on mitm, Runs and Ledger greyed with `no hosts edge to a mounted run`. Arrow keys move, Escape closes and returns focus. On Instances, a row's right-click shows the same menu; Show graph opens the graph with that node selected (docs/design.md 46).
+
+### 2.15 Compliance/Alerts: severity colours, chips, an alert's page, the banner badge, alerts rows on the subjects, right-click
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-2.15-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"
+Set-Content "$t\default\portal.yaml" 'mode: demo'
+$admin = New-PortalToken -Name check -Bootstrap -Tenants $t
+$dir = Join-Path $env:TEMP 'portal-check-2.15'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Tenants $t
+try {
+    $env:PORTAL_TOKEN = $admin.Token
+    $null = Mount-PortalLayer -Name agent-runs -Path .\tests\fixtures\layers\agent-runs -Url $p.Url
+    $null = Mount-PortalLayer -Name ledger -Path .\tests\fixtures\layers\ledger -Url $p.Url
+    $null = Mount-PortalLayer -Name agent-environment -Path .\tests\fixtures\layers\agent-environment-tagged -Url $p.Url
+    $null = Mount-PortalLayer -Name agent-alerts -Path .\tests\fixtures\layers\agent-alerts -Url $p.Url
+    Start-Process "$($p.Url)/default/compliance/alerts"
+    Read-Host 'Read the list; click the critical chip, then a state chip; open an alert; click the badge; open ledger entry 52, the decision and the run from their links, claude-agent-dev on Instances and the agent page of check; right-click a row (and Shift+F10 on a focused link); press Enter here to stop'
+}
+finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: the rail lists Compliance/Alerts above Rules and marks it current; beside the DEMO badge, a red `1 critical` badge (its title `open alerts: 1 critical · 1 warning · 1 info`). The toolbar reads `5 alerts`, then the severity chips (all, critical, warning, info), the rule chips (all, egress-check, image-by-tag, policy-deny, run-denied) and the state chips (all, acknowledged, open, resolved). The rows, critical first with a red bar, then warning with an amber one, then info: the resolved critical and the acknowledged warning dimmed; each summary links the alert's page; the subject links `/default/ledger/agent/52`, the decision's and the run's rows on `/default/layers/agent-runs#...`, `/default/ledger/agent/46` and `/default/environments/instances/claude-agent-dev`. The critical chip leaves the two criticals, `2 alerts · 5 in all`, and the address carries `?severity=critical`; a state chip keeps it. An alert's page lists id, severity, rule, summary, state, stamp, fingerprint, layer (a link) and its about and raised-in edges as links. The badge opens the open criticals. Entry 52's page, the decision's and the run's marked rows and claude-agent-dev's page each have an alerts row linking back; the agent page has an alerts column after ledger, `5`, linking `?run=`. A row's right-click offers Details, Subject, Run and Ledger as links; arrows move, Escape closes and returns focus. In mode dev the badge sits beside the amber DEV badge instead (docs/design.md 47).
 
 ## 3. PowerShell
 

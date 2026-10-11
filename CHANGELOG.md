@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.12.0 — 2026-10-11
+
+- **Alerts.** `GET /api/tenants/{tenant}/alerts` (`listAlerts`) serves the alerts of every mounted layer: nodes of Kind `alert` under `alert/<fingerprint>`, from Portal.Agent's agent-alerts layer. They come as Kind `Alert`, critical first, newest first, 100 a page (`after`), under `ui:alerts` (Kind `Alerts`: `count`, `open` by severity, `rules`, `states`, `next`). Filters are `severity`, `rule`, `state`, `run` and `about`. `GET .../alerts/{fingerprint}` (`getAlert`) serves one alert. An alert's subject (`about`) and Run (`raised-in`) are served as Portal serves them. The later stamp wins on a fingerprint.
+- **One resolver** for the environments graph's ends and an alert's subject and run (`internal/server/resolve.go`). It also serves a Decision and an agent ledger entry. `nodemenu.detailsHref` is its page side.
+- **Alert layers are copies.** A layer holding alerts is never read as the agent's ledger, as environments or on a table page. Its other nodes are copies of what its alerts are about, there so that its edges do not dangle.
+- **Compliance/Alerts** at `/<tenant>/compliance/alerts`, first under Compliance (`view: alerts`, `web/alerts.js`).
+  - **Rows:** severity in colour, rule, summary, subject and run linking their pages, stamp.
+  - **Chips:** severity, rule and state, through the URL.
+  - **Item page:** `/<tenant>/compliance/alerts/<fingerprint>`, with `about` and `raised-in` as links.
+  - **Menu:** right-click Details, Subject, Run and Ledger, greyed with why.
+- **Badge.** The banner shows the open count at its top severity beside the mode: red for critical, amber for warning, none for info only.
+- **Reverse links.** Ledger entries, run and decision rows, and item pages get an alerts row. Run gains `alerts`, and the agent page an alerts column.
+- **Boot.** A Compliance page `alerts` with another view stops the boot.
+- **Ontology.** Kinds `Alerts` and `Alert`, edges `has-alert`, `about`, `raised-in`.
+- **Fixture.** `tests/fixtures/layers/agent-alerts/` is hand-made in the brief's shape.
+- **Go** 96 to 103: `TestAlertsAreEmptyWithoutAnAlertLayer`, `TestAlertsOfTheFixture`, `TestGetAlert`, `TestAlertsFiltersAndPages`, `TestAlertLayerIsNotTheLedgerNorAnEnvironment`, `TestAlertReEmitWins`, `TestAgentRunsCountTheirAlerts`. The spec test exercises both operations and the page. The bad-overlay table covers `compliance/alerts`. The menu test expects Alerts first.
+- **Pester** 109 to 115: the Alerts block, in Chrome. The version pins and ontology counts moved.
+- **Docs.** Manual check item 2.14's fixture paths are repaired.
+- **Version.** 0.12.0 in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated. docs/design.md 47.
+
 ## 0.11.0 — 2026-10-11
 
 - **The environments graph.** `GET /api/tenants/{tenant}/environments/graph` (`getEnvironmentGraph`) serves every `environment.*` node of the mounted layers, with its layer's id, Kind and properties (first id wins). It also serves every layer edge touching one, with its kind kept (`member-of`, `runs-as`, `hosts`), and the node one hop away. A Run comes as `listAgents` serves it, with `layer` and `ledger`. A Principal comes as `listPrincipals` serves it, with dev-bootstrap made up. `has-run` joins a served principal to a served run it holds. An edge to a node nothing serves is left out. The response is empty, not 404, without an environment layer. No Kind is added to `ontology.yaml`.

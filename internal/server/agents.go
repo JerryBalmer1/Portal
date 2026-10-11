@@ -35,11 +35,16 @@ func (s *Server) agentSet(stamp string) agentSet {
 	}
 	set := agentSet{runs: map[string][]store.AgentRun{}}
 	counts := s.ledgerCounts()
+	alerts := s.alertCounts()
 	for _, r := range s.p.AgentRuns() {
 		if counts != nil {
 			// Entries of the agent's ledger chain that belong to the run
 			// (docs/design.md 45).
 			r.Run.Properties["ledger"] = counts[r.Run.ID]
+		}
+		if alerts != nil {
+			// Alerts raised in the run (docs/design.md 47).
+			r.Run.Properties["alerts"] = alerts[r.Run.ID]
 		}
 		// No principal (a legacy token, a mount at start), or one
 		// principals.yaml no longer holds: dev-bootstrap.

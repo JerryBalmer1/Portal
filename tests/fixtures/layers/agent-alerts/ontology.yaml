@@ -1,0 +1,41 @@
+module: Claude.Agent.Alerts
+version: 0.2.0
+# Hand-made Portal fixture (docs/design.md 47), in the shape Portal.Agent's agent-alerts layer is to have: Portal reads
+# it, never writes it. Replace this folder with a copy of the real layer once it lands under Portal.Agent's
+# artifacts/alert-layers/.
+kinds:
+  alert:
+    description: "One alert a rule raised over the agent's ledger, runs, decisions or environment. Portal's Compliance/Alerts page lists this Kind."
+    idRule: "alert/<fingerprint>; no prefix (plain)"
+    properties:
+      - { name: severity, type: string, required: true, description: "critical, warning or info." }
+      - { name: rule, type: string, required: true, description: "The rule that raised it." }
+      - { name: summary, type: string, required: true, description: "One sentence: what the rule saw." }
+      - { name: stamp, type: string, required: true, description: "When it was raised (RFC 3339 UTC)." }
+      - { name: state, type: string, required: true, description: "open, acknowledged or resolved." }
+      - { name: fingerprint, type: string, required: true, description: "Stable over re-emits of the same alert; the id's tail." }
+    display: { color: "#e76f51", shape: triangle, size: 1, label: "{name}" }
+  LedgerEntry:
+    description: "A copy of the agent ledger's entry an alert is about, so its about edge does not dangle (ledger: is this module's own prefix). Portal reads the ledger from the ledger layer, never from this copy."
+    idRule: "ledger:<seq>"
+    properties:
+      - { name: seq, type: integer, required: true, description: "The entry's seq." }
+      - { name: stamp, type: string, description: "The entry's stamp." }
+      - { name: event, type: string, description: "The entry's kind." }
+      - { name: run, type: string, description: "The Run the entry belongs to." }
+  environment.instance:
+    description: "A copy of the environment instance an alert is about, so its about edge does not dangle (its id is plain). Portal reads environments from the environment layer, never from this copy."
+    idRule: "<compose project>, or <compose project>/<service>"
+    properties:
+      - { name: kind, type: string, required: true, description: "compose or container." }
+      - { name: state, type: string, description: "As the environment layer had it." }
+      - { name: composeProject, type: string, description: "The compose project name." }
+edgeKinds:
+  about:
+    description: "The alert to what it is about: a ledger entry (ledger:<seq>), a Run, a PolicyDecision or an environment instance, by its own layer's id."
+    from: [alert]
+    to: [LedgerEntry, Run, PolicyDecision, environment.instance]
+  raised-in:
+    description: "The alert to the run it was raised in: the runs layer's root (Graph.Emitter.Agent's agent:run/<stamp>)."
+    from: [alert]
+    to: [Run]

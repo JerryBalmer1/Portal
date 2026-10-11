@@ -11,8 +11,9 @@ import (
 // /api/screen shows it, so production mode hides the Designer here too) and
 // in each mounted layer, in that order, read-only. An id seen twice keeps
 // its first. A node without a stamp gets stamp.layer from the envelope it
-// came from, so a reader can say when it was last updated. The result holds
-// nodes only: edges between envelopes would dangle.
+// came from, so a reader can say when it was last updated. An alert layer
+// gives its alerts only: its other nodes are copies (IsAlertLayer). The
+// result holds nodes only: edges between envelopes would dangle.
 func (p *Portal) NodesOfKind(kind string) (*graph.Envelope, error) {
 	screen, err := p.Screen()
 	if err != nil {
@@ -25,8 +26,9 @@ func (p *Portal) NodesOfKind(kind string) (*graph.Envelope, error) {
 	env := graph.NewEnvelope(portal.Module, portal.Version, stamp)
 	seen := map[string]bool{}
 	add := func(from *graph.Envelope) {
+		copies := from != screen && kind != AlertKind && IsAlertLayer(from)
 		for _, n := range from.Nodes {
-			if n.Kind != kind || seen[n.ID] {
+			if n.Kind != kind || seen[n.ID] || copies {
 				continue
 			}
 			seen[n.ID] = true

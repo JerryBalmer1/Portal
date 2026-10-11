@@ -18,7 +18,9 @@
 // /<tenant>/ledger/<source> and each entry at /<tenant>/ledger/<source>/<seq>
 // (docs/design.md 45), or the environments graph at
 // /<tenant>/environments/graph, its selected node after # (docs/design.md
-// 46). The route is the URL, /<tenant>/<service>/<page>[/<id>],
+// 46), or the alerts at /<tenant>/compliance/alerts, each at
+// /<tenant>/compliance/alerts/<fingerprint>, with the open count by top
+// severity in a badge beside the mode (docs/design.md 47). The route is the URL, /<tenant>/<service>/<page>[/<id>],
 // /<tenant>/layers/<name>, /<tenant>/agents[/<name>],
 // /<tenant>/emitters[/<name>] or /<tenant>/ledger[/<source>[/<seq>]], so a deep link survives a refresh. Which service is expanded, whether the rail is
 // collapsed and what the search box holds are the viewer's pointers, like a
@@ -35,18 +37,19 @@ import * as agents from '/static/agents.js';
 import * as emitters from '/static/emitters.js';
 import * as ledger from '/static/ledger.js';
 import * as envgraph from '/static/envgraph.js';
+import * as alerts from '/static/alerts.js';
 import { icon } from '/static/icons.js';
 import { refusal } from '/static/toast.js';
 
 // Page renderers by a Page's view; screen is drawn by screen.js.
-const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers, emitters, ledger, 'environments-graph': envgraph };
+const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers, emitters, ledger, 'environments-graph': envgraph, alerts };
 
 const tenant = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || 'default');
 const client = createClient(tenant);
 const bus = new EventTarget();
 const $ = (id) => document.getElementById(id);
 const ui = {
-  brand: $('brand'), crumbs: $('crumbs'), search: $('search'), mode: $('mode'), modebar: $('modebar'), marker: $('marker'), help: $('help'), avatar: $('avatar'),
+  brand: $('brand'), crumbs: $('crumbs'), search: $('search'), mode: $('mode'), alertsBadge: $('alerts-badge'), modebar: $('modebar'), marker: $('marker'), help: $('help'), avatar: $('avatar'),
   account: $('account'), rail: $('rail'), flyout: $('flyout'), title: $('title'), toolbar: $('toolbar'), content: $('content'),
 };
 
@@ -161,8 +164,19 @@ function graphHref(id) {
   return page ? `${href(page.properties.path)}#${encodeURIComponent(id)}` : null;
 }
 
+// alertHref is an alert's page, /<tenant>/compliance/alerts/<fingerprint>,
+// or with no fingerprint the alerts page itself, its query from q (a
+// URLSearchParams or an object); null when the menu has no page whose view
+// is alerts (docs/design.md 47).
+function alertHref(fingerprint, q) {
+  const page = [...menu.pages.values()].find((p) => p.properties.view === 'alerts');
+  if (!page) return null;
+  const qs = new URLSearchParams(q || {}).toString();
+  return `${href(page.properties.path, fingerprint)}${qs ? `?${qs}` : ''}`;
+}
+
 // nodeLinks are where the node menu's items lead (nodemenu.js).
-const nodeLinks = { kindHref, graphHref, layerHref: (name) => (name ? layerHref(name) : null), agentHref, ledgerHref };
+const nodeLinks = { kindHref, graphHref, layerHref: (name) => (name ? layerHref(name) : null), agentHref, ledgerHref, alertHref };
 
 // pageHref is where a Page lives: the agents page at /<tenant>/agents, the
 // emitters page at /<tenant>/emitters, every other at its path.
@@ -298,6 +312,7 @@ function render() {
   drawCrumbs(svc, page, r);
   ui.search.value = '';
   drawPage(svc, page, r);
+  drawAlertsBadge();
 }
 
 // ---- banner ----
@@ -313,6 +328,34 @@ function drawMode() {
   ui.modebar.textContent = MODE_BARS[mode] || '';
   ui.modebar.dataset.mode = mode;
   ui.modebar.hidden = !MODE_BARS[mode];
+}
+
+// drawAlertsBadge is the open alerts' count at their top severity beside
+// the mode: red for critical, amber for warning, none when only info
+// alerts are open, linking to the alerts page. Read again on every page.
+function drawAlertsBadge() {
+  const b = ui.alertsBadge;
+  const to = alertHref(null);
+  if (!b || !to) return;
+  client.listAlerts({ limit: 1 }).then((env) => {
+    const open = env.nodes.find((n) => n.id === env.root)?.properties?.open || {};
+    const top = alerts.badgeOf(open);
+    b.hidden = !top;
+    if (!top) return;
+    const q = { severity: top.severity, state: 'open' };
+    b.href = alertHref(null, q);
+    b.dataset.severity = top.severity;
+    b.textContent = `${top.count} ${top.severity}`;
+    b.title = `open alerts: ${alerts.SEVERITIES.map((s) => `${Number(open[s]) || 0} ${s}`).join(' · ')}`;
+    if (!b.dataset.wired) {
+      b.dataset.wired = 'true';
+      b.addEventListener('click', (ev) => {
+        if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button !== 0) return;
+        ev.preventDefault();
+        navigate(b.getAttribute('href'));
+      });
+    }
+  }).catch(() => { b.hidden = true; });
 }
 
 function drawCrumbs(svc, page, r) {
@@ -596,13 +639,13 @@ function drawPage(svc, page, r) {
   if (r.layer) {
     ui.title.textContent = r.layer;
     ui.title.dataset.page = `layer:${r.layer}`;
-    current = { mod: layers, handle: layers.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.layer, navigate, emitterHref }) };
+    current = { mod: layers, handle: layers.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.layer, navigate, emitterHref, alertHref }) };
     return;
   }
   if (r.agent) {
     ui.title.textContent = r.agent;
     ui.title.dataset.page = `agent:${r.agent}`;
-    current = { mod: agents, handle: agents.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.agent, navigate, layerHref, ledgerHref }) };
+    current = { mod: agents, handle: agents.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.agent, navigate, layerHref, ledgerHref, alertHref }) };
     return;
   }
   if (r.emitter) {
@@ -614,7 +657,7 @@ function drawPage(svc, page, r) {
   if (r.source) {
     ui.title.textContent = r.seq ? `${r.source} ${r.seq}` : `${r.source} ledger`;
     ui.title.dataset.page = `ledger:${r.source}${r.seq ? `/${r.seq}` : ''}`;
-    current = { mod: ledger, handle: ledger.open(ui.content, { client, bus, toolbar: ui.toolbar, source: r.source, seq: r.seq, run: r.run, before: r.before, navigate, ledgerHref, layerHref }) };
+    current = { mod: ledger, handle: ledger.open(ui.content, { client, bus, toolbar: ui.toolbar, source: r.source, seq: r.seq, run: r.run, before: r.before, navigate, ledgerHref, layerHref, alertHref }) };
     return;
   }
   if (!page) {
@@ -624,11 +667,16 @@ function drawPage(svc, page, r) {
   }
   ui.title.textContent = r.id ? r.id : page.name;
   ui.title.dataset.page = page.id;
+  const view = page.properties.view || 'table';
+  // An alert's page is the alerts view's own (docs/design.md 47).
+  if (r.id && view === 'alerts') {
+    current = { mod: alerts, handle: alerts.open(ui.content, { ...pageCtx(page), id: r.id }) };
+    return;
+  }
   if (r.id) {
     drawItem(page, r);
     return;
   }
-  const view = page.properties.view || 'table';
   if (view === 'screen') {
     drawScreen(page);
     return;
@@ -642,7 +690,7 @@ function drawPage(svc, page, r) {
 }
 
 function pageCtx(page) {
-  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref, emitterHref, cardHref, ledgerHref, nodeLinks };
+  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref, emitterHref, cardHref, ledgerHref, alertHref, nodeLinks };
 }
 
 // reauth reads whoami again (a token the portal refuses is dropped) and
@@ -691,6 +739,16 @@ function drawItem(page, r) {
     for (const [k, v] of Object.entries(n.properties || {})) row(k, v);
     row('updated', nodes.updatedOf(n));
     card.replaceChildren(dl);
+    // The alerts about the node, when there are any (docs/design.md 47).
+    alerts.aboutLinks({ client, navigate, alertHref }, n.id).then((links) => {
+      if (!links || !dl.isConnected) return;
+      const dt = document.createElement('dt');
+      dt.textContent = 'alerts';
+      const dd = document.createElement('dd');
+      dd.dataset.field = 'alerts';
+      dd.appendChild(links);
+      dl.append(dt, dd);
+    });
   }).catch((err) => card.replaceChildren(errorCard(err)));
   if (!tabs.length) return;
   const chosen = tabs.find((t) => t.page.properties.path === r.tab) || tabs[0];

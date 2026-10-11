@@ -195,7 +195,7 @@ func TestMenuShape(t *testing.T) {
 		"ui:rail:workflows:all":      {"Plan", "Runs", "History"},
 		"ui:rail:workflows:all:runs": {"Steps"},
 		"ui:rail:environments":       {"Graph", "Instances", "Images", "Networks"},
-		"ui:rail:compliance":         {"Rules", "Findings", "Reports"},
+		"ui:rail:compliance":         {"Alerts", "Rules", "Findings", "Reports"},
 		"ui:rail:policy":             {"Rules", "Decisions"},
 		"ui:rail:ledger":             {"Entries", "Verify", "Keys"},
 		"ui:rail:identity":           {"Users", "Agents", "Marker holders"},
@@ -216,6 +216,9 @@ func TestMenuShape(t *testing.T) {
 	}
 	if v := env.Nodes[idx["ui:rail:environments:graph"]].Properties; v["view"] != "environments-graph" || v["path"] != "environments/graph" {
 		t.Errorf("Environments/Graph %v", v)
+	}
+	if v := env.Nodes[idx["ui:rail:compliance:alerts"]].Properties; v["view"] != "alerts" || v["path"] != "compliance/alerts" {
+		t.Errorf("Compliance/Alerts %v", v)
 	}
 	if v := env.Nodes[idx["ui:rail:graph:explore"]].Properties; v["view"] != "screen" || v["screen"] != "ui:canvas" {
 		t.Errorf("Graph/Explore %v", v)

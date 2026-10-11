@@ -697,3 +697,86 @@ Choices made without asking:
     - a drag pinning and a double-click releasing;
     - the menu on a compose node, a container, the principal and the run, its keys, Show graph selecting in place, and the Instances row's menu landing on the graph with the node selected.
 - **Version 0.11.0:** a new operation and page.
+
+## 47. Alerts: the page, the badge and the reverse links (0.12.0)
+
+The brief: Portal.Agent is adding an agent-alerts layer, nodes of Kind `alert` under the plain id `alert/<fingerprint>` with `severity` (critical, warning, info), `rule`, `summary`, `stamp`, `state` and `fingerprint`, an `about` edge to the subject (a ledger entry, a run, a decision, an environment instance) and a `raised-in` edge to a run root. Portal reads it and never writes an alert. Build on a hand-made fixture of that shape until the real layer lands. Add Compliance/Alerts with an item page, a banner badge, the API (paged 100, filters severity, rule and state), an alerts row on each subject's page and an alert count on the agent page's runs, a right-click menu on alert rows, and a boot rule.
+
+Choices made without asking:
+
+- **The fixture, `tests/fixtures/layers/agent-alerts/`.** It is hand-made, module `Claude.Agent.Alerts` 0.2.0 (the module the in-progress alerts code in Portal.Agent carries, a version after its 0.1.0), layer `2026-10-09T02:51:05Z`. It holds five alerts, all raised in the agent-runs fixture's run:
+  - `3f9c2a7e5b1d4c08`: critical, `policy-deny`, open, about step 3's pre deny (a PolicyDecision).
+  - `07e3d9a5c1f86b42`: critical, `policy-deny`, resolved, about `ledger:52`.
+  - `5d27e8f1a9c3b604`: warning, `run-denied`, acknowledged, about the run.
+  - `a41e09b7c2d85f36`: warning, `egress-check`, open, about `ledger:46`.
+  - `c8b6f4d2e0a17935`: info, `image-by-tag`, open, about the compose node `claude-agent-dev`.
+- **The fixture carries copies of three subjects.** Graph.Node refuses an edge that dangles to a plain id, or to an id under the envelope's own module's prefix (`dangling-edge`, error); only an end under another module's prefix may dangle (warning, "resolved at merge"). `ledger:` is registered to Claude.Agent.Alerts and `claude-agent-dev` is plain, so the layer must hold `ledger:46`, `ledger:52` and `claude-agent-dev` for its `about` edges to validate. It does so as Portal.Agent's `Export-LedgerAlert` already does for the ledger entries its findings name. The copies keep only `seq`, `stamp`, `event` and `run`, or `kind`, `state` and `composeProject`, and its ontology declares them as copies.
+- **An alert layer's copies are references, never data.** A layer holding an `alert` node under `alert/` is an alert layer (`store.IsAlertLayer`). Its other nodes:
+  - never make it the agent's ledger. Without this rule, its later stamp would take the agent chain from the ledger layer (entry 45's "latest stamp wins") and the chain would be two entries;
+  - are no environments (the environments graph skips the layer);
+  - are not listed on a table page (`listNodes` gives an alert layer's alerts only);
+  - are never served as a subject (`HeldNodes`).
+  So a subject is served only from the layer that owns it. With no environment layer mounted, `claude-agent-dev` is no one's: its alert has no `about` edge, and `about` still names it.
+- **API, spec first.**
+  - `listAlerts`, `GET /api/tenants/<tenant>/alerts`: one page (`limit`, 1 to 1000, 100 when absent) under the list node `ui:alerts`, Kind `Alerts`.
+    - The root carries `count`, `alerts` (matching), `open` (the open alerts by severity, critical, warning and info always), and `rules` and `states` (every value, sorted, for the chips). It also carries the filters given, and `next`.
+    - Filters: `severity`, `rule` and `state` as the brief asks. Two were added: `run` (raised in that Run), which the agent page's count links, and `about` (about that id), which the subject pages read.
+    - `after` is a fingerprint: the page starts after that alert in the order. It is found among all the alerts, so a page still follows an alert whose state has since left the filter. A fingerprint no layer holds is 400.
+  - `getAlert`, `GET .../alerts/<fingerprint>`: the alert, its subject and its run; 404 for a fingerprint no mounted layer holds.
+  - Each alert is served as Portal's Kind `Alert` under its layer's id, with `fingerprint`, `severity`, `rule`, `summary`, `stamp`, `state` (absent when the layer gives none), `open`, `layer`, `about` and `run`. It is joined by `has-alert` from the root, and by `about` and `raised-in` to the nodes Portal serves. An edge to an end Portal does not serve is left out, as the environments graph does (entry 46).
+  - **Order:** critical, warning, info, then any other severity; then the newest stamp; then the fingerprint.
+  - **Open:** state `open` or no state. The badge and `state=open` count an alert with no state as open, since an alert nobody has acted on should not drop out of sight.
+  - **Re-emits:** a fingerprint in two layers is kept from the later stamp (the later mount on a tie), as a Run is (entry 43): a re-emit is how a state change arrives.
+  - **No ontology of its own.** The envelope names none, like the environments graph's, because a subject keeps its layer's Kind (`environment.instance`).
+- **One resolver for the environments graph and the alerts** (`internal/server/resolve.go`). The brief asks for "the same resolver the environments graph uses". Entry 46's `environmentEnds` became `resolver`, which serves:
+  - a Run as `listAgents` does;
+  - a Decision (a PolicyDecision of a runs layer) as `listAgentRuns` does;
+  - an agent ledger entry (`ledger:<seq>`) as `getLedgerEntry` does;
+  - a Principal as `listPrincipals` does, dev-bootstrap made up;
+  - any other node as the first layer holding it, alert layers aside.
+
+  The Decision and ledger entry cases are new. No environment edge reaches either today, so the environments graph serves what it served, and its tests are unchanged. On the page, the node menu's Details became `nodemenu.detailsHref`. It now also knows a Decision (its runs layer's row), a LedgerEntry (its entry page) and an Alert (its page). The alerts page links subjects and runs with it.
+- **Run gains `alerts`**, the alerts raised in it, while any alert is mounted, as `ledger` is while a ledger layer is (entry 45). It counts by `raised-in`, the run's own alerts, not by `about`. The agent page's column links `/<tenant>/compliance/alerts?run=<id>`.
+- **Page.** Compliance/Alerts is `{ id: alerts, path: compliance/alerts, view: alerts }`, first under Compliance; `web/alerts.js`.
+  - **Rows:** severity in its colour (critical red, warning amber, info muted, with a matching bar on the row), rule, summary (a link to the alert's page; the brief's table names no link column), subject, run and stamp. An alert that is no longer open is dimmed.
+  - **Chips:** severity (the three, always) and rule and state (the root's values). A chip is a move to the list with that filter in the URL, from the first page, so a filtered list is a link and the filter applies across pages, not only to the page on screen. The banner's search filters the rows on the page. "more alerts" pages with `after`.
+  - **Item page:** `/<tenant>/compliance/alerts/<fingerprint>`, through `getShellItem` like any page's item. It shows id, severity, rule, summary, state, stamp, fingerprint, layer (a link), `about` and `raised-in` as links, or as plain text with why when Portal serves no node there.
+- **Badge.** It sits beside the mode, in the banner, and is read on every page through `listAlerts?limit=1`.
+  - **Shape:** the count of open alerts at their top severity, `1 critical` in red or `<n> warning` in amber, with every open count in its title. Nothing when only info alerts, or none, are open.
+  - **Link:** the alerts page filtered to that severity and `state=open`, the alerts it counts.
+  - **Mode:** it shows beside DEMO and prod's nothing as well as beside DEV.
+- **Reverse links: an "alerts" row** with one link per alert about the node, in its colour, from `listAlerts?about=<id>`, shown only when there is one.
+  - **Ledger entry:** a field on its page.
+  - **Run and Decision:** their item is their row on the runs layer's page (entries 43 and 46). The row the fragment marks gets an alerts row beneath it.
+  - **Environment instance:** a field on its item page. Every table page's item gets the row, since it costs one read and shows only when an alert is about the node.
+- **The menu.** It is the node menu, opened with an item list of its own (`nodemenu.open` takes one): Details (the alert's page), Subject, Run (its row on the runs layer's page) and Ledger (the run's entries on the agent chain, `?run=`). It follows the same greyed-with-why rule: `no about edge`, `no mounted layer Portal reads holds <id>`, `no mounted runs layer holds <id>`, and `no raised-in edge to a mounted run` or `the agent ledger records nothing of this run`.
+- **Boot.** A Compliance page with the id `alerts` and any view but `alerts` stops the boot: `/menu/<i>/children/<j>/view: compliance/alerts is the alerts page, where the banner's count and every alert's page are; its view is alerts, not "<view>"`. This is the rule entry 46 made for `environments/graph`. `alerts` joins the schema's view enum.
+- **Ontology.** Kinds `Alerts` and `Alert`, edges `has-alert`, `about` and `raised-in`, and Run's optional `alerts`. No id prefix is added: alerts keep their layer's plain ids, and the list node is `ui:alerts`.
+- **CLAUDE.md** now lists `../Portal.Agent` as readable, with the alert layer's future home, as the brief asks and as entries 45 and 46 proposed.
+- **Fixed in passing.** Manual check item 2.14's fixture paths had `\t`, `\f` and `\a` turned into control characters.
+- **Not added.**
+  - A PowerShell wrapper for the two routes. The brief asks for routes, pages and tests.
+  - A way to acknowledge or resolve an alert, since Portal never writes one.
+  - Filtering by more than one value of a filter.
+- **For later.**
+  - Replace the fixture with a copy of the real layer once it lands under Portal.Agent's `artifacts/alert-layers/`.
+  - Portal.Agent's alerts code today emits another shape: Kind `Finding`, ids `alert:<rule>:<seq>` (the shape Graph.Node registers for `alert:`), severities info, warn and error, and a `raised-by` edge to a LedgerEntry. Portal reads only the brief's shape, so a layer of that shape mounts and shows no alerts. Such a layer also holds copies of `ledger:<seq>` entries but no `alert` node, so it is no alert layer: mounted with a later stamp than the ledger layer, it would take the agent chain, as it could before 0.12.0.
+- **Coverage.**
+  - Go:
+    - empty with no alert layer, and no `alerts` on a run;
+    - the fixture's order, root counts, chip values, edges, and each subject from its own layer;
+    - one alert, and 404;
+    - every filter, pages of two and `after` past a filtered-out alert; `limit` and `after` 400s;
+    - the alert layer neither the ledger, an environment nor on a table page;
+    - a re-emit winning;
+    - the run's `alerts`;
+    - the spec operations, the page and its item route;
+    - the menu order and the boot refusal.
+  - Pester (Chrome):
+    - the rail, the rows in order and colour, subject and run links;
+    - the chips through the URL, the item page, and 404's message;
+    - the badge and `badgeOf`;
+    - the alerts rows on entry 52, the decision's and the run's rows, `claude-agent-dev`, and the agent page's count;
+    - the menu by mouse and keyboard, and greyed with why on an orphan alert;
+    - the boot refusal.
+- **Version 0.12.0:** new operations, Kinds and a page.

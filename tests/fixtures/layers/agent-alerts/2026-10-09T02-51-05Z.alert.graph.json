@@ -1,0 +1,216 @@
+{
+  "schema": "graph/1",
+  "ontology": "ontology.yaml",
+  "module": "Claude.Agent.Alerts",
+  "version": "0.2.0",
+  "layer": "2026-10-09T02:51:05Z",
+  "nodes": [
+    {
+      "id": "alert/3f9c2a7e5b1d4c08",
+      "kind": "alert",
+      "name": "policy-deny 3f9c2a7e",
+      "properties": {
+        "severity": "critical",
+        "rule": "policy-deny",
+        "summary": "Step 3's pre hook denied the action the agent asked for.",
+        "stamp": "2026-10-09T02:50:49Z",
+        "state": "open",
+        "fingerprint": "3f9c2a7e5b1d4c08"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Alerts",
+          "path": "hand-made Portal fixture (docs/design.md 47)"
+        }
+      ]
+    },
+    {
+      "id": "alert/07e3d9a5c1f86b42",
+      "kind": "alert",
+      "name": "policy-deny 07e3d9a5",
+      "properties": {
+        "severity": "critical",
+        "rule": "policy-deny",
+        "summary": "Ledger entry 52 records a denied pre decision.",
+        "stamp": "2026-10-09T02:50:49Z",
+        "state": "resolved",
+        "fingerprint": "07e3d9a5c1f86b42"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Alerts",
+          "path": "hand-made Portal fixture (docs/design.md 47)"
+        }
+      ]
+    },
+    {
+      "id": "alert/a41e09b7c2d85f36",
+      "kind": "alert",
+      "name": "egress-check a41e09b7",
+      "properties": {
+        "severity": "warning",
+        "rule": "egress-check",
+        "summary": "The egress check ran before the run's first step.",
+        "stamp": "2026-10-09T02:50:44Z",
+        "state": "open",
+        "fingerprint": "a41e09b7c2d85f36"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Alerts",
+          "path": "hand-made Portal fixture (docs/design.md 47)"
+        }
+      ]
+    },
+    {
+      "id": "alert/5d27e8f1a9c3b604",
+      "kind": "alert",
+      "name": "run-denied 5d27e8f1",
+      "properties": {
+        "severity": "warning",
+        "rule": "run-denied",
+        "summary": "The run stopped with a denied step.",
+        "stamp": "2026-10-09T02:50:52Z",
+        "state": "acknowledged",
+        "fingerprint": "5d27e8f1a9c3b604"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Alerts",
+          "path": "hand-made Portal fixture (docs/design.md 47)"
+        }
+      ]
+    },
+    {
+      "id": "alert/c8b6f4d2e0a17935",
+      "kind": "alert",
+      "name": "image-by-tag c8b6f4d2",
+      "properties": {
+        "severity": "info",
+        "rule": "image-by-tag",
+        "summary": "The compose stack runs the agent image by tag, not by digest.",
+        "stamp": "2026-10-09T02:50:43Z",
+        "state": "open",
+        "fingerprint": "c8b6f4d2e0a17935"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Alerts",
+          "path": "hand-made Portal fixture (docs/design.md 47)"
+        }
+      ]
+    },
+    {
+      "id": "ledger:46",
+      "kind": "LedgerEntry",
+      "name": "46 agent.egress-check",
+      "properties": {
+        "seq": 46,
+        "stamp": "2026-10-09T02:50:43Z",
+        "event": "agent.egress-check",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Alerts",
+          "path": "hand-made Portal fixture (docs/design.md 47)"
+        }
+      ]
+    },
+    {
+      "id": "ledger:52",
+      "kind": "LedgerEntry",
+      "name": "52 policy.pre",
+      "properties": {
+        "seq": 52,
+        "stamp": "2026-10-09T02:50:49Z",
+        "event": "policy.pre",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Alerts",
+          "path": "hand-made Portal fixture (docs/design.md 47)"
+        }
+      ]
+    },
+    {
+      "id": "claude-agent-dev",
+      "kind": "environment.instance",
+      "name": "claude-agent-dev (compose on MSI)",
+      "properties": {
+        "kind": "compose",
+        "state": "running",
+        "composeProject": "claude-agent-dev"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Alerts",
+          "path": "hand-made Portal fixture (docs/design.md 47)"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "alert/3f9c2a7e5b1d4c08|agent:run/2026-10-09T02:50:43.7976027Z/step-3/pre|about",
+      "kind": "about",
+      "from": "alert/3f9c2a7e5b1d4c08",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-3/pre"
+    },
+    {
+      "id": "alert/3f9c2a7e5b1d4c08|agent:run/2026-10-09T02:50:43.7976027Z|raised-in",
+      "kind": "raised-in",
+      "from": "alert/3f9c2a7e5b1d4c08",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    },
+    {
+      "id": "alert/07e3d9a5c1f86b42|ledger:52|about",
+      "kind": "about",
+      "from": "alert/07e3d9a5c1f86b42",
+      "to": "ledger:52"
+    },
+    {
+      "id": "alert/07e3d9a5c1f86b42|agent:run/2026-10-09T02:50:43.7976027Z|raised-in",
+      "kind": "raised-in",
+      "from": "alert/07e3d9a5c1f86b42",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    },
+    {
+      "id": "alert/a41e09b7c2d85f36|ledger:46|about",
+      "kind": "about",
+      "from": "alert/a41e09b7c2d85f36",
+      "to": "ledger:46"
+    },
+    {
+      "id": "alert/a41e09b7c2d85f36|agent:run/2026-10-09T02:50:43.7976027Z|raised-in",
+      "kind": "raised-in",
+      "from": "alert/a41e09b7c2d85f36",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    },
+    {
+      "id": "alert/5d27e8f1a9c3b604|agent:run/2026-10-09T02:50:43.7976027Z|about",
+      "kind": "about",
+      "from": "alert/5d27e8f1a9c3b604",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    },
+    {
+      "id": "alert/5d27e8f1a9c3b604|agent:run/2026-10-09T02:50:43.7976027Z|raised-in",
+      "kind": "raised-in",
+      "from": "alert/5d27e8f1a9c3b604",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    },
+    {
+      "id": "alert/c8b6f4d2e0a17935|claude-agent-dev|about",
+      "kind": "about",
+      "from": "alert/c8b6f4d2e0a17935",
+      "to": "claude-agent-dev"
+    },
+    {
+      "id": "alert/c8b6f4d2e0a17935|agent:run/2026-10-09T02:50:43.7976027Z|raised-in",
+      "kind": "raised-in",
+      "from": "alert/c8b6f4d2e0a17935",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    }
+  ]
+}

@@ -9,7 +9,9 @@
 // page marks that row), and each seq to the entry's page,
 // /<tenant>/ledger/<source>/<seq>, from GET .../ledger/{source}/{seq}. A
 // ?run= on the entries' URL keeps only that run's entries; ?before= pages.
-// Nothing here writes.
+// An entry's page has an alerts row linking each alert about the entry
+// (docs/design.md 47). Nothing here writes.
+import { aboutLinks } from '/static/alerts.js';
 
 // mount draws the chains into el. ctx: {client, toolbar, bus, navigate, ledgerHref, layerHref}.
 export function mount(el, ctx) {
@@ -47,7 +49,7 @@ export function mount(el, ctx) {
 }
 
 // open draws one chain's entries, or one entry when ctx.seq is set, into el.
-// ctx: {client, toolbar, bus, source, seq, run, before, navigate, ledgerHref, layerHref}.
+// ctx: {client, toolbar, bus, source, seq, run, before, navigate, ledgerHref, layerHref, alertHref}.
 export function open(el, ctx) {
   return ctx.seq ? entry(el, ctx) : entries(el, ctx);
 }
@@ -180,6 +182,7 @@ function entry(el, ctx) {
       field('verify', `the chain breaks here: ${p.reason}`);
     }
     wrap.appendChild(dl);
+    return aboutLinks(ctx, n.id).then((links) => { if (links) field('alerts', links); });
   }).catch((err) => fail(wrap, err));
   return h;
 }

@@ -445,6 +445,26 @@ svg.pt-eg [hidden] { display: none; }
 .pt-nodemenu-item[aria-disabled="true"] { color: var(--gr-text-muted); opacity: 0.55; cursor: default; }
 .pt-nodemenu-item[aria-disabled="true"]:focus { outline: 1px dashed var(--gr-line); outline-offset: -1px; }
 
+/* Alerts (docs/design.md 47): critical in the chain's red, warning in the dev
+   bar's amber, info muted. The banner's badge counts the open alerts at their
+   top severity; it shows nothing when only info alerts are open. An alert no
+   longer open is dimmed in the list. */
+.pt-sev { font-weight: 600; }
+.pt-sev[data-severity="critical"], .pt-alert-link[data-severity="critical"] { color: var(--gr-bad); }
+.pt-sev[data-severity="warning"], .pt-alert-link[data-severity="warning"] { color: rgb(245,166,35); }
+.pt-sev[data-severity="info"], .pt-alert-link[data-severity="info"] { color: var(--gr-text-muted); }
+.pt-alerts tbody tr[data-severity="critical"] { box-shadow: inset 3px 0 0 var(--gr-bad); }
+.pt-alerts tbody tr[data-severity="warning"] { box-shadow: inset 3px 0 0 rgb(245,166,35); }
+.pt-alerts tbody tr.pt-closed td { opacity: 0.6; }
+.pt-alert[data-severity="critical"] { box-shadow: inset 3px 0 0 var(--gr-bad); }
+.pt-alert[data-severity="warning"] { box-shadow: inset 3px 0 0 rgb(245,166,35); }
+.pt-alerts-badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-decoration: none; white-space: nowrap; }
+.pt-alerts-badge[data-severity="critical"] { background: var(--gr-bad); color: rgb(26,8,6); }
+.pt-alerts-badge[data-severity="warning"] { background: rgb(245,166,35); color: rgb(26,18,4); }
+.pt-alerts-badge:focus-visible { outline: 2px solid var(--gr-text); outline-offset: 2px; }
+.pt-table tbody tr.pt-alerts-row td { padding-top: 0; font-size: 12px; color: var(--gr-text-muted); }
+.pt-table tbody tr.pt-alerts-row td a.pt-alert-link, .pt-fields a.pt-alert-link { font-weight: 600; }
+
 @media (max-width: 760px) {
   body { --pt-rail-w: 52px; }
   .pt-rail-wrap .pt-label, .pt-rail-wrap .pt-chev, .pt-rail-wrap .pt-pages { display: none; }

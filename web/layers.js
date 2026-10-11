@@ -6,11 +6,14 @@
 // .../layers/{name}/nodes as the table pages draw nodes (nodes.js), the
 // banner's search box filtering them (docs/design.md 42). A node id after #
 // in the URL marks that node's row and scrolls to it: an agent's decision
-// links there (docs/design.md 43). Above the nodes, a produced-by line links
+// links there (docs/design.md 43), and under it an alerts row links each
+// alert about that node, a Run's or a Decision's (docs/design.md 47). Above
+// the nodes, a produced-by line links
 // the emitter that produced the layer, from GET .../emitters, to its page
 // /<tenant>/emitters/<name> (docs/design.md 44). Nothing here writes; a layer
 // is mounted through the API (Mount-PortalLayer).
 import * as nodes from '/static/nodes.js';
+import { aboutLinks } from '/static/alerts.js';
 
 // mount draws the list into el. ctx: {client, toolbar, bus, navigate, layerHref}.
 export function mount(el, ctx) {
@@ -64,7 +67,7 @@ export function mount(el, ctx) {
   return { wrap, off: () => {} };
 }
 
-// open draws one layer into el. ctx: {client, toolbar, bus, name, navigate, emitterHref}.
+// open draws one layer into el. ctx: {client, toolbar, bus, name, navigate, emitterHref, alertHref}.
 export function open(el, ctx) {
   const by = document.createElement('p');
   by.className = 'pt-produced-by';
@@ -104,6 +107,16 @@ export function open(el, ctx) {
       hit.row.classList.add('pt-target');
       hit.row.setAttribute('aria-current', 'true');
       hit.row.scrollIntoView({ block: 'center' });
+      aboutLinks(ctx, target).then((links) => {
+        if (!links || !hit.row.isConnected) return;
+        const sub = document.createElement('tr');
+        sub.className = 'pt-alerts-row';
+        sub.dataset.alertsOf = target;
+        const cell = sub.insertCell();
+        cell.colSpan = hit.row.cells.length;
+        cell.append('alerts: ', links);
+        hit.row.after(sub);
+      });
     }
   }).catch((err) => {
     wrap.classList.add('pt-error-card');

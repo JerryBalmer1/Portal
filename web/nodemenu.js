@@ -1,6 +1,7 @@
 // The node menu (docs/design.md 46): what right-click, Shift+F10 or the
 // context-menu key opens on a node of the environments graph or a row of an
-// environment page. Four items, each a link: Details (the node's item page),
+// environment page, and, with its own items, on a row of the alerts page
+// (docs/design.md 47). Four items, each a link: Details (the node's item page),
 // Show graph (/<tenant>/environments/graph#<id>), Runs and Ledger. An item
 // the node has no edge for is greyed, with why in its title, never hidden.
 // What each links to is read from the environments graph's edges
@@ -9,11 +10,26 @@
 
 let openMenu = null;
 
+// detailsHref is where a node is shown, as the API serves it: a Run's or
+// a Decision's row on its runs layer's page (/<tenant>/layers/<layer>#<id>),
+// a principal's agent page when a has-run edge of g says it holds a run, a
+// ledger entry's page (/<tenant>/ledger/<source>/<seq>), an alert's page,
+// else the item page of the Page listing its Kind; null when there is none.
+// The menu's Details and the alerts page's subject and run links are this.
+export function detailsHref(n, g, links) {
+  const p = n.properties || {};
+  if (n.kind === 'Run' || n.kind === 'Decision') return p.layer && links.layerHref(p.layer) ? `${links.layerHref(p.layer)}#${encodeURIComponent(n.id)}` : null;
+  if (n.kind === 'Principal') return (g.edges || []).some((e) => e.kind === 'has-run' && e.from === n.id) ? links.agentHref(n.name) : null;
+  if (n.kind === 'LedgerEntry') return p.source && p.seq !== undefined ? links.ledgerHref(p.source, p.seq) : null;
+  if (n.kind === 'Alert') return links.alertHref ? links.alertHref(p.fingerprint) : null;
+  return links.kindHref(n.kind, n.id);
+}
+
 // items is the menu for node n of graph g (an envelope; nodes and edges),
 // each {label, href, why}: href null when greyed, why saying what is
 // missing. links: {kindHref(kind, id), graphHref(id), layerHref(name),
-// agentHref(name), ledgerHref(source)}, each null when the menu has no
-// page for it.
+// agentHref(name), ledgerHref(source, seq), alertHref(fingerprint)}, each
+// null when the menu has no page for it.
 export function items(n, g, links) {
   const byId = new Map((g.nodes || []).map((x) => [x.id, x]));
   const runs = n.kind === 'Run' ? [n] : (g.edges || [])
@@ -22,32 +38,33 @@ export function items(n, g, links) {
     .filter((x) => x && x.kind === 'Run')
     .sort((a, b) => String(b.properties?.startedAt || '').localeCompare(String(a.properties?.startedAt || '')));
   const run = runs[0];
-  const at = (base, id) => (base ? `${base}#${encodeURIComponent(id)}` : null);
   // A principal's page is its agent page, which lists only the principals
   // holding a run: its has-run edge says it does.
-  const agent = n.kind === 'Principal' && (g.edges || []).some((e) => e.kind === 'has-run' && e.from === n.id) ? links.agentHref(n.name) : null;
-  let details = null;
-  if (n.kind === 'Run') details = at(links.layerHref(n.properties?.layer), n.id);
-  else if (n.kind === 'Principal') details = agent;
-  else details = links.kindHref(n.kind, n.id);
+  const details = detailsHref(n, g, links);
   let runsHref = null;
-  if (n.kind === 'Principal') runsHref = agent;
-  else if (run) runsHref = at(links.layerHref(run.properties?.layer), run.id);
-  const counted = runs.find((r) => Number(r.properties?.ledger) > 0);
-  const ledger = counted && links.ledgerHref('agent') ? `${links.ledgerHref('agent')}?run=${encodeURIComponent(counted.id)}` : null;
+  if (n.kind === 'Principal') runsHref = details;
+  else if (run) runsHref = detailsHref(run, g, links);
   return [
     { label: 'Details', href: details, why: n.kind === 'Principal' ? 'no has-run edge: it holds no mounted run' : `no page lists ${n.kind}` },
     { label: 'Show graph', href: links.graphHref(n.id), why: 'the menu has no environments graph' },
     { label: 'Runs', href: runsHref, why: n.kind === 'Principal' ? 'no has-run edge: it holds no mounted run' : 'no hosts edge to a mounted run' },
-    { label: 'Ledger', href: ledger, why: run ? 'the agent ledger records nothing of this run' : 'no hosts edge to a mounted run' },
+    ledgerItem(runs, links, run ? 'the agent ledger records nothing of this run' : 'no hosts edge to a mounted run'),
   ];
+}
+
+// ledgerItem is Ledger: the agent chain's entries of the first of runs
+// that counts any, /<tenant>/ledger/agent?run=<id>, else greyed with why.
+export function ledgerItem(runs, links, why) {
+  const counted = runs.find((r) => Number(r.properties?.ledger) > 0);
+  const href = counted && links.ledgerHref('agent') ? `${links.ledgerHref('agent')}?run=${encodeURIComponent(counted.id)}` : null;
+  return { label: 'Ledger', href, why };
 }
 
 // open draws the menu for n at the event's point (or beside from, the
 // element the menu was opened on, when the keyboard opened it) and focuses
 // its first item. navigate(href) routes inside the shell; focus goes back
-// to from on close.
-export function open(ev, n, g, links, navigate, from) {
+// to from on close. list is the items, items(n, g, links) when absent.
+export function open(ev, n, g, links, navigate, from, list = items(n, g, links)) {
   close();
   const menu = document.createElement('div');
   menu.className = 'pt-nodemenu';
@@ -59,7 +76,7 @@ export function open(ev, n, g, links, navigate, from) {
   head.textContent = n.name || n.id;
   head.title = n.id;
   menu.appendChild(head);
-  const entries = items(n, g, links).map((it) => {
+  const entries = list.map((it) => {
     const a = document.createElement('a');
     a.className = 'pt-nodemenu-item';
     a.setAttribute('role', 'menuitem');

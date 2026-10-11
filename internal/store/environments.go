@@ -27,10 +27,16 @@ type EnvironmentGraph struct {
 
 // EnvironmentGraph reads the mounted layers, read-only. A node id seen in
 // two layers keeps its first, as NodesOfKind does, and a node with no stamp
-// gets stamp.layer from its layer. An edge id seen twice is kept once.
+// gets stamp.layer from its layer. An edge id seen twice is kept once. An
+// alert layer's copy of an instance is no environment (IsAlertLayer).
 func (p *Portal) EnvironmentGraph() EnvironmentGraph {
-	layers := p.Layers()
-	g := EnvironmentGraph{Held: map[string]graph.Node{}}
+	var layers []*Layer
+	for _, l := range p.Layers() {
+		if !IsAlertLayer(l.Env) {
+			layers = append(layers, l)
+		}
+	}
+	g := EnvironmentGraph{}
 	env := map[string]bool{}
 	for _, l := range layers {
 		for _, n := range l.Env.Nodes {
@@ -72,16 +78,6 @@ func (p *Portal) EnvironmentGraph() EnvironmentGraph {
 	for _, id := range g.Ends {
 		want[id] = true
 	}
-	for _, l := range layers {
-		for _, n := range l.Env.Nodes {
-			if _, ok := g.Held[n.ID]; ok || !want[n.ID] {
-				continue
-			}
-			if n.Stamp == nil {
-				n.Stamp = &graph.Stamp{Layer: l.Env.Layer}
-			}
-			g.Held[n.ID] = n
-		}
-	}
+	g.Held = p.HeldNodes(want)
 	return g
 }

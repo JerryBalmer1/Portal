@@ -28,13 +28,13 @@ cmd/portal, cmd/graphnode binaries (graphnode LIFTED)
 web/                      the page (embedded): portal.js, client.js, one renderer per base Category
 ontology.yaml             module Portal, prefix ui:
 src/Portal/               PowerShell wrappers; Public/ one function per file, Private/ helpers
-tests/                    Pester + fixtures (FileSystem layer, the Agent runs layer, the agent ledger layer and its broken copy, the agent-environment layer and its tagged copy, Graph.Node's invalid envelope, the Tool.Git and Emitter.Agent cards)
+tests/                    Pester + fixtures (FileSystem layer, the Agent runs layer, the agent ledger layer and its broken copy, the agent-environment layer and its tagged copy, the hand-made agent-alerts layer, Graph.Node's invalid envelope, the Tool.Git and Emitter.Agent cards)
 docs/                     design.md (numbered), manual-check-list.md, screenshots/
 .build.ps1                Invoke-Build: Modules, Generate, Build, Test, Up, Dev, Feeds, Status, Down, Smoke, Pester, Screenshot
 ```
 
 Rules:
-- Read only from `../Graph.Node` and `../GraphRenderer` (and `../Graph`, `../Graph.Emitter.FileSystem` for skills and fixtures, and the Portal.* seeds `../Portal.Tools`, `../Portal.Skills`, `../Portal.Workflows`, `../Portal.Emitters`, `../Portal.Ontology`). Never edit, stage, build or run anything in them.
+- Read only from `../Graph.Node` and `../GraphRenderer` (and `../Graph`, `../Graph.Emitter.FileSystem` for skills and fixtures, and the Portal.* seeds `../Portal.Tools`, `../Portal.Skills`, `../Portal.Workflows`, `../Portal.Emitters`, `../Portal.Ontology`, and `../Portal.Agent` for the layers it emits: `agent/*/artifacts/` (ledger-layers, environment-layers, and alert-layers once the agent-alerts layer lands there)). Never edit, stage, build or run anything in them.
 - Display lives in State and Theme nodes only; the portal refuses display properties anywhere else (docs/design.md 5, 22).
 - Every exported PowerShell function has one file under `Public/` and is exercised by Pester.
 - README and ONTOLOGY.md are the two doors; each links the other on line 1. Skills `readme`, `ontology-doc` and `manual-check-list` keep them and docs/manual-check-list.md in step with the code.

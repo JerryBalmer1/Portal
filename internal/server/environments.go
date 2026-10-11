@@ -2,24 +2,21 @@ package server
 
 import (
 	"net/http"
-	"strings"
 	"time"
 
 	portal "github.com/JerryBalmer1/Portal"
 	"github.com/JerryBalmer1/Portal/internal/gen/api"
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 	"github.com/JerryBalmer1/Portal/internal/store"
-	"github.com/JerryBalmer1/Portal/internal/tenant"
 )
 
 // The environments graph (docs/design.md 46): the environment.* nodes of
 // the mounted layers as their layers emit them, every edge of a mounted
-// layer touching one, and the node one hop away. Portal serves its own
-// Kinds for the ends it owns, a Principal as listPrincipals has it and a
-// Run as listAgents has it (its layer and ledger count, which the page's
-// Runs and Ledger links need), and has-run between the two when the
-// principal holds the run; any other end as its layer emits it. The
-// envelope names no ontology: its nodes keep their layers' Kinds.
+// layer touching one, and the node one hop away, as resolver serves it: a
+// Run with its layer and ledger count, which the page's Runs and Ledger
+// links need, a Principal, and has-run between the two when the principal
+// holds the run. The envelope names no ontology: its nodes keep their
+// layers' Kinds.
 
 func (s *Server) GetEnvironmentGraph(w http.ResponseWriter, r *http.Request, name api.Tenant) {
 	if !s.tenantOK(w, name) {
@@ -63,41 +60,13 @@ func (s *Server) GetEnvironmentGraph(w http.ResponseWriter, r *http.Request, nam
 	writeJSON(w, http.StatusOK, env)
 }
 
-// environmentEnds resolves the graph's other ends: Portal's Run for an
-// agent run, Portal's Principal for a principal (dev-bootstrap made up
-// when principals.yaml lacks it, as the agents page does), else the node
-// as a mounted layer holds it. An end none of these has is absent. holder
-// is each Run's principal, as listAgents groups them.
+// environmentEnds resolves the graph's other ends, as an alert's subject
+// is resolved (resolver): an end Portal does not serve is absent. holder is
+// each Run's principal, as listAgents groups them.
 func (s *Server) environmentEnds(stamp string, g store.EnvironmentGraph) (out map[string]graph.Node, holder map[string]string) {
-	out = map[string]graph.Node{}
-	holder = map[string]string{}
 	if len(g.Ends) == 0 {
-		return out, holder
+		return map[string]graph.Node{}, map[string]string{}
 	}
-	runs := map[string]graph.Node{}
-	for by, list := range s.agentSet(stamp).runs {
-		for _, r := range list {
-			runs[r.Run.ID] = r.Run
-			holder[r.Run.ID] = by
-		}
-	}
-	principals := map[string]graph.Node{}
-	for _, n := range s.t.PrincipalsEnvelope(stamp).Nodes {
-		principals[n.ID] = n
-	}
-	devID := tenant.PrincipalPrefix + tenant.DevPrincipalName
-	if _, ok := principals[devID]; !ok {
-		principals[devID] = graph.Node{ID: devID, Kind: "Principal", Name: tenant.DevPrincipalName,
-			Properties: map[string]any{"type": "user", "role": tenant.RoleAdmin}}
-	}
-	for _, id := range g.Ends {
-		if n, ok := runs[id]; ok {
-			out[id] = n
-		} else if n, ok := principals[id]; ok && strings.HasPrefix(id, tenant.PrincipalPrefix) {
-			out[id] = n
-		} else if n, ok := g.Held[id]; ok {
-			out[id] = n
-		}
-	}
-	return out, holder
+	r := s.resolver(stamp)
+	return r.resolve(g.Ends), r.holder
 }

@@ -27,6 +27,8 @@ export const ROUTES = Object.freeze({
   getLedger: { method: 'GET', path: '/api/tenants/{tenant}/ledger/{source}' },
   getLedgerEntry: { method: 'GET', path: '/api/tenants/{tenant}/ledger/{source}/{seq}' },
   getEnvironmentGraph: { method: 'GET', path: '/api/tenants/{tenant}/environments/graph' },
+  listAlerts: { method: 'GET', path: '/api/tenants/{tenant}/alerts' },
+  getAlert: { method: 'GET', path: '/api/tenants/{tenant}/alerts/{fingerprint}' },
   listFeeds: { method: 'GET', path: '/api/tenants/{tenant}/feeds' },
   pushCard: { method: 'POST', path: '/api/tenants/{tenant}/feeds/{feed}/push' },
   listNodes: { method: 'GET', path: '/api/tenants/{tenant}/nodes' },
@@ -123,6 +125,8 @@ export function createClient(tenant, base = '') {
     getLedger: (source, { limit, before, run } = {}) => call('getLedger', { params: { source }, query: { limit, before, run } }),
     getLedgerEntry: (source, seq) => call('getLedgerEntry', { params: { source, seq } }),
     getEnvironmentGraph: () => call('getEnvironmentGraph'),
+    listAlerts: ({ limit, after, severity, rule, state, run, about } = {}) => call('listAlerts', { query: { limit, after, severity, rule, state, run, about } }),
+    getAlert: (fingerprint) => call('getAlert', { params: { fingerprint } }),
     listFeeds: () => call('listFeeds'),
     // pushCard(feed, manifest, files): manifest a Blob of manifest.yaml, files [{path, blob}]. Nothing on the page
     // pushes in 0.6.0; Portal.Agent and Publish-PortalCard do.

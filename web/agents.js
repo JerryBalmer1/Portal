@@ -9,8 +9,10 @@
 // page, and each decision linking to its node on that page
 // (/<tenant>/layers/<layer>#<id>). While a ledger layer is mounted, each run
 // also counts its ledger entries, linking to them on the agent chain's page,
-// /<tenant>/ledger/agent?run=<id> (docs/design.md 45). The banner's search
-// filters the rows. Nothing here writes.
+// /<tenant>/ledger/agent?run=<id> (docs/design.md 45), and while an alert
+// layer is mounted, the alerts raised in it, linking to them on the alerts
+// page, /<tenant>/compliance/alerts?run=<id> (docs/design.md 47). The
+// banner's search filters the rows. Nothing here writes.
 
 // mount draws the list into el. ctx: {client, toolbar, bus, navigate, agentHref}.
 export function mount(el, ctx) {
@@ -60,7 +62,7 @@ export function mount(el, ctx) {
   return h;
 }
 
-// open draws one agent's runs into el. ctx: {client, toolbar, bus, name, navigate, layerHref, ledgerHref}.
+// open draws one agent's runs into el. ctx: {client, toolbar, bus, name, navigate, layerHref, ledgerHref, alertHref}.
 export function open(el, ctx) {
   const wrap = document.createElement('div');
   wrap.className = 'pt-card pt-table-card';
@@ -99,7 +101,9 @@ export function open(el, ctx) {
     t.className = 'pt-table pt-runs';
     // The ledger column only while a ledger layer is mounted: the API counts then.
     const ledgered = runs.some((r) => r.properties.ledger !== undefined);
-    const cols = ['started', 'finished', 'steps', 'allow', 'deny', 'witness', 'exit', 'layer', ...(ledgered ? ['ledger'] : [])];
+    // The alerts column likewise, while an alert layer is mounted.
+    const alerted = runs.some((r) => r.properties.alerts !== undefined) && ctx.alertHref && ctx.alertHref(null);
+    const cols = ['started', 'finished', 'steps', 'allow', 'deny', 'witness', 'exit', 'layer', ...(ledgered ? ['ledger'] : []), ...(alerted ? ['alerts'] : [])];
     head(t, cols);
     const body = t.createTBody();
     const rows = [];
@@ -115,6 +119,12 @@ export function open(el, ctx) {
       if (ledgered) {
         const a = go(ctx, `${ctx.ledgerHref('agent')}?run=${encodeURIComponent(r.id)}`, String(p.ledger ?? 0));
         a.className = 'pt-ledger-count';
+        a.dataset.run = r.id;
+        row.insertCell().appendChild(a);
+      }
+      if (alerted) {
+        const a = go(ctx, ctx.alertHref(null, { run: r.id }), String(p.alerts ?? 0));
+        a.className = 'pt-alert-count';
         a.dataset.run = r.id;
         row.insertCell().appendChild(a);
       }

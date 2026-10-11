@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.11.0
+  version: 0.12.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -38,6 +38,8 @@ tags:
     description: Ledger chains and their verify (docs/design.md 45). Source agent is the agent's ledger, read from the mounted layer that holds LedgerEntry nodes under ledger:<seq> ids; source portal is the tenant's own push ledger, tenants/<tenant>/ledger.jsonl, whose lines carry seq and prev since 0.10.0. Read-only.
   - name: environments
     description: The environments graph (docs/design.md 46). Every node of an environment.* Kind in the mounted layers, as their layers emit them, with every edge of a mounted layer that touches one and the node at its other end. Read-only; Portal reads env, tags and group from the nodes and infers none.
+  - name: alerts
+    description: Alerts (docs/design.md 47), read from every mounted layer holding nodes of Kind alert under the plain id alert/<fingerprint> (Portal.Agent's agent-alerts layer), each with an about edge to its subject and a raised-in edge to its Run. A fingerprint in two layers is served from the later stamp. Read-only; Portal never writes an alert.
   - name: feeds
     description: Where the tenant publishes Graph.Node manifest cards (an OCI registry or a NuGet v3 feed), what each holds, and the push. Every push is one line of tenants/<tenant>/ledger.jsonl.
 paths:
@@ -594,6 +596,60 @@ paths:
       responses:
         "200":
           description: The environment nodes, their one-hop neighbours and the edges between them (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/alerts:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listAlerts
+      tags: [alerts]
+      summary: >-
+        The tenant's alerts, one page, as an envelope (module Portal, no ontology of its own: subjects keep their layers'
+        Kinds) rooted at the node ui:alerts (Kind Alerts), joined to each Alert on the page by has-alert. The root carries
+        count (every alert), alerts (those the filters match), open (the open alerts by severity: critical, warning and
+        info always, and any other severity a layer gives; an alert with no state is open), rules and states (every value
+        the alerts carry, for the page's chips), the filters given, and next (the after of the next page) when more match.
+        Alerts are sorted critical first, then warning, then info, then any other severity, then newest stamp first, then
+        by fingerprint. Each Alert keeps its layer's id, alert/<fingerprint>, with fingerprint, severity, rule, summary,
+        stamp, state, open, layer (the mounted layer it was read from), about (its about edge's end) and run (its raised-in
+        edge's end). Its subject and its Run are served one hop away and joined by about and raised-in, as Portal resolves
+        them: a Run (agent:run/<stamp>) as listAgents serves it, a Decision (a PolicyDecision of a runs layer) as
+        listAgentRuns serves it, an agent ledger entry (ledger:<seq>) as getLedgerEntry serves it, a Principal as
+        listPrincipals serves it, any other node as the first mounted layer holding it emits it; an alert layer's copy of a
+        node is never served. An edge whose end Portal does not serve is left out; about and run still name it. Empty, not
+        404, when no alert is mounted.
+      parameters:
+        - { name: limit, in: query, required: false, description: "Alerts per page, 1 to 1000; 100 when absent.", schema: { type: integer } }
+        - { name: after, in: query, required: false, description: "Only the alerts after this fingerprint in the order: the next of the page before.", schema: { type: string } }
+        - { name: severity, in: query, required: false, description: "Only alerts of this severity (critical, warning, info).", schema: { type: string } }
+        - { name: rule, in: query, required: false, description: "Only alerts this rule raised.", schema: { type: string } }
+        - { name: state, in: query, required: false, description: "Only alerts in this state; open matches an alert with no state too.", schema: { type: string } }
+        - { name: run, in: query, required: false, description: "Only alerts raised in this Run (agent:run/<stamp>).", schema: { type: string } }
+        - { name: about, in: query, required: false, description: "Only alerts about this node id.", schema: { type: string } }
+      responses:
+        "200":
+          description: The alerts list and one page of its alerts, with their subjects and Runs (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/alerts/{fingerprint}:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+      - { name: fingerprint, in: path, required: true, description: "The alert's fingerprint, its id after alert/.", schema: { type: string } }
+    get:
+      operationId: getAlert
+      tags: [alerts]
+      summary: One alert as an envelope (module Portal, no ontology of its own) rooted at it, as listAlerts serves it, with its subject (about) and its Run (raised-in) when Portal serves them. 404 for a fingerprint no mounted layer holds.
+      responses:
+        "200":
+          description: The alert, its subject and its Run (module Portal).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }

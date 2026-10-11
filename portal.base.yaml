@@ -25,7 +25,12 @@
 # (every environment.* node of the mounted layers and what is one edge away,
 # grouped by the env, group and tags they carry; the selected node after #,
 # /<tenant>/environments/graph#<id>; docs/design.md 46; the environments
-# service's page graph is this view and no other). A page's children are the
+# service's page graph is this view and no other), alerts the alerts of the
+# mounted alert layers (Portal.Agent's agent-alerts layer), critical first and
+# newest first, with severity, rule and state chips, each at
+# /<tenant>/compliance/alerts/<fingerprint>, and an open count in the banner
+# (docs/design.md 47; the compliance service's page alerts is this view and no
+# other). A page's children are the
 # tabs of its item page, /<tenant>/<service>/<page>/<id>.
 #
 # feeds are where cards (Graph.Node manifest cards: manifest.yaml and the
@@ -127,6 +132,7 @@ menu:
     icon: compliance
     path: compliance
     children:
+      - { id: alerts, label: Alerts, path: compliance/alerts, view: alerts }
       - { id: rules, label: Rules, path: compliance/rules, kind: compliance.rule }
       - { id: findings, label: Findings, path: compliance/findings, kind: compliance.finding }
       - { id: reports, label: Reports, path: compliance/reports, kind: compliance.report }

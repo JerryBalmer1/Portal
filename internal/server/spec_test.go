@@ -311,6 +311,8 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 	runsJSON, _ := json.Marshal(runs)
 	ledger, _ := filepath.Abs(ledgerDir)
 	ledgerJSON, _ := json.Marshal(ledger)
+	alerts, _ := filepath.Abs(alertsDir)
+	alertsJSON, _ := json.Marshal(alerts)
 	envBody := `{"name":"inline","envelope":{"schema":"graph/1","module":"M","layer":"2026-10-09T00:00:00Z","nodes":[{"id":"a","kind":"K"}],"edges":[]}}`
 	ref := url.PathEscape("ui:ref:filesystem/fs:src")
 
@@ -414,6 +416,18 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 		{"GET", "/other/environments/graph", "", 404},
 		{"GET", "/api/tenants/default/environments/graph", "", 200},
 		{"GET", "/api/tenants/other/environments/graph", "", 404},
+		{"GET", "/default/compliance/alerts", "", 200},
+		{"GET", "/default/compliance/alerts/" + alertDecision, "", 200},
+		{"GET", "/api/tenants/default/alerts", "", 200},
+		{"POST", "/api/tenants/default/layers", `{"name":"agent-alerts","path":` + string(alertsJSON) + `}`, 201},
+		{"GET", "/api/tenants/default/alerts?limit=2&after=" + alertLedger52 + "&severity=critical&rule=policy-deny&state=open&run=" + url.QueryEscape(fixtureRun) + "&about=x", "", 200},
+		{"GET", "/api/tenants/default/alerts?limit=0", "", 200},
+		{"GET", "/api/tenants/default/alerts?limit=1001", "", 400},
+		{"GET", "/api/tenants/default/alerts?after=nope", "", 400},
+		{"GET", "/api/tenants/other/alerts", "", 404},
+		{"GET", "/api/tenants/default/alerts/" + alertDecision, "", 200},
+		{"GET", "/api/tenants/default/alerts/nope", "", 404},
+		{"GET", "/api/tenants/other/alerts/" + alertDecision, "", 404},
 		{"GET", "/static/portal.js", "", 200},
 		{"GET", "/static/base.css", "", 200},
 		{"GET", "/static/cytoscape.min.js", "", 200},

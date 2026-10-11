@@ -195,8 +195,12 @@ func (p *Portal) AgentLedger() (*Chain, bool) {
 }
 
 // holdsLedger is whether a layer holds the agent's ledger: a LedgerEntry
-// node under a ledger: id.
+// node under a ledger: id, in a layer that is not an alert layer, whose
+// entries are copies of the ones its alerts are about (docs/design.md 47).
 func holdsLedger(env *graph.Envelope) bool {
+	if IsAlertLayer(env) {
+		return false
+	}
 	for _, n := range env.Nodes {
 		if n.Kind == LedgerKind && strings.HasPrefix(n.ID, AgentLedgerPrefix) {
 			return true

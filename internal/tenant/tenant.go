@@ -367,7 +367,9 @@ func clone(v any) any {
 // agent pages' routes), no page of the ledger service with the id of a
 // ledger source (whose entries' route it would take), the environments
 // service's page graph drawing the environments graph and nothing else
-// (every Show graph links there), and a page that knows what it draws.
+// (every Show graph links there), the compliance service's page alerts
+// drawing the alerts and nothing else (the banner's count and every alert's
+// item page are there), and a page that knows what it draws.
 func checkMerged(c map[string]any) []string {
 	var out []string
 	product, _ := c["product"].(map[string]any)
@@ -406,6 +408,11 @@ func checkMerged(c map[string]any) []string {
 			if depth == 1 && parent == EnvironmentsService && id == EnvironmentsGraphPage {
 				if view, _ := item["view"].(string); view != EnvironmentsGraphView {
 					out = append(out, fmt.Sprintf("%s/view: %s/%s is the environments graph, where every Show graph lands; its view is %s, not %q", here, EnvironmentsService, id, EnvironmentsGraphView, view))
+				}
+			}
+			if depth == 1 && parent == ComplianceService && id == AlertsPage {
+				if view, _ := item["view"].(string); view != AlertsView {
+					out = append(out, fmt.Sprintf("%s/view: %s/%s is the alerts page, where the banner's count and every alert's page are; its view is %s, not %q", here, ComplianceService, id, AlertsView, view))
 				}
 			}
 			if depth > 0 {
