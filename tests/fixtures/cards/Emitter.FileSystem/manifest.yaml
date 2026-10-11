@@ -1,0 +1,33 @@
+# Graph.Node 0.4.0 card (schemas/manifest.schema.json). Version is the psd1 ModuleVersion; one verb per
+# FunctionsToExport entry, effect from the function body (the strongest of read, write, destroy), plus `discover`,
+# the verb name Skill.Discover looks for. The schema has no verb-to-cmdlet field, so its description names Invoke-FileSystemDiscover.
+name: Emitter.FileSystem
+version: 0.2.0
+type: emitter
+description: Graph.Node emitter for a directory tree, Directory and File nodes joined by contains edges, with a read-only discover verb.
+# module is the name its envelopes carry; repo is where it is built from today (copied from Graph.Emitter.FileSystem
+# on 2026-10-11). Facets and kinds as Graph.Node v0.4.0 tests/fixtures/manifest/emitters/, but facet filesystem (the fixture has tree).
+module: Graph.Emitter.FileSystem
+repo: Portal.Emitters
+url: https://github.com/JerryBalmer1/Portal.Emitters
+emits:
+  - { facet: filesystem, kinds: [Directory, File] }
+tags: [graph, filesystem, emitter, ontology, discover]
+needs:
+  - { name: PowerShell, version-range: ">=7.4", os: any }
+  # Imported at module load from the sibling checkout (..\Graph.Node, or ..\Graph.Node beside Portal.Emitters);
+  # Export-FileSystemGraph and Invoke-FileSystemDiscover also need its graphnode binary for Test-Graph -Strict.
+  - { name: Graph.Node, version-range: ">=0.2.1" }
+verbs:
+  - { name: Get-FileSystemGraph, description: "Walks a directory tree and returns one envelope of Directory and File nodes; writes nothing.", effect: read }
+  # Writes <layer>.graph.json and copies ontology.yaml into -LayersPath.
+  - { name: Export-FileSystemGraph, description: "Writes an envelope to a layers folder with ontology.yaml beside it and checks it with Test-Graph -Strict.", effect: write }
+  # Remove-Item -Recurse -Force on the item the id names.
+  - { name: Remove-FileSystemItem, description: "The declared delete action: removes the file or directory an fs: id names, never the root.", effect: destroy }
+  # Reads the target only. Its one output, the envelope (and ontology.yaml), goes to -OutputPath, which it refuses
+  # when it is the target or under it.
+  - { name: Invoke-FileSystemDiscover, description: "The discover verb: walks -Path to -Depth and writes one envelope to -OutputPath, never under -Path.", effect: read }
+  - { name: discover, description: "Skill.Discover's verb. Runs Invoke-FileSystemDiscover: walks -Path to -Depth and writes one envelope to -OutputPath, never under -Path.", effect: read }
+pins:
+  # .claude/skills/graph-node in this folder is a read-only copy at version 0.2.1.
+  Graph.Node: 0.2.1

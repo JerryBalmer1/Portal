@@ -7,10 +7,13 @@ import (
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 )
 
-// Emitters (docs/design.md 44). An emitter is a card of type emitter in one
-// of the tenant's feeds, served under the card's own id; there is no
-// emitter id but ui:emitter:<name>, for an emitter a mounted layer names
-// that no feed holds a card of.
+// Emitters (docs/design.md 44, 49). An emitter is a card of type emitter in
+// one of the tenant's feeds, named by the card and served under the card's
+// own id; a mounted layer belongs to it when its Graph.Node source block's
+// emitter is the card's name. Nothing maps one name onto another. There is
+// no emitter id but ui:emitter:<name>, for a name a layer's source block
+// gives that no feed holds a card of, and ui:module:<module>, for the module
+// of layers with no source block.
 const (
 	// EmitterType is the card type that makes a card an emitter.
 	EmitterType = "emitter"
@@ -18,25 +21,16 @@ const (
 	// under /<tenant>/emitters/<page>, beside the emitter pages
 	// /<tenant>/emitters/<name>.
 	EmittersService = "emitters"
-	// EmitterPrefix + name is the id of an emitter no feed holds a card of.
+	// EmitterPrefix + name is the id of an emitter a layer's source block
+	// names that no feed holds a card of.
 	EmitterPrefix = "ui:emitter:"
+	// ModulePrefix + module is the id of the module of unstamped layers,
+	// those with no source block, which are never matched to a card.
+	ModulePrefix = "ui:module:"
 )
 
-// EmitterName is the emitter a card of type emitter is, named as its layers
-// name it: by the module of their ontology. Portal.Emitters names the card
-// of the module Graph.Emitter.<X> Emitter.<X>, so that card is the emitter
-// Graph.Emitter.<X>; a card named any other way is the emitter of its own
-// name.
-func EmitterName(card string) string {
-	if strings.HasPrefix(card, "Emitter.") {
-		return "Graph." + card
-	}
-	return card
-}
-
 // emitterPage is the page of the emitters service a card named card would
-// shadow at /<tenant>/emitters/<name>, by its name or its emitter name, or
-// "" when it shadows none.
+// shadow at /<tenant>/emitters/<name>, or "" when it shadows none.
 func emitterPage(menu *graph.Envelope, card string) string {
 	svc := RailID(EmittersService)
 	idx := menu.NodeIndex()
@@ -50,7 +44,7 @@ func emitterPage(menu *graph.Envelope, card string) string {
 		}
 		path, _ := menu.Nodes[i].Properties["path"].(string)
 		page := strings.TrimPrefix(path, EmittersService+"/")
-		if page == card || page == EmitterName(card) {
+		if page == card {
 			return page
 		}
 	}

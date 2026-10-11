@@ -1,5 +1,5 @@
 module: Portal
-version: 0.12.1
+version: 0.13.0
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -119,7 +119,7 @@ kinds:
       - { name: order, type: integer, description: "Position in the config's feeds list." }
       - { name: tokenEnv, type: string, description: "The environment variable holding the feed's API key; never the key." }
   Card:
-    description: A Graph.Node manifest card as one feed holds it, from the tenant's ledger (tenants/<tenant>/ledger.jsonl, one line per push). Its name is the card's name. Joined from its Feed by has-card in GET .../feeds. A card of type emitter is an emitter (docs/design.md 44), served under the same id by GET .../emitters with emitter and layers, joined to the layers it produced by has-layer.
+    description: A Graph.Node manifest card as one feed holds it, from the tenant's ledger (tenants/<tenant>/ledger.jsonl, one line per push). Its name is the card's name. Joined from its Feed by has-card in GET .../feeds. A card of type emitter is an emitter (docs/design.md 44, 49), served under the same id by GET .../emitters with emitter, status, layers and layerVersions, joined by has-layer to the layers whose source block names it.
     idRule: "ui:card:<feed id>/<card name>@<version>"
     properties:
       - { name: feed, type: string, required: true, description: "The feed id." }
@@ -129,19 +129,26 @@ kinds:
       - { name: digest, type: string, description: "The feed's own name for what it stored: the OCI manifest digest, or the .nupkg's sha256." }
       - { name: pushed, type: string, required: true, description: "When it was pushed, UTC (2026-10-11T09:00:00.000Z)." }
       - { name: pushedBy, type: string, required: true, description: "The name of the principal who pushed it." }
-      - { name: emitter, type: string, description: "GET .../emitters only: the emitter the card is, named as its layers' ontology module names it (Graph.Emitter.<X> for the card Emitter.<X>)." }
-      - { name: layers, type: integer, description: "GET .../emitters only: how many mounted layers the emitter produced." }
+      - { name: module, type: string, description: "The card's module (Graph.Node 0.4.0, required on an emitter card): the module its envelopes name. From the ledger line, written from 0.13.0." }
+      - { name: repo, type: string, description: "The card's source repository, by name. From the ledger line, written from 0.13.0." }
+      - { name: url, type: string, description: "Where the card's repository lives, http(s), when the card says. From the ledger line, written from 0.13.0." }
+      - { name: emits, type: array, description: "The card's emits, one {facet, kinds} per facet: the node Kinds a layer of that facet holds. From the ledger line, written from 0.13.0." }
+      - { name: emitter, type: string, description: "GET .../emitters only: the emitter the card is, by the card's own name, as a layer's source.emitter names it (docs/design.md 49)." }
+      - { name: status, type: string, description: "GET .../emitters only: ok (every layer naming it carries the card's version in its source block), version-mismatch (one carries another) or no-layers (none names it)." }
+      - { name: layers, type: integer, description: "GET .../emitters only: how many mounted layers name the emitter in their source block." }
+      - { name: layerVersions, type: array, description: "GET .../emitters only: the source.version of those layers, distinct, sorted; absent with no layers." }
   Emitter:
-    description: An emitter a mounted layer's ontology names that no feed holds a card of (docs/design.md 44), served by GET /api/tenants/{tenant}/emitters flagged unknown. An emitter with a card is that Card; this Kind exists only because a Card is a push to a feed (feed, version, hash, pushed), which an emitter known by name alone has none of. Never on the screen graph.
-    idRule: "ui:emitter:<the module the layer's ontology names>"
+    description: A roll-call row of GET /api/tenants/{tenant}/emitters that is no card (docs/design.md 44, 49). Either a name mounted layers' source blocks give (source.emitter) that no feed holds a card of, status no-card; or the module of mounted layers with no source block, status unstamped, never matched to a card. An emitter with a card is that Card; this Kind exists only because a Card is a push to a feed (feed, version, hash, pushed), which a name or a module alone has none of. Never on the screen graph.
+    idRule: "ui:emitter:<source.emitter> for no-card, ui:module:<envelope module> for unstamped"
     properties:
-      - { name: unknown, type: boolean, required: true, description: "Always true: no feed of the tenant holds a card of this emitter." }
-      - { name: layers, type: integer, required: true, description: "How many mounted layers name it." }
+      - { name: status, type: string, required: true, description: "no-card (layers name it in their source block; no feed holds its card) or unstamped (the module of layers with no source block)." }
+      - { name: layers, type: integer, required: true, description: "How many mounted layers it stands for." }
+      - { name: layerVersions, type: array, description: "no-card only: the source.version of its layers, distinct, sorted." }
   Layer:
     description: A mounted data layer, as GET /api/tenants/{tenant}/emitters serves it (docs/design.md 44), joined to the emitter that produced it by produced-by. Its page is /<tenant>/layers/<name>. Never on the screen graph; a path mount's record there is its Mount.
     idRule: "ui:layer:<layer name>"
     properties:
-      - { name: emitter, type: string, required: true, description: "The emitter that produced it: the module its ontology names, or the envelope's module when the portal could not read its ontology." }
+      - { name: emitter, type: string, required: true, description: "The emitter that produced it: its source block's emitter, a card's name (docs/design.md 49); the envelope's module when it has no source block (unstamped)." }
       - { name: module, type: string, required: true, description: "The envelope's module." }
       - { name: version, type: string, description: "The envelope's version." }
       - { name: stamp, type: string, required: true, description: "The envelope's layer stamp." }
@@ -149,6 +156,7 @@ kinds:
       - { name: edges, type: integer, required: true, description: "Edges in the layer." }
       - { name: mountedBy, type: string, description: "Id of the principal whose token mounted it; absent when none did (a token from before 0.5.0, a mount at start)." }
       - { name: path, type: string, description: "The file mounted, when mounted from disk." }
+      - { name: source, type: object, description: "The envelope's Graph.Node source block (design 20), {emitter, version, target, stamp}, as it is in the layer; absent when it has none (unstamped)." }
   Ledger:
     description: One ledger chain, as GET /api/tenants/{tenant}/ledger serves it (docs/design.md 45), with its verify. Source agent is the agent's ledger, read from the mounted layer holding LedgerEntry nodes under ledger:<seq> ids; source portal is Portal's own push ledger, tenants/<tenant>/ledger.jsonl. Joined to its entries by has-entry. Never on the screen graph.
     idRule: "ui:ledger:<source>, agent or portal"
@@ -250,11 +258,11 @@ edgeKinds:
     from: [Run]
     to: [Decision]
   produced-by:
-    description: A mounted Layer to the emitter that produced it, a Card of type emitter or an unknown Emitter (docs/design.md 44).
+    description: A mounted Layer to the emitter that produced it (docs/design.md 44, 49) - the Card its source block names, or an Emitter (a no-card name, or the module of an unstamped layer).
     from: [Layer]
     to: [Card, Emitter]
   has-layer:
-    description: An emitter, a Card of type emitter or an unknown Emitter, to each mounted Layer it produced; produced-by reversed.
+    description: An emitter, a Card of type emitter or an Emitter (no-card or unstamped), to each mounted Layer it produced; produced-by reversed.
     from: [Card, Emitter]
     to: [Layer]
   has-entry:

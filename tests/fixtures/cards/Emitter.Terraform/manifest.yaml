@@ -1,0 +1,68 @@
+# Graph.Node 0.4.0 card (schemas/manifest.schema.json), started from Graph.Node's
+# docs/examples/manifest.Emitter.Terraform.yaml (v0.3.0) and corrected against this folder on 2026-10-11. Sources: name
+# and version from src/Graph.Emitter.Terraform/Graph.Emitter.Terraform.psd1 (ModuleVersion, Description,
+# PrivateData.PSData.Tags, PowerShellVersion, FunctionsToExport); one verb per exported function, effect from what the
+# function's code does (the strongest of read, write, destroy). Removing only a temp file or staging folder the call
+# itself just created is not counted as destroy.
+name: Emitter.Terraform
+version: 0.17.1
+type: emitter
+description: Parse Terraform configurations into an HCL AST and build graphs of module calls and provider schemas.
+# module is the name its envelopes carry; repo is where it is built from today (copied from Graph.Emitter.Terraform
+# on 2026-10-11). Facets and kinds as Graph.Node v0.4.0 tests/fixtures/manifest/emitters/.
+module: Graph.Emitter.Terraform
+repo: Portal.Emitters
+url: https://github.com/JerryBalmer1/Portal.Emitters
+emits:
+  - { facet: schema, kinds: [Provider, Resource, DataSource, Function, Block, Attribute] }
+  - { facet: resources, kinds: [Resource, DataSource] }
+  - { facet: variables, kinds: [Variable, Local, Output] }
+  - { facet: modules, kinds: [Module] }
+tags: [Terraform, HCL, Graph, AST, PowerShell, PowerShell74, Windows]
+needs:
+  - { name: PowerShell, version-range: ">=7.4", os: any }
+  # Not in the README Requirements: Get-TerraformProviderSchema stops with TerraformNotOnPath without terraform on PATH.
+  # No minimum version is stated anywhere.
+  - { name: terraform, os: any }
+  # The HCL parser (lib/TerraformGraph.dll, shipped) is Windows x64 only: off Windows, Get-TerraformAST and
+  # Get-TerraformModuleGraph throw ParserUnavailable and every other verb works. A card has no field for that yet.
+verbs:
+  - { name: Get-TerraformAST, description: Parses Terraform .tf files into an HCL abstract syntax tree., effect: read }
+  - { name: ConvertTo-TerraformJson, description: Converts objects to indented JSON using System.Text.Json., effect: read }
+  - { name: ConvertFrom-TerraformJson, description: Converts JSON to PowerShell objects using System.Text.Json., effect: read }
+  # -Provider mode creates the working directory, writes main.tf and runs terraform init there; -SaveToCache writes the
+  # schema cache; -Force deletes .terraform.lock.hcl; -Cleanup recursively deletes -WorkingDirectory, which may be a
+  # directory the caller passed, not one it created. -Path mode only reads.
+  - { name: Get-TerraformProviderSchema, description: Runs terraform providers schema -json and returns the result., effect: destroy }
+  - { name: Get-TerraformModuleGraph, description: Builds a graph of module calls for a Terraform root module., effect: read }
+  - { name: ConvertTo-TerraformSchemaGraph, description: Converts a provider schema into a graph of canonical schema nodes., effect: read }
+  - { name: ConvertTo-TerraformVariableGraph, description: "Builds a graph of variables, locals and outputs across a module tree.", effect: read }
+  - { name: Get-TerraformVariableTrace, description: "Follows a variable, local or output through a variable graph.", effect: read }
+  # -AutoSchema and -Provider read the schema cache only; never download, never run terraform.
+  - { name: ConvertTo-TerraformResourceGraph, description: Builds an inventory of resources and data sources and joins it to provider schemas., effect: read }
+  # Copies skill files (overwrites differing ones with -Force) and creates or appends AGENTS.md. Deletes nothing.
+  - { name: Install-TerraformGraphSkill, description: Copies the Graph.Emitter.Terraform agent skill into a repository for one or more agent tools., effect: write }
+  - { name: Test-TerraformGraphSkill, description: Reports which agent tools a repository uses and whether the Graph.Emitter.Terraform skill is installed for them., effect: read }
+  - { name: Update-TerraformRegistryCache, description: Downloads the list of Terraform providers and their versions into the registry cache., effect: write }
+  - { name: Get-TerraformRegistryProvider, description: Lists Terraform providers and their versions from the registry cache., effect: read }
+  - { name: Get-TerraformSchemaPack, description: Downloads provider schema packs into the local schema cache., effect: write }
+  - { name: Get-TerraformSchemaCache, description: Lists the provider schemas in the local schema cache., effect: read }
+  # Writes the docs cache, <version>.partial.json checkpoints and, with -BundlePath, a harvest log. Deletes the
+  # checkpoint after a successful harvest and, with -Force (which -BundlePath passes unless -Resume), one left by an
+  # earlier run before it starts.
+  - { name: Update-TerraformProviderDocCache, description: "Harvests provider documentation from the public registry into the docs cache, for named providers or a whole bundle.", effect: destroy }
+  - { name: Get-TerraformProviderDoc, description: "Gets provider documentation pages from the docs cache, by provider, Id, type or pipeline node.", effect: read }
+  - { name: Get-TerraformDocPack, description: Downloads provider docs packs into the local docs cache., effect: write }
+  - { name: Get-TerraformDocCache, description: Lists the provider docs in the local docs cache., effect: read }
+  - { name: New-TerraformClassifier, description: "Writes a provider version's classifier: every resource and data source type with its subcategory and drawer.", effect: write }
+  - { name: Get-TerraformClassifier, description: "Gets provider classifiers: each resource and data source type with its subcategory and drawer.", effect: read }
+  - { name: Get-TerraformClassifierFinding, description: "Gets the types a classifier could not place in a drawer, and why.", effect: read }
+  - { name: Get-TerraformGraphBundle, description: "Gets the bundle manifest: the provider set the bundled data covers and what was harvested for each provider.", effect: read }
+  - { name: New-TerraformGraphBundle, description: "Writes a bundle manifest for a provider set, resolved against the registry cache.", effect: write }
+  # Only reads (-Online does registry GETs). The Remove-Item text in its InspectAction is for the user to run; it never runs it.
+  - { name: Test-TerraformGraphBundle, description: "Checks the bundle manifest and the bundled data against their sources: Fresh, Stale or Missing per item.", effect: read }
+  # -OutputPath writes the survey as JSON.
+  - { name: Get-TerraformSubcategorySurvey, description: "Counts the doc subcategory labels each provider publishes: one row per provider and label.", effect: write }
+pins:
+  # .claude/skills/graph-node is a read-only copy at version 0.2.1; the module itself does not import GraphNode.
+  Graph.Node: 0.2.1

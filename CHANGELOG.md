@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.13.0 — 2026-10-11
+
+- **Emitters match by source block, never by name** (docs/design.md 49).
+  - An emitter is its card name. A layer belongs to it when its Graph.Node source block's `emitter` is that name. `tenant.EmitterName` (`Emitter.<X>` → `Graph.Emitter.<X>`) is gone.
+  - A layer with no source block is listed under its envelope's `module` as `unstamped`, `ui:module:<module>`. It is never matched to a card, even one whose `module` is that name.
+- **Roll call.** `GET .../emitters` has one row per card or `source.emitter` name, each with a `status`:
+  - `ok`, `version-mismatch` and `no-layers` on a Card, with `layerVersions` so both versions show.
+  - `no-card` on an Emitter, `ui:emitter:<name>`.
+  - `unstamped` on an Emitter, `ui:module:<module>`.
+
+  Emitter's `unknown` is replaced by `status`. A Layer node carries its `source` block.
+- **Emitters/Catalogue** shows a status badge per row, the card's version beside the layers' (red on a mismatch), facets, the card link and the layer count. Status and facet chips keep their filter in the URL (`?status=`, `?facet=`).
+- **The emitter's page is its source, built from the card.** It shows module, version, repo, url ("Open in source"), the card link and an emits table (facet, kinds). Its layers table gives each layer's source version, target and stamp, with a mismatched row marked red. The layer page reads `produced by <emitter> <version> (card <v>) <status>`.
+- **Lift at Graph.Node v0.4.0.** `internal/graphnode`, `cmd/graphnode`, `.claude/skills/graph-node` (0.4.0) and `tests/fixtures/invalid.graph.json` are recopied from v0.4.0, so 0.4.0 cards push. An emitter card without `module`, `repo` and `emits` is now 422. Pester's pin and CLAUDE.md say v0.4.0.
+- **Ledger.** A push writes the card's `module`, `repo`, `url` and `emits` on its line, and the Card node serves them. `LedgerEntry` in the spec gains the four optional properties.
+- **Fixtures.** `tests/fixtures/cards/` holds Portal.Emitters v0.2.0's nine emitter cards, byte for byte. `Emitter.Agent` moves from 0.1.3 to 0.1.4. No layer on disk carries a source block yet, so the tests stamp copies of the real layers as each emitter's code would.
+- **Go** 106 to 107:
+  - `TestEmitterOfALayerIsItsFeedCard` and `TestUnmountedEmitterIs404` are replaced by `TestEmitterCardsOfGraphNode040Push`, `TestEmittersMatchBySourceBlock` (every status, the unstamped FileSystem layer never joining its card) and `TestEmitterNamesAreNeverMapped`.
+  - `TestEmitterCardNamedLikeAPageStopsTheBoot` is kept.
+- **Pester** 116 to 118. The Emitters block (tag `Emitters`) has four Its: the roll call, the Catalogue with chips, the emitter's source page and the produced-by line.
+
 ## 0.12.1 — 2026-10-11
 
 - **New prefixes only, no mapping.** Alerts and environments read the `env:` and `alert:` prefixes only (docs/design.md 48).

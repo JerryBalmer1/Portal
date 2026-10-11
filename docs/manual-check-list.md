@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.12.1 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 (Go 106 tests, Smoke passed with ratio 0.844, Pester 116 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); items 1.21 and 1.22 run as written from their own `pwsh -NoProfile -File`, their Expect the output seen; 2.15's list, filtered list and item page seen by --dump-dom over the real alert layer on a throwaway demo-mode tenant, its menu as Pester's orphan alert checks it; 2.14 checked by Pester's Environments graph block in headless Chrome (counts, hulls, chips, selection, menus); nobody has clicked through 2.14 or 2.15 by hand. Other items were last verified as their own entries say, for 0.12.0 and earlier.
+Verified for: 0.13.0 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 (Go 107 tests, Smoke passed with ratio 0.844, Pester 118 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); item 1.19 run as written from its own `pwsh -NoProfile -File`, its Expect the output seen; 2.12's catalogue, filtered list, emitter page and two layer pages seen by --dump-dom from its own setup (its colours not seen by eye), and checked by Pester's Emitters block in headless Chrome. Every other item as verified for 0.12.1: item 0.2 (Go 106 tests, Smoke passed with ratio 0.844, Pester 116 passed, `Build succeeded. 6 tasks, 0 errors, 0 warnings`); items 1.21 and 1.22 run as written from their own `pwsh -NoProfile -File`, their Expect the output seen; 2.15's list, filtered list and item page seen by --dump-dom over the real alert layer on a throwaway demo-mode tenant, its menu as Pester's orphan alert checks it; 2.14 checked by Pester's Environments graph block in headless Chrome (counts, hulls, chips, selection, menus); nobody has clicked through 2.14 or 2.15 by hand. Other items were last verified as their own entries say, for 0.12.0 and earlier.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (103 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.844 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 115, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 114, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
+Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (107 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.844 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 118, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 117, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -502,7 +502,7 @@ finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $d
 ```
 Expect: `at start: dev-bootstrap` (a `-Mount` flag names no principal, and this tenant's principals.yaml lacks dev-bootstrap, so it is served with no `created`); `mounted by: ui:principal:check`; `after the mount: check`, because both layers hold the same Run id and the later mount's copy is the one served; `run: agent:run/2026-10-09T02:50:43.7976027Z layer agent-runs steps 3 allow 4 deny 1 witness 0`; `decisions: step-1/pre allow; step-1/post allow; step-2/pre allow; step-2/post allow; step-3/pre deny`; `no agent: 404`; `pages: 200 200 404`; `Mount node: ui:principal:check` (docs/design.md 43).
 
-### 1.19 Emitters: a layer is produced by its emitter's feed card, or by an unknown emitter; 404 for a name that is none
+### 1.19 Emitters match by source block: ok, version-mismatch, no-card, unstamped; the card on the emitter; 404 for a module
 ```powershell
 Import-Module .\src\Portal\Portal.psd1 -Force
 $t = Join-Path $env:TEMP 'portal-check-1.19-tenants'
@@ -510,25 +510,45 @@ Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
 $null = New-Item -ItemType Directory -Force "$t\default"
 Set-Content "$t\default\portal.yaml" 'mode: demo'
 $admin = New-PortalToken -Name check -Bootstrap -Tenants $t
-Set-Content "$t\default\ledger.jsonl" ('{"at":"2026-10-11T00:00:00.000Z","principal":"ui:principal:check","name":"check","role":"admin","feed":"cards-oci","kind":"oci","card":"Emitter.Agent","version":"0.1.3","type":"emitter","hash":"sha256:' + ('ab' * 32) + '","digest":null,"files":1,"result":"pushed","message":"Emitter.Agent 0.1.3 to cards-oci"}')
+# Two pushes as 0.13.0 writes them: the card's module, repo, url and emits on the line.
+$line = '{"at":"2026-10-11T00:00:0{0}.000Z","principal":"ui:principal:check","name":"check","role":"admin","feed":"cards-oci","kind":"oci","card":"{1}","version":"{2}","type":"emitter","hash":"sha256:{3}","digest":null,"files":1,"result":"pushed","message":"{1} {2} to cards-oci","module":"{4}","repo":"{5}","url":"https://github.com/JerryBalmer1/{5}","emits":[{6}]}'
+Set-Content "$t\default\ledger.jsonl" @(
+    $line.Replace('{0}', '0').Replace('{1}', 'Emitter.Agent').Replace('{2}', '0.1.4').Replace('{3}', 'ab' * 32).Replace('{4}', 'Graph.Emitter.Agent').Replace('{5}', 'Portal.Emitters').Replace('{6}', '{"facet":"runs","kinds":["Run","Step","Action","PolicyDecision"]}')
+    $line.Replace('{0}', '1').Replace('{1}', 'Emitter.Environment').Replace('{2}', '0.3.0').Replace('{3}', 'cd' * 32).Replace('{4}', 'Claude.Agent.Orchestrator').Replace('{5}', 'Portal.Agent').Replace('{6}', '{"facet":"alerts","kinds":["alert"]}'))
+# Copies of real fixture layers with a source block inserted (no layer on disk carries one yet).
+function Copy-Stamped([string] $Dir, [string] $Emitter, [string] $Version) {
+    $to = Join-Path $t "stamped\$Dir"
+    $null = New-Item -ItemType Directory -Force $to
+    $f = Get-ChildItem ".\tests\fixtures\layers\$Dir" -Filter '*.graph.json'
+    $text = Get-Content $f.FullName -Raw
+    $stamp = [regex]::Match($text, '"layer"\s*:\s*"([^"]+)"').Groups[1].Value
+    $i = $text.IndexOf('{')
+    Set-Content (Join-Path $to $f.Name) -NoNewline ($text.Substring(0, $i + 1) + "`"source`":{`"emitter`":`"$Emitter`",`"version`":`"$Version`",`"target`":`"default`",`"stamp`":`"$stamp`"}," + $text.Substring($i + 1))
+    Copy-Item ".\tests\fixtures\layers\$Dir\ontology.yaml" $to
+    $to
+}
 $dir = Join-Path $env:TEMP 'portal-check-1.19'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem -Tenants $t
 try {
     $u = "$($p.Url)/api/tenants/default"
     $env:PORTAL_TOKEN = $admin.Token
-    $null = Mount-PortalLayer -Name agent-runs -Path .\tests\fixtures\layers\agent-runs -Url $p.Url
+    $null = Mount-PortalLayer -Name agent-runs -Path (Copy-Stamped agent-runs Emitter.Agent 0.1.4) -Url $p.Url
+    $null = Mount-PortalLayer -Name agent-alerts -Path (Copy-Stamped agent-alerts Emitter.Environment 0.4.0) -Url $p.Url
+    $null = Mount-PortalLayer -Name ledger -Path (Copy-Stamped ledger Emitter.Unlisted 1.0.0) -Url $p.Url
     $e = Invoke-RestMethod "$u/emitters"
-    $e.nodes | Where-Object { $_.kind -in 'Card', 'Emitter' } | ForEach-Object { "$($_.kind) $($_.id): $($_.properties.emitter ?? $_.name) layers $($_.properties.layers) unknown $([bool]$_.properties.unknown)" }
+    $e.nodes | Where-Object { $_.kind -in 'Card', 'Emitter' } | ForEach-Object { "$($_.kind) $($_.id): $($_.properties.status), card $($_.properties.version), layers $($_.properties.layerVersions -join '/')" }
     $e.edges | Where-Object kind -EQ 'produced-by' | ForEach-Object { "$($_.from) produced-by $($_.to)" }
-    $one = (Invoke-WebRequest "$u/emitters/Graph.Emitter.Agent").Content | ConvertFrom-Json -DateKind String
-    $one.nodes | Where-Object kind -EQ 'Layer' | ForEach-Object { "root $($one.root): $($_.name) $($_.properties.nodes) nodes $($_.properties.edges) edges $($_.properties.stamp) by $($_.properties.mountedBy)" }
-    "no emitter: $([int](Invoke-WebRequest "$u/emitters/Graph.Emitter.Terraform" -SkipHttpErrorCheck).StatusCode) $([int](Invoke-WebRequest "$u/emitters/Emitter.Agent" -SkipHttpErrorCheck).StatusCode)"
-    "pages: $(('/default/emitters', '/default/emitters/Graph.Emitter.Agent', '/default/emitters/sources', '/default/emitters/Graph.Emitter.Terraform' | ForEach-Object { [int](Invoke-WebRequest "$($p.Url)$_" -SkipHttpErrorCheck).StatusCode }) -join ' ')"
+    $one = (Invoke-WebRequest "$u/emitters/Emitter.Environment").Content | ConvertFrom-Json -DateKind String
+    $c = $one.nodes | Where-Object id -EQ $one.root
+    "card $($c.properties.module) $($c.properties.repo) $($c.properties.url) emits $($c.properties.emits.facet -join ',')"
+    $one.nodes | Where-Object kind -EQ 'Layer' | ForEach-Object { "$($_.name): source $($_.properties.source.version) $($_.properties.source.target) $($_.properties.source.stamp)" }
+    "no emitter: $(('Graph.Emitter.Agent', 'Graph.Emitter.Terraform' | ForEach-Object { [int](Invoke-WebRequest "$u/emitters/$_" -SkipHttpErrorCheck).StatusCode }) -join ' ')"
+    "pages: $(('/default/emitters', '/default/emitters/Emitter.Environment', '/default/emitters/Graph.Emitter.FileSystem', '/default/emitters/sources', '/default/emitters/Graph.Emitter.Agent' | ForEach-Object { [int](Invoke-WebRequest "$($p.Url)$_" -SkipHttpErrorCheck).StatusCode }) -join ' ')"
 }
 finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: `Card ui:card:cards-oci/Emitter.Agent@0.1.3: Graph.Emitter.Agent layers 1 unknown False` (the ledger line seeded before the start is the card as cards-oci holds it), `Emitter ui:emitter:Graph.Emitter.FileSystem: Graph.Emitter.FileSystem layers 1 unknown True` (no feed holds its card); `ui:layer:agent-runs produced-by ui:card:cards-oci/Emitter.Agent@0.1.3` and `ui:layer:filesystem produced-by ui:emitter:Graph.Emitter.FileSystem`; `root ui:card:cards-oci/Emitter.Agent@0.1.3: agent-runs 12 nodes 11 edges 2026-10-09T02:50:56Z by ui:principal:check`; `no emitter: 404 404` (Graph.Emitter.Terraform has no card and no layer; `Emitter.Agent` is the card's name, not the emitter's); `pages: 200 200 200 404`, Emitters/Sources keeping its path (docs/design.md 44).
+Expect: `Card ui:card:cards-oci/Emitter.Agent@0.1.4: ok, card 0.1.4, layers 0.1.4`, `Card ui:card:cards-oci/Emitter.Environment@0.3.0: version-mismatch, card 0.3.0, layers 0.4.0` (the alerts copy stamps Claude.Agent.Alerts' 0.4.0), `Emitter ui:emitter:Emitter.Unlisted: no-card, card , layers 1.0.0`, `Emitter ui:module:Graph.Emitter.FileSystem: unstamped, card , layers ` (no source block: under its module, never a card); the four produced-by lines to those ids; `card Claude.Agent.Orchestrator Portal.Agent https://github.com/JerryBalmer1/Portal.Agent emits alerts`; `agent-alerts: source 0.4.0 default 2026-10-11T19:00:31Z`; `no emitter: 404 404` (Graph.Emitter.Agent is a card's module, never mapped to it); `pages: 200 200 200 200 404`, Emitters/Sources keeping its path (docs/design.md 44, 49). A card with no layer would read `no-layers`; Pester and Go check it with all nine cards.
 
 ### 1.20 Ledger chains: the agent chain from a mounted layer, Portal's own; paging, a run's entries, one entry; a broken copy
 ```powershell
@@ -805,7 +825,7 @@ finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $d
 ```
 Expect: the rail's Identity/Agents links to `/default/agents` and is marked current; the crumbs read `default › Identity › Agents`; the toolbar `1 agents`; one row, `check · user · admin · 1 · 1 · 2026-10-09T02:50:43Z`, the `1` under denied in red. Clicking `check` opens `/default/agents/check` in place: the title `check`, crumbs `default › Identity › Agents › check`, a badge `1 runs · 1 denied` (`user · admin` on hover), then `1 runs`, and one run row, `2026-10-09T02:50:43Z · 2026-10-09T02:50:56Z · 3 · 4 · 1 · 0 · 0 · agent-runs`, the deny `1` in red and `agent-runs` a link to `/default/layers/agent-runs`. Under it, five links, `step 1 pre allow` to `step 3 pre deny`, the last in red, each with the decision's name and reason on hover. Clicking `step 3 pre deny` opens the layer page with Graph/Layers current, and the row `agent:run/2026-10-09T02:50:43.7976027Z/step-3/pre · PolicyDecision · deny rules[2] (pre)` marked and scrolled into view (docs/design.md 43).
 
-### 2.12 Emitters/Catalogue lists the emitters, unknown in amber; an emitter's page lists its layers; a layer page links back
+### 2.12 Emitters/Catalogue is a roll call with status and facet chips; an emitter's page is its source, built from the card; a layer page links back
 ```powershell
 Import-Module .\src\Portal\Portal.psd1 -Force
 $t = Join-Path $env:TEMP 'portal-check-2.12-tenants'
@@ -813,19 +833,37 @@ Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
 $null = New-Item -ItemType Directory -Force "$t\default"
 Set-Content "$t\default\portal.yaml" 'mode: demo'
 $admin = New-PortalToken -Name check -Bootstrap -Tenants $t
-Set-Content "$t\default\ledger.jsonl" ('{"at":"2026-10-11T00:00:00.000Z","principal":"ui:principal:check","name":"check","role":"admin","feed":"cards-oci","kind":"oci","card":"Emitter.Agent","version":"0.1.3","type":"emitter","hash":"sha256:' + ('ab' * 32) + '","digest":null,"files":1,"result":"pushed","message":"Emitter.Agent 0.1.3 to cards-oci"}')
+# Two pushes as 0.13.0 writes them: the card's module, repo, url and emits on the line.
+$line = '{"at":"2026-10-11T00:00:0{0}.000Z","principal":"ui:principal:check","name":"check","role":"admin","feed":"cards-oci","kind":"oci","card":"{1}","version":"{2}","type":"emitter","hash":"sha256:{3}","digest":null,"files":1,"result":"pushed","message":"{1} {2} to cards-oci","module":"{4}","repo":"{5}","url":"https://github.com/JerryBalmer1/{5}","emits":[{6}]}'
+Set-Content "$t\default\ledger.jsonl" @(
+    $line.Replace('{0}', '0').Replace('{1}', 'Emitter.Agent').Replace('{2}', '0.1.4').Replace('{3}', 'ab' * 32).Replace('{4}', 'Graph.Emitter.Agent').Replace('{5}', 'Portal.Emitters').Replace('{6}', '{"facet":"runs","kinds":["Run","Step","Action","PolicyDecision"]}')
+    $line.Replace('{0}', '1').Replace('{1}', 'Emitter.Environment').Replace('{2}', '0.3.0').Replace('{3}', 'cd' * 32).Replace('{4}', 'Claude.Agent.Orchestrator').Replace('{5}', 'Portal.Agent').Replace('{6}', '{"facet":"alerts","kinds":["alert"]}'))
+# Copies of real fixture layers with a source block inserted (no layer on disk carries one yet).
+function Copy-Stamped([string] $Dir, [string] $Emitter, [string] $Version) {
+    $to = Join-Path $t "stamped\$Dir"
+    $null = New-Item -ItemType Directory -Force $to
+    $f = Get-ChildItem ".\tests\fixtures\layers\$Dir" -Filter '*.graph.json'
+    $text = Get-Content $f.FullName -Raw
+    $stamp = [regex]::Match($text, '"layer"\s*:\s*"([^"]+)"').Groups[1].Value
+    $i = $text.IndexOf('{')
+    Set-Content (Join-Path $to $f.Name) -NoNewline ($text.Substring(0, $i + 1) + "`"source`":{`"emitter`":`"$Emitter`",`"version`":`"$Version`",`"target`":`"default`",`"stamp`":`"$stamp`"}," + $text.Substring($i + 1))
+    Copy-Item ".\tests\fixtures\layers\$Dir\ontology.yaml" $to
+    $to
+}
 $dir = Join-Path $env:TEMP 'portal-check-2.12'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem -Tenants $t
 try {
     $env:PORTAL_TOKEN = $admin.Token
-    $null = Mount-PortalLayer -Name agent-runs -Path .\tests\fixtures\layers\agent-runs -Url $p.Url
+    $null = Mount-PortalLayer -Name agent-runs -Path (Copy-Stamped agent-runs Emitter.Agent 0.1.4) -Url $p.Url
+    $null = Mount-PortalLayer -Name agent-alerts -Path (Copy-Stamped agent-alerts Emitter.Environment 0.4.0) -Url $p.Url
+    $null = Mount-PortalLayer -Name ledger -Path (Copy-Stamped ledger Emitter.Unlisted 1.0.0) -Url $p.Url
     Start-Process "$($p.Url)/default/emitters"
-    Read-Host 'Read Emitters/Catalogue, click Emitter.Agent@0.1.3 and come back, click Graph.Emitter.Agent, click agent-runs, press Enter here to stop'
+    Read-Host 'Read Emitters/Catalogue, click the chips, click Emitter.Environment and its layers, press Enter here to stop'
 }
 finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: the rail's Emitters/Catalogue links to `/default/emitters` and is marked current; the toolbar `2 emitters · 1 unknown`; the row `Graph.Emitter.Agent · 0.1.3 · cards-oci · Emitter.Agent@0.1.3 · 1`, and the row `Graph.Emitter.FileSystem` in amber with an `unknown` badge, its version, feed and card empty, then `1`. `Emitter.Agent@0.1.3` opens Artifacts/Feeds with that card's row in cards-oci marked. `Graph.Emitter.Agent` opens `/default/emitters/Graph.Emitter.Agent`: the title `Graph.Emitter.Agent`, a badge `1 layers`, `0.1.3 in cards-oci · Emitter.Agent@0.1.3`, and one row, `agent-runs · 12 · 11 · 2026-10-09T02:50:56Z · check`, the row's title `Graph.Emitter.Agent 0.1.2`. `agent-runs` opens its layer page, whose line above the nodes reads `produced by Graph.Emitter.Agent 0.1.3`, linking back; `/default/layers/filesystem` reads `produced by Graph.Emitter.FileSystem` with the `unknown` badge. `/default/emitters/sources` still draws Emitters/Sources (docs/design.md 44).
+Expect: the rail's Emitters/Catalogue is marked current; the toolbar `4 emitters · 1 ok · 1 version-mismatch · 1 no-card · 1 unstamped`, a status chip group (all, ok, version-mismatch, no-layers, no-card, unstamped) and a facet chip group (all, alerts, runs). Rows: `Emitter.Agent` with a green `ok`, `0.1.4 · 0.1.4 · runs · Emitter.Agent@0.1.4 · 1`; `Emitter.Environment` marked red with `version-mismatch`, `0.3.0`, `0.4.0` in red, `alerts`, its card link, `1`; `Emitter.Unlisted` in amber with `no-card` and `1.0.0`; `Graph.Emitter.FileSystem` muted, `unstamped`. A chip adds `?status=` or `?facet=` to the address and hides the other rows (`1 of 4 emitters · ...`). `Emitter.Environment` opens its page: badges `version-mismatch` and `1 layers`; module `Claude.Agent.Orchestrator`, version `0.3.0`, layer versions `0.4.0` in red, repo `Portal.Agent` and `Open in source` both opening https://github.com/JerryBalmer1/Portal.Agent in a new tab, card `Emitter.Environment@0.3.0` (opening its marked row on Artifacts/Feeds), the emits table `alerts · alert`; one layer row marked red, `agent-alerts · 0.4.0 · default · 2026-10-11T19:00:31Z · 1 · 2 · check`. `agent-alerts` opens its layer page: `produced by Emitter.Environment 0.4.0 (card 0.3.0) version-mismatch`, linking back; `/default/layers/filesystem` reads `produced by Graph.Emitter.FileSystem unstamped`. `/default/emitters/sources` still draws Emitters/Sources (docs/design.md 44, 49).
 
 ### 2.13 Ledger/Entries: chains valid in green or broken in red; a chain's entries link their runs; the agent page counts each run's entries
 ```powershell

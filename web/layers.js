@@ -10,10 +10,13 @@
 // alert about that node, a Run's or a Decision's (docs/design.md 47). Above
 // the nodes, a produced-by line links
 // the emitter that produced the layer, from GET .../emitters, to its page
-// /<tenant>/emitters/<name> (docs/design.md 44). Nothing here writes; a layer
-// is mounted through the API (Mount-PortalLayer).
+// /<tenant>/emitters/<name> (docs/design.md 44): the emitter its source
+// block names, with that block's version and the emitter's status, or its
+// module, unstamped, when it has none (docs/design.md 49). Nothing here
+// writes; a layer is mounted through the API (Mount-PortalLayer).
 import * as nodes from '/static/nodes.js';
 import { aboutLinks } from '/static/alerts.js';
+import { statusBadge } from '/static/emitters.js';
 
 // mount draws the list into el. ctx: {client, toolbar, bus, navigate, layerHref}.
 export function mount(el, ctx) {
@@ -127,12 +130,14 @@ export function open(el, ctx) {
 
 // producedBy fills the line naming the emitter of layer ctx.name: the
 // target of its Layer node's produced-by edge, linked to the emitter's page,
-// with an unknown badge when no feed holds the emitter's card.
+// then the version its source block carries (the card's beside it when they
+// differ) and the emitter's status.
 function producedBy(p, ems, ctx) {
   const from = `ui:layer:${ctx.name}`;
   const e = ems.edges.find((x) => x.kind === 'produced-by' && x.from === from);
   const em = e && ems.nodes.find((n) => n.id === e.to);
-  if (!em) return;
+  const me = ems.nodes.find((n) => n.id === from);
+  if (!em || !me) return;
   const name = em.properties.emitter || em.name;
   const a = document.createElement('a');
   a.href = ctx.emitterHref(name);
@@ -144,15 +149,10 @@ function producedBy(p, ems, ctx) {
   });
   p.dataset.emitter = name;
   p.append('produced by ', a);
-  if (em.properties.unknown) {
-    const b = document.createElement('span');
-    b.className = 'pt-unknown-badge';
-    b.textContent = 'unknown';
-    b.title = 'No feed of the tenant holds a card of this emitter.';
-    p.append(' ', b);
-  } else {
-    p.append(` ${em.properties.version}`);
-  }
+  const src = me.properties.source;
+  if (src) p.append(` ${src.version}`);
+  if (src && em.kind === 'Card' && src.version !== em.properties.version) p.append(` (card ${em.properties.version})`);
+  p.append(' ', statusBadge(em.properties.status));
   p.hidden = false;
 }
 

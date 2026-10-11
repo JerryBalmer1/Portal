@@ -1,7 +1,7 @@
 ---
 name: graph-node
 description: How to produce, declare, validate and read graph/1 envelopes with GraphNode, the base graph shape shared by every graph module (emitters such as Graph.Emitter.FileSystem, Graph.Emitter.Network, Graph.Emitter.Terraform, Graph.Emitter.AzureDevOps; consumers such as GraphRenderer). Use any time this repo writes or reads a graph.json envelope, an ontology.yaml, a manifest.yaml card or an index.yaml, builds nodes, edges or node ids, or reports GraphNode problem codes.
-version: 0.3.3
+version: 0.4.0
 ---
 
 # GraphNode for emitters and consumers
@@ -197,17 +197,23 @@ name: Emitter.Example
 version: 0.1.0
 type: emitter
 description: Reads an example source and writes one graph/1 envelope per run.
+module: Graph.Emitter.Example
+repo: Graph.Emitter.Example
+url: https://github.com/example/Graph.Emitter.Example
+emits:
+  - { facet: inventory, kinds: [Host, Service] }
+  - { facet: traffic, kinds: [Flow] }
 tags: [example, network]
 needs:
   - { name: PowerShell, version-range: ">=7.4", os: any }
-  - { name: Graph.Node, version-range: ^0.3.1 }
+  - { name: Graph.Node, version-range: ^0.4.0 }
   - { name: example-cli, version-range: ">=1.2 <2.0", os: windows }
 verbs:
   - { name: discover, command: Invoke-ExampleDiscover, description: Walk the source and write one envelope to the output folder., effect: read }
   - { name: tag, command: Set-ExampleTag, description: Write a tag onto each source item., effect: write }
   - { name: Remove-ExampleCache, description: Delete the local cache., effect: destroy, os: [windows, linux] }
 pins:
-  Graph.Node: 0.3.1
+  Graph.Node: 0.4.0
 ```
 
 A rule that builds on another and ships a file, and a workflow:
@@ -238,8 +244,10 @@ verbs:
   - { name: report, description: Summarise a finished run without reaching the target again., effect: read }
 ```
 
-- Required: `name`, `version`, `type`, `description`. Optional: `tags`, `needs`, `verbs`, `extends`, `files`, `pins`. No other key, at the top or inside a need or verb: an unknown key fails rather than being ignored.
-- `name` is dotted: two or more segments, each a letter then letters, digits or hyphens (`Emitter.Terraform`, `Emitter.Git.Repository`). No spaces, no leading or trailing dot. It must be unique among the cards of the repo; the index fails on a repeat.
+- Required: `name`, `version`, `type`, `description`, and on an emitter card also `module`, `repo` and `emits`. Optional: `url`, `tags`, `needs`, `verbs`, `extends`, `files`, `pins` (and `module`, `repo`, `emits` on any other type). No other key, at the top or inside a need, verb or emit: an unknown key fails rather than being ignored.
+- `name` is dotted: two or more segments, each a letter then letters, digits or hyphens (`Emitter.Terraform`, `Graph.Node`). No spaces, no leading or trailing dot. It must be unique among the cards of the repo; the index fails on a repeat. An emitter's name is two segments, `Emitter.<Source>`: the facet never appears in it (`Emitter.Git`, whose facet `repository` is in `emits`, not `Emitter.Git.Repository`). An emitter name of three or more segments is an `emitter-name` warning at `/name`; the card stays valid, so an older card keeps working while it is renamed.
+- `module` is the module the thing is, by the name its runtime imports, which for an emitter is the `module` its envelopes carry (`Graph.Emitter.Git.Repository`); `repo` is the source repository it is built from, by name (`Graph.Emitter.Git.Repository`); `url` is where that repository lives, `http://` or `https://`. None of the three may hold whitespace. The module and repo names may have as many segments as they like: only the card's `name` is held to two.
+- `emits` lists what an emitter writes, one `{facet, kinds}` per facet, at least one, no repeats. `facet` is one face of the source, a kind of layer, in lower-case words joined by single hyphens (`repository`, `runs`, `policy-decisions`). `kinds` is a non-empty list, no repeats, of the node Kinds a layer of that facet holds, each a Kind name as your `ontology.yaml` declares it (`Commit`, `PolicyDecision`). An emitter that writes two kinds of layer has two facets (Graph.Emitter.Agent: `instructions` with `AgentFile`, `Section`, `Rule`; `runs` with `Run`, `Step`, `Action`, `PolicyDecision`). A Kind may appear under more than one facet. That the Kinds are declared in the ontology is not checked.
 - `version` is Semantic Versioning 2.0.0, three numbers with optional `-pre` and `+build` (`0.17.1`, `1.0.0-rc.1`): no `v`, no leading zeros, never two parts (`0.3` is not a version, and YAML reads it as a number). Use the version the thing itself reports (a psd1 `ModuleVersion`, a skill's `version:`).
 - `type` is `emitter`, `skill`, `tool`, `rule` or `workflow`. Anything else is `schema` at `/type` with the message `value must be one of 'emitter', 'skill', 'tool', 'rule', 'workflow'`. A workflow's verbs are the phases it runs (`plan`, `run`, `report`); its steps live in a file beside the card, listed in `files`, and are not part of the card. A base vocabulary, an overlay and a policy are all `rule`: an overlay or policy says what it builds on with `extends` and what its verbs act on with `targets`, and a tag (`base`, `overlay`, `policy`) names its layer. `description` is one non-empty line.
 - `tags` are strings with no repeats.
@@ -256,21 +264,22 @@ verbs:
 
 Check a card:
 - PowerShell: `Test-GraphManifest -Path .\manifest.yaml` (or the folder holding it; Get-ChildItem output pipes in) returns `Valid`, `Problems` (each `Code`, `Path`, `Message`, `Severity`) and `Path`.
-- Go: `m, problems, err := graph.LoadManifest(path)` returns a `*graph.Manifest` (`Name`, `Version`, `Type`, `Description`, `Tags`, `Needs []graph.ManifestNeed`, `Verbs []graph.ManifestVerb` with `Name`, `Description`, `Command`, `Effect`, `OS`, `Targets`, `Extends`, `Files`, `Pins`), nil when there is an error problem; `err` is for a file that cannot be read. `graph.ValidateManifest(doc)` checks a decoded card; `graph.DecodeYAML(data)` decodes YAML into the plain form the validators take.
-- CLI: `graphnode validate-manifest <manifest.yaml>` prints the problems as JSON and exits 0 clean, 1 on an error, 2 on a file it cannot read.
+- Go: `m, problems, err := graph.LoadManifest(path)` returns a `*graph.Manifest` (`Name`, `Version`, `Type`, `Description`, `Module`, `Repo`, `URL`, `Emits []graph.ManifestEmit` with `Facet`, `Kinds`, `Tags`, `Needs []graph.ManifestNeed`, `Verbs []graph.ManifestVerb` with `Name`, `Description`, `Command`, `Effect`, `OS`, `Targets`, `Extends`, `Files`, `Pins`), nil when there is an error problem (a warning alone still returns it); `err` is for a file that cannot be read. `graph.ValidateManifest(doc)` checks a decoded card; `graph.DecodeYAML(data)` decodes YAML into the plain form the validators take.
+- CLI: `graphnode validate-manifest <manifest.yaml>` prints the problems as JSON and exits 0 clean or with warnings only, 1 on an error, 2 on a file it cannot read.
 
-Every card problem is `schema`, with a JSON pointer into the card: `/` for a missing required key or an unknown key (the message names it), `/type` for an unknown type, `/needs/0/os`, `/verbs/0/command`, `/verbs/0/os/1`, `/verbs/0/targets/0`, `/extends`, `/files/0`, `/pins/Graph.Node`. A file that is not YAML is `schema` at `/`. A bad key under `pins` is reported at `/`, with the key in the message.
+Every card error is `schema`, with a JSON pointer into the card: `/` for a missing required key or an unknown key (the message names it: `missing properties 'module', 'repo', 'emits'` on an emitter without them), `/type` for an unknown type, `/module`, `/repo`, `/url`, `/emits`, `/emits/0` (an emit without `facet` or `kinds`, or with another key), `/emits/0/facet`, `/emits/0/kinds`, `/emits/0/kinds/1`, `/needs/0/os`, `/verbs/0/command`, `/verbs/0/os/1`, `/verbs/0/targets/0`, `/extends`, `/files/0`, `/pins/Graph.Node`. A file that is not YAML is `schema` at `/`. A bad key under `pins` is reported at `/`, with the key in the message.
 
 Derive the index. A repo's `index.yaml` sits at its root and is never written by hand:
 - `New-GraphIndex -Root <repo>`, or `graphnode index <root>`, or `graph.BuildIndex(root, time.Now())` then `graph.SaveIndex(filepath.Join(root, graph.IndexFile), idx)`, walks the root for every `manifest.yaml` (skipping `.git` and `node_modules`), validates each, and writes `index.yaml`: `repo` (the root's folder name), `generated` (UTC ending `Z`) and `entries`, one `{path, name, version, type, tags}` per card, sorted by `path`, the card's folder relative to the root with forward slashes (`emitters/Terraform`; `.` for a card at the root). `New-GraphIndex` returns the file.
-- Any invalid card, or a second card with a name already taken, fails it: nothing is written and an existing `index.yaml` is left as it was. `New-GraphIndex` throws `index not written; <n> problem(s): ...`, `graphnode index` prints the problems and exits 1. Each problem's path is the card's file relative to the root, a colon, then the pointer: `emitters/Terraform/manifest.yaml:/version`.
+- Any invalid card, or a second card with a name already taken, fails it: nothing is written and an existing `index.yaml` is left as it was. A warning (`emitter-name`) does not: the index is written, `graphnode index` prints the warnings and exits 0, and `New-GraphIndex` passes each to `Write-Warning` as `<code> <card>:<pointer>: <message>`. `New-GraphIndex` throws `index not written; <n> problem(s): ...`, `graphnode index` prints the problems and exits 1. Each problem's path is the card's file relative to the root, a colon, then the pointer: `emitters/Terraform/manifest.yaml:/version`.
 - Regenerate it in the same change as any card change. Read it with any YAML reader; check it with `graphnode validate-index <index.yaml>` or `graph.ValidateIndex(doc)` (Go types `graph.Index`, `graph.IndexEntry`).
 
 `Test-GraphManifest` and `New-GraphIndex` read YAML through the `graphnode` binary, so they always need it built in the GraphNode checkout, and throw `Test-GraphManifest needs the graphnode binary: build the graphnode binary; see README` (or `New-GraphIndex needs ...`) without it. There is no pure-PowerShell card check.
 
 | Code | Means |
 |---|---|
-| `schema` | A card breaks `manifest.schema.json` (a missing or unknown key, a bad name, version, type, os, effect, command, target, extends, file or pin), or is not YAML; or an index breaks `index.schema.json`. |
+| `schema` | A card breaks `manifest.schema.json` (a missing or unknown key, an emitter without `module`, `repo` or `emits`, a bad name, version, type, module, repo, url, facet, kind, os, effect, command, target, extends, file or pin), or is not YAML; or an index breaks `index.schema.json`. |
+| `emitter-name` | Warning. An emitter card's `name` has more than two dot-separated parts (`Emitter.Git.Repository`); the facet belongs in `emits`. Path `/name`. |
 | `duplicate-name` | Building an index: this card's `name` is already the name of an earlier card (by path); the message names it. |
 | `stamp` | An index's `generated` is not a UTC stamp ending `Z`. |
 
@@ -284,6 +293,7 @@ Derive the index. A repo's `index.yaml` sits at its root and is never written by
 - No `Category` nodes from an emitter, and no edits to another module's layers.
 - No hand-written or hand-edited `index.yaml`; derive it with `New-GraphIndex` or `graphnode index`.
 - No cmdlet or executable names in a verb's `description`; they go in `command`.
+- No facet in an emitter card's `name` (`Emitter.Git.Repository`); name it `Emitter.<Source>` and list the facet in `emits`.
 - No test or fixture that reads a sibling repo at `HEAD`, a branch or its working tree; pin to a tag, never HEAD.
 
 ## Changes
@@ -296,3 +306,4 @@ Derive the index. A repo's `index.yaml` sits at its root and is never written by
 - 0.3.1: card fields, additive (every 0.3.0 card stays valid): type `workflow`; verb `command` (the cmdlet or executable), `os` (`[windows, linux, macos]`, absent means all) and `targets` (card names); card `extends` (a card name, not resolved) and `files` (paths relative to the card); `effect` wording (own output, local refs, the plan file and ledger lines are not effects; discover, plan, run, report and fetch are `read`); Go `Manifest.Extends`, `Files`, `ManifestVerb.Command`, `OS`, `Targets`. Id formats: GraphNode reserves prefix and owner, the format is the owner's ontology Kind `idPattern` when reachable beside the repo, else the registry's shape; `Test-GraphId -SiblingRoot`, `graphnode check-id --siblings`, `graphnode id-format`, Go `IDFormat`, `ResolveIDFormat`, `ValidIDIn`, `OwnerOntologyPaths`, `ErrUnregisteredPrefix`, `IDFormatOntology`, `IDFormatRegistry`; a bad `idPattern` is `schema`. Rule: cross-repo fixtures pin to a tag, never HEAD. `reference/` refreshed.
 - 0.3.2: prefix `env:` (Claude.Agent.Orchestrator: `env:compose/<project>`, `env:container/<project>/<service>`, `env:image/<reference>`, `env:network/<name>`); `alert:` also takes `alert:<fingerprint>` (64 lower-case hex); `ledger:` shared with Portal and Claude.Agent.Orchestrator, a new registry column `SharedWith` (`Get-GraphIdPrefix`, Go `IDPrefix.SharedWith`, `graphnode prefixes` `sharedWith`); the `to` of an `about` edge from an `alert:` id onto any registered prefix is a `dangling-edge` warning in every validator.
 - 0.3.3: `SharedWith` is descriptive only: `alert:` shared with Claude.Agent.Orchestrator; `ledger:` shared with Portal, Claude.Agent.Orchestrator and Claude.Agent.Ledger. No check changes.
+- 0.4.0: emitter cards require `module` (the module it is), `repo` (its source repository) and `emits` (`[{facet, kinds}]`, facet lower-case and hyphenated, kinds node Kind names); optional `url` (http or https) on any card; new warning code `emitter-name` for an emitter named with more than two parts (the facet goes in `emits`); `New-GraphIndex` passes warnings to `Write-Warning`; `graphnode validate-manifest` and `index` exit 0 on warnings; Go `Manifest.Module`, `Repo`, `URL`, `Emits`, type `ManifestEmit`. `reference/manifest.example.yaml` recopied.

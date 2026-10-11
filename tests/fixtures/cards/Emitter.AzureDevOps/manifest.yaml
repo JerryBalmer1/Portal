@@ -1,0 +1,30 @@
+# Graph.Node 0.4.0 card (schemas/manifest.schema.json). Version is the psd1 ModuleVersion; one verb per
+# FunctionsToExport entry, effect from the function body (the strongest of read, write, destroy).
+name: Emitter.AzureDevOps
+version: 0.3.1
+type: emitter
+description: Auditable wrappers over the Azure CLI azure-devops extension, and a graph of an organization's projects, repositories and pipelines.
+# module is the name its envelopes carry; repo is where it is built from today (copied from Graph.Emitter.AzureDevOps
+# on 2026-10-11). Facets and kinds as Graph.Node v0.4.0 tests/fixtures/manifest/emitters/.
+module: Graph.Emitter.AzureDevOps
+repo: Portal.Emitters
+url: https://github.com/JerryBalmer1/Portal.Emitters
+emits:
+  - { facet: organization, kinds: [Organization, Project, Repo, Pipeline] }
+tags: [AzureDevOps, AzureCLI, DevOps, Pipelines, Repos, Graph, PowerShell, PowerShell74]
+needs:
+  - { name: PowerShell, version-range: ">=7.4", os: any }
+  # The module refuses an az older than 2.11, and never installs the extension (AZURE_EXTENSION_USE_DYNAMIC_INSTALL=no).
+  - { name: az, version-range: ">=2.11", os: any }
+  - { name: azure-devops, os: any }
+verbs:
+  - { name: Get-AzureDevOpsProject, description: "Lists projects with az devops project list, or reads saved az JSON.", effect: read }
+  - { name: Get-AzureDevOpsRepo, description: "Lists repositories with az repos list, or reads saved az JSON.", effect: read }
+  - { name: Get-AzureDevOpsPipeline, description: "Lists pipelines with az pipelines list, or reads saved az JSON.", effect: read }
+  - { name: ConvertTo-AzureDevOpsGraph, description: "Builds an offline graph of organization, project, repository and pipeline nodes with findings.", effect: read }
+  - { name: Test-AzureDevOpsConnection, description: "Checks that az can list projects and reports the connection.", effect: read }
+  # az devops login stores the PAT in az's credential store; -SetDefault runs az devops configure --defaults.
+  - { name: Connect-AzureDevOps, description: "Signs az in to an organization with a PAT on stdin, optionally setting it as the default.", effect: write }
+pins:
+  # .claude/skills/graph-node in this folder is a read-only copy at version 0.2.1; the module does not import GraphNode.
+  Graph.Node: 0.2.1

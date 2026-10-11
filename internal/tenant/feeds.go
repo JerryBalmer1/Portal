@@ -62,24 +62,31 @@ var (
 // name for what it stored, set only when Result is pushed. Seq and Prev
 // chain the line (docs/design.md 45): Seq is its position in the file from
 // 1, Prev the SHA-256 of the line before, 64 zeros for the first. A line
-// written before 0.10.0 has neither.
+// written before 0.10.0 has neither. Module, Repo, URL and Emits are the
+// card's (Graph.Node 0.4.0 requires all but URL on an emitter card), written
+// from 0.13.0 when the card has them, so the emitter's page is built from
+// the card as pushed (docs/design.md 49); a line before 0.13.0 has none.
 type LedgerEntry struct {
-	At        string  `json:"at"`
-	Principal *string `json:"principal"`
-	Name      string  `json:"name"`
-	Role      string  `json:"role"`
-	Feed      string  `json:"feed"`
-	Kind      string  `json:"kind"`
-	Card      *string `json:"card"`
-	Version   *string `json:"version"`
-	Type      *string `json:"type"`
-	Hash      *string `json:"hash"`
-	Digest    *string `json:"digest"`
-	Files     int     `json:"files"`
-	Result    string  `json:"result"`
-	Message   string  `json:"message"`
-	Seq       int     `json:"seq,omitempty"`
-	Prev      string  `json:"prev,omitempty"`
+	At        string               `json:"at"`
+	Principal *string              `json:"principal"`
+	Name      string               `json:"name"`
+	Role      string               `json:"role"`
+	Feed      string               `json:"feed"`
+	Kind      string               `json:"kind"`
+	Card      *string              `json:"card"`
+	Version   *string              `json:"version"`
+	Type      *string              `json:"type"`
+	Hash      *string              `json:"hash"`
+	Digest    *string              `json:"digest"`
+	Files     int                  `json:"files"`
+	Result    string               `json:"result"`
+	Message   string               `json:"message"`
+	Seq       int                  `json:"seq,omitempty"`
+	Prev      string               `json:"prev,omitempty"`
+	Module    string               `json:"module,omitempty"`
+	Repo      string               `json:"repo,omitempty"`
+	URL       string               `json:"url,omitempty"`
+	Emits     []graph.ManifestEmit `json:"emits,omitempty"`
 }
 
 // LedgerLine is one line of ledger.jsonl with the SHA-256 of its bytes as
@@ -234,11 +241,32 @@ func (t *Tenant) FeedsEnvelope(stamp string) *graph.Envelope {
 		if e.Digest != nil {
 			props["digest"] = *e.Digest
 		}
+		for k, v := range map[string]string{"module": e.Module, "repo": e.Repo, "url": e.URL} {
+			if v != "" {
+				props[k] = v
+			}
+		}
+		if len(e.Emits) > 0 {
+			props["emits"] = emitsOf(e.Emits)
+		}
 		env.Nodes = append(env.Nodes, graph.Node{ID: id, Kind: "Card", Name: *e.Card, Properties: props})
 		env.Edges = append(env.Edges, graph.NewEdge(FeedPrefix+e.Feed, id, "has-card"))
 	}
 	env.Recount()
 	return env
+}
+
+// emitsOf is a card's emits as a node property: one {facet, kinds} per facet.
+func emitsOf(emits []graph.ManifestEmit) []any {
+	out := make([]any, len(emits))
+	for i, e := range emits {
+		kinds := make([]any, len(e.Kinds))
+		for j, k := range e.Kinds {
+			kinds[j] = k
+		}
+		out[i] = map[string]any{"facet": e.Facet, "kinds": kinds}
+	}
+	return out
 }
 
 // CardID is a pushed card's node id: ui:card:<feed>/<name>@<version>.
@@ -276,6 +304,7 @@ func (t *Tenant) Push(ctx context.Context, p Pusher, who Principal, feedID strin
 	}
 	m := card.Manifest
 	e.Card, e.Version, e.Type, e.Hash, e.Files = &m.Name, &m.Version, &m.Type, &card.Hash, len(card.Files)
+	e.Module, e.Repo, e.URL, e.Emits = m.Module, m.Repo, m.URL, m.Emits
 	for _, prev := range t.Ledger() {
 		if prev.Result == ResultPushed && prev.Feed == f.ID && *prev.Card == m.Name && *prev.Version == m.Version {
 			e.Result = ResultDuplicate

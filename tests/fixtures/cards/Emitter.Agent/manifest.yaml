@@ -1,9 +1,17 @@
-# Graph.Node 0.3.0 card (schemas/manifest.schema.json). Version is the psd1 ModuleVersion; one verb per
+# Graph.Node 0.4.0 card (schemas/manifest.schema.json). Version is the psd1 ModuleVersion; one verb per
 # FunctionsToExport entry, effect from the function body (the strongest of read, write, destroy).
 name: Emitter.Agent
-version: 0.1.3
+version: 0.1.4
 type: emitter
 description: Graph.Node emitter for agent instructions, AgentFile, Section and Rule nodes from CLAUDE.md, AGENTS.md and .claude markdown, with applies-to edges onto fs ids.
+# module is the name its envelopes carry; repo is where it is built from today (copied from Graph.Emitter.Agent
+# on 2026-10-11). Facets and kinds as Graph.Node v0.4.0 tests/fixtures/manifest/emitters/.
+module: Graph.Emitter.Agent
+repo: Portal.Emitters
+url: https://github.com/JerryBalmer1/Portal.Emitters
+emits:
+  - { facet: instructions, kinds: [AgentFile, Section, Rule] }
+  - { facet: runs, kinds: [Run, Step, Action, PolicyDecision] }
 tags: [graph, agent, emitter, ontology]
 needs:
   - { name: PowerShell, version-range: ">=7.4", os: any }
@@ -15,5 +23,5 @@ verbs:
   # -LayersPath writes <stamp>.runs.graph.json and overwrites ontology.yaml there when it differs.
   - { name: Export-AgentRunGraph, description: "Reads a Claude.Agent ledger stream into one envelope of its runs, and with -LayersPath writes it.", effect: write }
 pins:
-  # .claude/skills/graph-node in this folder is a read-only copy at version 0.3.0.
-  Graph.Node: 0.3.0
+  # .claude/skills/graph-node in this folder is a read-only copy at version 0.4.0.
+  Graph.Node: 0.4.0

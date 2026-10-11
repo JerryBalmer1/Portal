@@ -1,0 +1,56 @@
+# Graph.Node 0.4.0 card (schemas/manifest.schema.json). Version is the psd1 ModuleVersion; one verb per
+# FunctionsToExport entry, effect from the function body (the strongest of read, write, destroy), plus `discover`,
+# the verb name Skill.Discover looks for. The schema has no verb-to-cmdlet field, so its description names Invoke-NetworkDiscover.
+name: Emitter.Network
+version: 0.4.0
+type: emitter
+description: Subnet math with cloud reservations, auditable wrappers over the network tools already installed, a graph of what a host can see, and a read-only discover verb.
+# module is the name its envelopes carry; repo is where it is built from today (copied from Graph.Emitter.Network
+# on 2026-10-11). Facets and kinds as Graph.Node v0.4.0 tests/fixtures/manifest/emitters/.
+module: Graph.Emitter.Network
+repo: Portal.Emitters
+url: https://github.com/JerryBalmer1/Portal.Emitters
+emits:
+  - { facet: host, kinds: [Host, Interface, Subnet, Route, Hop, Connection, Process, RemoteHost, Cloud, Asn] }
+tags: [Network, Subnet, CIDR, IPAM, Azure, AWS, GCP, Graph, PowerShell, PowerShell74, discover]
+needs:
+  - { name: PowerShell, version-range: ">=7.4", os: any }
+  # Only Invoke-NetworkDiscover loads it (on first use, from the sibling checkout) to write graph/1 envelopes.
+  - { name: Graph.Node, version-range: ">=0.2.1" }
+  # Native tools are optional, picked per command by -Tool Auto with a .NET floor where one exists: ping, dig or
+  # nslookup, tracert, traceroute, mtr, pathping, nmap, ss, ip, arp, ufw, firewall-cmd.
+verbs:
+  - { name: ConvertFrom-SubnetMask, description: "Converts a dotted IPv4 mask to a prefix length.", effect: read }
+  - { name: ConvertTo-SubnetMask, description: "Converts a prefix length to a dotted IPv4 mask.", effect: read }
+  - { name: Get-MacAddressVendor, description: "Looks up a MAC address vendor offline and flags randomised MACs.", effect: read }
+  - { name: Get-Subnet, description: "Calculates a subnet's range, usable hosts and cloud reservations.", effect: read }
+  - { name: Get-SubnetChildren, description: "Lists the prefixes that sit inside a parent prefix.", effect: read }
+  - { name: Get-SubnetParent, description: "Finds the closest enclosing prefix.", effect: read }
+  # Returns a plan object only; creates nothing.
+  - { name: New-SubnetPlan, description: "Plans subnets inside a parent prefix and returns the plan.", effect: read }
+  - { name: Test-IPAddress, description: "Classifies an IP offline: private, special-use, cloud, service.", effect: read }
+  - { name: Test-SubnetOverlap, description: "Reports how pairs of prefixes overlap.", effect: read }
+  # HTTPS GETs to public what-is-my-IP services (and RDAP with -Rdap); writes nothing.
+  - { name: Get-ExternalIpAddress, description: "Asks public HTTPS services for this host's egress IP, with an optional RDAP lookup.", effect: read }
+  - { name: Get-NetworkConnection, description: "Lists local TCP and UDP sockets and their owning processes.", effect: read }
+  - { name: Get-NetworkHost, description: "Summarises this host: interfaces, routes, gateways, DNS servers and firewall state.", effect: read }
+  - { name: Get-NetworkInterface, description: "Lists adapters with addresses, MAC, vendor, gateways and DNS servers.", effect: read }
+  - { name: Get-NetworkNeighbor, description: "Lists the ARP and IPv6 neighbour table with vendors.", effect: read }
+  - { name: Get-NetworkRoute, description: "Lists the route table.", effect: read }
+  # Sends TCP connects (nmap or .NET) to the targets; changes nothing.
+  - { name: Invoke-NetworkScan, description: "Port-scans hosts or CIDRs with nmap, or with TCP connects when nmap is absent.", effect: read }
+  - { name: Resolve-NetworkName, description: "Resolves DNS records: A, AAAA, PTR, MX, TXT, NS, CNAME, SRV.", effect: read }
+  - { name: Test-NetworkPath, description: "Pings a host with ICMP echo: sent, received, loss and round-trip times.", effect: read }
+  - { name: Test-NetworkPort, description: "Tests whether a TCP or UDP port answers.", effect: read }
+  - { name: Trace-NetworkPath, description: "Traces the route to a host hop by hop.", effect: read }
+  # Resolve-NetworkName and Test-NetworkPath only, per target. Reads the target; its one output, the envelope, goes
+  # to -OutputPath.
+  - { name: Invoke-NetworkDiscover, description: "The discover verb: resolves and pings each target and writes one graph/1 envelope to -OutputPath.", effect: read }
+  - { name: discover, description: "Skill.Discover's verb. Runs Invoke-NetworkDiscover: resolves and pings each target and writes one graph/1 envelope to -OutputPath.", effect: read }
+  - { name: ConvertTo-NetworkGraph, description: "Builds an offline graph of nodes, edges and findings from the other commands' output.", effect: read }
+  - { name: Get-NetworkGraphData, description: "Lists or returns the module's data files and their sources.", effect: read }
+  # Write-NetworkGraphDataFile: New-Item, a .tmp file, Move-Item -Force over the data file. Deletes nothing.
+  - { name: Update-NetworkGraphData, description: "Downloads the data files over HTTPS into the user cache or -Path.", effect: write }
+pins:
+  # .claude/skills/graph-node in this folder is a read-only copy at version 0.2.1.
+  Graph.Node: 0.2.1

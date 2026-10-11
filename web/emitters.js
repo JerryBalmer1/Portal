@@ -1,17 +1,33 @@
-// Emitters/Catalogue, at /<tenant>/emitters: the tenant's emitters from GET
-// /api/tenants/{tenant}/emitters (docs/design.md 44). An emitter is a card of
-// type emitter in one of the tenant's feeds, under the card's own id; an
-// emitter a mounted layer names with no card in any feed is still listed,
-// in amber and flagged unknown, with no card link. One row each (name,
-// version, feed, card, layers), the name a link to the emitter's page,
-// /<tenant>/emitters/<name>, which lists the layers it produced from GET
-// .../emitters/{name}, newest first: name (linking to the layer's page),
-// nodes, edges, stamp and the principal that mounted it. The card links to
-// its row on the feeds page. The banner's search filters the rows. Nothing
-// here writes.
+// Emitters/Catalogue, at /<tenant>/emitters: the roll call from GET
+// /api/tenants/{tenant}/emitters (docs/design.md 44, 49). One row per name a
+// card of type emitter or a mounted layer's source block gives, and one per
+// module of layers with no source block: name (a link to its page), status,
+// the card's version and the source.version its layers carry, the card's
+// facets, the card (a link to its row on the feeds page) and how many layers.
+// Status and facet chips filter the rows and keep the filter in the URL
+// (?status=, ?facet=), so a filtered list is a link; the banner's search
+// filters them too. Each emitter's page, /<tenant>/emitters/<name>, from GET
+// .../emitters/{name}, is its source: built from the card (module, version,
+// repo, url, emits) with the layers that name it, newest first, each with its
+// source block's version, target and stamp. Nothing here writes.
+import { chips } from '/static/nodes.js';
 
-// mount draws the list into el. ctx: {client, toolbar, bus, navigate, emitterHref, cardHref}.
+// STATUSES are the status chips, in the order the roll call reads.
+export const STATUSES = Object.freeze(['ok', 'version-mismatch', 'no-layers', 'no-card', 'unstamped']);
+
+// WHY says what each status means, as the badge's title.
+const WHY = {
+  ok: 'A card, and every layer naming it in its source block carries the card\'s version.',
+  'version-mismatch': 'A layer naming this card in its source block carries another version.',
+  'no-layers': 'A card no mounted layer names in its source block.',
+  'no-card': 'Mounted layers name this emitter in their source block; no feed of the tenant holds its card.',
+  unstamped: 'The module of mounted layers with no source block. Never matched to a card.',
+};
+
+// mount draws the roll call into el. ctx: {client, toolbar, bus, navigate, emitterHref, cardHref}.
 export function mount(el, ctx) {
+  const q = new URLSearchParams(location.search);
+  const filter = { status: q.get('status') || '', facet: q.get('facet') || '' };
   const wrap = document.createElement('div');
   wrap.className = 'pt-card pt-table-card';
   el.appendChild(wrap);
@@ -29,7 +45,7 @@ export function mount(el, ctx) {
       const t = document.createElement('h2');
       t.textContent = 'No emitters yet';
       const p = document.createElement('p');
-      p.textContent = 'An emitter is a card of type emitter pushed to one of the tenant\'s feeds (Publish-PortalCard), or the module a mounted layer\'s ontology names (Mount-PortalLayer).';
+      p.textContent = 'An emitter is a card of type emitter pushed to one of the tenant\'s feeds (Publish-PortalCard). A mounted layer belongs to the emitter its Graph.Node source block names (Mount-PortalLayer).';
       e.append(t, p);
       wrap.replaceWith(e);
       h.wrap = e;
@@ -37,91 +53,122 @@ export function mount(el, ctx) {
     }
     const t = document.createElement('table');
     t.className = 'pt-table pt-emitters';
-    head(t, ['name', 'version', 'feed', 'card', 'layers']);
+    head(t, ['name', 'status', 'version', 'layer versions', 'facets', 'card', 'layers']);
     const body = t.createTBody();
     const rows = [];
     for (const em of ems) {
       const name = nameOf(em);
       const p = em.properties;
+      const fs = facetsOf(em);
       const row = body.insertRow();
       row.dataset.emitter = name;
-      const cell = row.insertCell();
-      cell.appendChild(go(ctx, ctx.emitterHref(name), name));
-      if (p.unknown) {
-        row.className = 'pt-unknown';
-        cell.append(' ', unknownBadge());
-        for (let i = 0; i < 3; i++) row.insertCell().textContent = '';
-      } else {
-        row.insertCell().textContent = p.version;
-        row.insertCell().textContent = p.feed;
-        row.insertCell().appendChild(cardLink(ctx, em));
-      }
+      row.dataset.status = p.status;
+      row.insertCell().appendChild(go(ctx, ctx.emitterHref(name), name));
+      row.insertCell().appendChild(statusBadge(p.status));
+      row.insertCell().textContent = em.kind === 'Card' ? p.version : '';
+      const lv = row.insertCell();
+      lv.textContent = (p.layerVersions || []).join(', ');
+      if (p.status === 'version-mismatch') lv.className = 'pt-mismatch';
+      row.insertCell().textContent = fs.join(', ');
+      const card = row.insertCell();
+      if (em.kind === 'Card') card.appendChild(cardLink(ctx, em));
       row.insertCell().textContent = p.layers;
-      rows.push({ row, text: `${name} ${p.version || 'unknown'} ${p.feed || ''}`.toLowerCase() });
+      rows.push({ row, status: p.status, facets: fs, text: `${name} ${p.status} ${p.version || ''} ${(p.layerVersions || []).join(' ')} ${fs.join(' ')} ${p.module || ''}`.toLowerCase() });
     }
-    const unknown = ems.filter((em) => em.properties.unknown).length;
-    h.off = searchable(ctx.bus, rows, count, 'emitters', unknown ? ` · ${unknown} unknown` : '');
+    // Chips: every status, then the facets the cards emit.
+    const facets = [...new Set(rows.flatMap((r) => r.facets))].sort();
+    const groups = [];
+    const group = (key, values, label) => {
+      const [g] = chips(values, (v) => { filter[key] = v; keepInURL(filter); apply(); }, label);
+      if (!g) return;
+      g.dataset.chips = key;
+      for (const b of g.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.value === filter[key]));
+      ctx.toolbar.appendChild(g);
+      groups.push(g);
+    };
+    group('status', STATUSES, 'filter by status');
+    group('facet', facets, 'filter by facet');
+    let search = '';
+    const apply = () => {
+      let shown = 0;
+      for (const r of rows) {
+        r.row.hidden = (!!filter.status && r.status !== filter.status) || (!!filter.facet && !r.facets.includes(filter.facet)) || (!!search && !r.text.includes(search));
+        if (!r.row.hidden) shown++;
+      }
+      const tally = STATUSES.map((s) => [s, rows.filter((r) => r.status === s).length]).filter(([, n]) => n).map(([s, n]) => `${n} ${s}`).join(' · ');
+      count.textContent = `${shown === rows.length ? rows.length : `${shown} of ${rows.length}`} emitters · ${tally}`;
+    };
+    const onSearch = (ev) => { search = String(ev.detail || '').toLowerCase(); apply(); };
+    ctx.bus.addEventListener('search', onSearch);
+    h.off = () => { ctx.bus.removeEventListener('search', onSearch); for (const g of groups) g.remove(); };
+    apply();
     wrap.appendChild(t);
   }).catch((err) => fail(wrap, err));
   return h;
 }
 
-// open draws one emitter's layers into el. ctx: {client, toolbar, bus, name, navigate, layerHref, cardHref}.
+// open draws one emitter's source into el: its card and its layers. ctx: {client, toolbar, bus, name, navigate, layerHref, cardHref}.
 export function open(el, ctx) {
-  const wrap = document.createElement('div');
-  wrap.className = 'pt-card pt-table-card';
-  el.appendChild(wrap);
-  const h = { wrap, off: () => {} };
+  const box = document.createElement('div');
+  box.className = 'pt-tab-pane';
+  el.appendChild(box);
+  const h = { wrap: box, off: () => {} };
+  const status = document.createElement('span');
+  status.className = 'pt-emitter-card';
   const stats = document.createElement('span');
   stats.className = 'pt-badge';
   stats.id = 'emitter-stats';
-  const card = document.createElement('span');
-  card.className = 'pt-emitter-card';
   const count = document.createElement('span');
   count.className = 'pt-count';
-  ctx.toolbar.append(stats, card, count);
+  ctx.toolbar.append(status, stats, count);
   ctx.client.getEmitter(ctx.name).then((env) => {
     const me = env.nodes.find((n) => n.id === env.root);
+    const p = me.properties;
     const byId = new Map(env.nodes.map((n) => [n.id, n]));
     const layers = env.edges.filter((e) => e.kind === 'has-layer' && e.from === env.root).map((e) => byId.get(e.to)).filter(Boolean);
     stats.dataset.emitter = ctx.name;
     stats.textContent = `${layers.length} layers`;
-    if (me.properties.unknown) {
-      card.appendChild(unknownBadge());
-    } else {
-      card.append(`${me.properties.version} in ${me.properties.feed} · `, cardLink(ctx, me));
-    }
+    status.appendChild(statusBadge(p.status));
+    box.appendChild(source(ctx, me));
+    const wrap = document.createElement('div');
+    wrap.className = 'pt-card pt-table-card';
+    box.appendChild(wrap);
     if (!layers.length) {
       count.textContent = '0 layers';
-      const e = document.createElement('div');
-      e.className = 'pt-card pt-empty-state';
+      wrap.className = 'pt-card pt-empty-state';
       const t = document.createElement('h2');
       t.textContent = 'No layers mounted';
-      const p = document.createElement('p');
-      p.textContent = `No mounted layer's ontology names ${ctx.name}.`;
-      e.append(t, p);
-      wrap.replaceWith(e);
-      h.wrap = e;
+      const s = document.createElement('p');
+      s.textContent = `No mounted layer's source block names ${ctx.name}.`;
+      wrap.append(t, s);
       return;
     }
     const t = document.createElement('table');
     t.className = 'pt-table pt-emitter-layers';
-    head(t, ['name', 'nodes', 'edges', 'stamp', 'principal']);
+    head(t, ['name', 'source version', 'target', 'stamp', 'nodes', 'edges', 'principal']);
     const body = t.createTBody();
     const rows = [];
     for (const l of layers) {
-      const p = l.properties;
+      const lp = l.properties;
+      const src = lp.source || {};
       const row = body.insertRow();
       row.dataset.layer = l.name;
-      row.title = p.version ? `${p.module} ${p.version}` : p.module;
+      row.title = lp.version ? `${lp.module} ${lp.version}` : lp.module;
       row.insertCell().appendChild(go(ctx, ctx.layerHref(l.name), l.name));
-      const who = p.mountedBy ? p.mountedBy.replace(/^ui:principal:/, '') : '';
-      for (const v of [p.nodes, p.edges, p.stamp, who]) row.insertCell().textContent = v;
-      rows.push({ row, text: `${l.name} ${p.stamp} ${who}`.toLowerCase() });
+      const v = row.insertCell();
+      v.textContent = src.version || '';
+      if (me.kind === 'Card' && src.version && src.version !== p.version) {
+        row.classList.add('pt-mismatch');
+        v.className = 'pt-mismatch';
+        v.title = `The card is ${p.version}.`;
+      }
+      const who = lp.mountedBy ? lp.mountedBy.replace(/^ui:principal:/, '') : '';
+      for (const x of [src.target || '', src.stamp || lp.stamp, lp.nodes, lp.edges, who]) row.insertCell().textContent = x;
+      rows.push({ row, text: `${l.name} ${src.version || ''} ${src.target || ''} ${src.stamp || lp.stamp} ${who}`.toLowerCase() });
     }
-    h.off = searchable(ctx.bus, rows, count, 'layers', '');
+    h.off = searchable(ctx.bus, rows, count, 'layers');
     wrap.appendChild(t);
-  }).catch((err) => fail(wrap, err));
+  }).catch((err) => fail(box, err));
   return h;
 }
 
@@ -130,7 +177,79 @@ export function destroy(h) {
   h.wrap.remove();
 }
 
-// emittersOf is the envelope's emitters, Card and Emitter nodes, in
+// source is the emitter's card as a definition list, its emits as a table:
+// module, version, repo (a link to url), url (Open in source), the card
+// (a link to its row on the feeds page) and status. A no-card name or an
+// unstamped module has no card and says so.
+function source(ctx, me) {
+  const p = me.properties;
+  const card = document.createElement('div');
+  card.className = 'pt-card pt-source';
+  card.dataset.emitter = nameOf(me);
+  const dl = document.createElement('dl');
+  const row = (label, value) => {
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.dataset.field = label;
+    if (value instanceof Node) dd.appendChild(value); else dd.textContent = value ?? '';
+    dl.append(dt, dd);
+  };
+  if (me.kind !== 'Card') {
+    row(me.kind === 'Emitter' && p.status === 'unstamped' ? 'module' : 'emitter', me.name);
+    row('status', statusBadge(p.status));
+    if (p.layerVersions) row('layer versions', p.layerVersions.join(', '));
+    row('card', p.status === 'unstamped' ? 'none: its layers carry no source block, so no card is matched' : 'none: no feed of the tenant holds a card of this name');
+    card.appendChild(dl);
+    return card;
+  }
+  row('module', p.module || '');
+  row('version', p.version);
+  if (p.status === 'version-mismatch') {
+    const s = document.createElement('span');
+    s.className = 'pt-mismatch';
+    s.textContent = (p.layerVersions || []).join(', ');
+    row('layer versions', s);
+  } else if (p.layerVersions) {
+    row('layer versions', p.layerVersions.join(', '));
+  }
+  row('repo', p.repo ? (p.url ? external(p.url, p.repo) : p.repo) : '');
+  row('url', p.url ? external(p.url, 'Open in source', 'pt-open-source') : '');
+  row('card', cardLink(ctx, me));
+  row('status', statusBadge(p.status));
+  card.appendChild(dl);
+  const emits = Array.isArray(p.emits) ? p.emits : [];
+  const h2 = document.createElement('h2');
+  h2.textContent = 'emits';
+  card.appendChild(h2);
+  if (!emits.length) {
+    const s = document.createElement('p');
+    s.className = 'pt-emitter-card';
+    s.textContent = 'The push recorded no emits (a card pushed before 0.13.0).';
+    card.appendChild(s);
+    return card;
+  }
+  const t = document.createElement('table');
+  t.className = 'pt-table pt-emits';
+  head(t, ['facet', 'kinds']);
+  const body = t.createTBody();
+  for (const e of emits) {
+    const r = body.insertRow();
+    r.dataset.facet = e.facet;
+    r.insertCell().textContent = e.facet;
+    const k = r.insertCell();
+    for (const kind of e.kinds || []) {
+      const s = document.createElement('span');
+      s.className = 'pt-kind';
+      s.textContent = kind;
+      k.appendChild(s);
+    }
+  }
+  card.appendChild(t);
+  return card;
+}
+
+// emittersOf is the envelope's roll call, Card and Emitter nodes, in
 // envelope order (by name, as the API serves them).
 function emittersOf(env) {
   return env.nodes.filter((n) => n.kind === 'Card' || n.kind === 'Emitter');
@@ -140,12 +259,27 @@ function nameOf(em) {
   return em.properties.emitter || em.name;
 }
 
-function unknownBadge() {
+// facetsOf is the facets an emitter's card emits; none without a card.
+function facetsOf(em) {
+  return Array.isArray(em.properties.emits) ? em.properties.emits.map((e) => e.facet) : [];
+}
+
+// statusBadge is a status as a badge, its meaning as its title.
+export function statusBadge(status) {
   const b = document.createElement('span');
-  b.className = 'pt-unknown-badge';
-  b.textContent = 'unknown';
-  b.title = 'No feed of the tenant holds a card of this emitter.';
+  b.className = 'pt-status';
+  b.dataset.status = status;
+  b.textContent = status;
+  b.title = WHY[status] || '';
   return b;
+}
+
+// keepInURL puts the chips' filter in the address, so a filtered list is a link.
+function keepInURL(filter) {
+  const q = new URLSearchParams(location.search);
+  for (const [k, v] of Object.entries(filter)) { if (v) q.set(k, v); else q.delete(k); }
+  const s = q.toString();
+  history.replaceState(history.state, '', location.pathname + (s ? `?${s}` : '') + location.hash);
 }
 
 // cardLink is the card's name and version, linking to its row on the feeds
@@ -157,6 +291,17 @@ function cardLink(ctx, em) {
   const a = go(ctx, to, text);
   a.className = 'pt-card-link';
   a.dataset.card = em.id;
+  return a;
+}
+
+// external is a link out of the portal, in a new tab.
+function external(href, text, className) {
+  const a = document.createElement('a');
+  a.href = href;
+  a.textContent = text;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  if (className) a.className = className;
   return a;
 }
 
@@ -182,7 +327,7 @@ function go(ctx, to, text) {
   return a;
 }
 
-function searchable(bus, rows, count, noun, tail) {
+function searchable(bus, rows, count, noun) {
   let search = '';
   const apply = () => {
     let shown = 0;
@@ -190,7 +335,7 @@ function searchable(bus, rows, count, noun, tail) {
       r.row.hidden = !!search && !r.text.includes(search);
       if (!r.row.hidden) shown++;
     }
-    count.textContent = (shown === rows.length ? `${rows.length} ${noun}` : `${shown} of ${rows.length} ${noun}`) + tail;
+    count.textContent = shown === rows.length ? `${rows.length} ${noun}` : `${shown} of ${rows.length} ${noun}`;
   };
   const onSearch = (ev) => { search = String(ev.detail || '').toLowerCase(); apply(); };
   bus.addEventListener('search', onSearch);

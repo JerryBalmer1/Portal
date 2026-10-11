@@ -1,0 +1,28 @@
+# Graph.Node 0.4.0 card (schemas/manifest.schema.json). Version is the psd1 ModuleVersion; one verb per
+# FunctionsToExport entry, effect from the function body (the strongest of read, write, destroy).
+name: Emitter.Reference
+version: 0.1.1
+type: emitter
+description: Graph.Node emitter for the references between repos, Repository, Document, Section, Skill and External nodes joined by contains, links-to, copied-from, references and depends-on.
+# module is the name its envelopes carry; repo is where it is built from today (copied from Graph.Emitter.Reference
+# on 2026-10-11). Facets and kinds as Graph.Node v0.4.0 tests/fixtures/manifest/emitters/.
+module: Graph.Emitter.Reference
+repo: Portal.Emitters
+url: https://github.com/JerryBalmer1/Portal.Emitters
+emits:
+  - { facet: references, kinds: [Repository, Document, Section, Skill, External] }
+tags: [graph, reference, emitter, ontology]
+needs:
+  - { name: PowerShell, version-range: ">=7.4", os: any }
+  # Runs only git log.
+  - { name: git, os: any }
+  # Imported at module load from ..\Graph.Node beside this folder; -LayersPath needs its graphnode binary.
+  - { name: Graph.Node, version-range: ">=0.2.1" }
+verbs:
+  # -LayersPath writes <LayersPath>/<Layer>/<stamp>.graph.json and copies ontology.yaml when absent.
+  - { name: Export-ReferenceGraph, description: "Reads docs and skills across repo roots into one envelope, and with -LayersPath writes it.", effect: write }
+  # Calls Export-ReferenceGraph without -LayersPath and returns rows; -Strict throws.
+  - { name: Test-ReferenceSkillDrift, description: "Reports each copied skill that differs from its source.", effect: read }
+pins:
+  # .claude/skills/graph-node in this folder is a read-only copy at version 0.2.1.
+  Graph.Node: 0.2.1

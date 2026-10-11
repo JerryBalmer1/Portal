@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -21,18 +22,30 @@ const (
 )
 
 // Manifest is one card: what a packaged emitter, skill, tool, rule or workflow
-// is, what it needs and what it does (manifest.schema.json).
+// is, what it needs and what it does (manifest.schema.json). Module, Repo and
+// Emits are required on an emitter card.
 type Manifest struct {
 	Name        string            `json:"name" yaml:"name"`
 	Version     string            `json:"version" yaml:"version"`
 	Type        string            `json:"type" yaml:"type"` // emitter | skill | tool | rule | workflow
 	Description string            `json:"description" yaml:"description"`
+	Module      string            `json:"module,omitempty" yaml:"module,omitempty"` // the module the thing is: Graph.Emitter.Git.Repository
+	Repo        string            `json:"repo,omitempty" yaml:"repo,omitempty"`     // the source repository, by name
+	URL         string            `json:"url,omitempty" yaml:"url,omitempty"`       // where the repository lives, http(s)
+	Emits       []ManifestEmit    `json:"emits,omitempty" yaml:"emits,omitempty"`   // one per facet
 	Tags        []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Needs       []ManifestNeed    `json:"needs,omitempty" yaml:"needs,omitempty"`
 	Verbs       []ManifestVerb    `json:"verbs,omitempty" yaml:"verbs,omitempty"`
 	Extends     string            `json:"extends,omitempty" yaml:"extends,omitempty"` // a card name; not resolved
 	Files       []string          `json:"files,omitempty" yaml:"files,omitempty"`     // relative to the card's folder
 	Pins        map[string]string `json:"pins,omitempty" yaml:"pins,omitempty"`
+}
+
+// ManifestEmit is one facet an emitter writes and the node Kinds a layer of
+// that facet holds.
+type ManifestEmit struct {
+	Facet string   `json:"facet" yaml:"facet"` // lower-case, hyphenated: repository, runs, schema
+	Kinds []string `json:"kinds" yaml:"kinds"`
 }
 
 // ManifestNeed is one thing a card needs to run.
@@ -105,10 +118,29 @@ func normaliseYAML(v any) any {
 	}
 }
 
-// ValidateManifest checks a decoded card against manifest.schema.json. Every
-// problem is code schema.
+// ValidateManifest checks a decoded card against manifest.schema.json; those
+// problems are code schema. An emitter card whose name has more than two
+// dot-separated parts is also an emitter-name warning: the facet belongs in
+// emits, not the name (design.md 27).
 func ValidateManifest(doc any) []Problem {
-	return finish(validateAgainst("manifest.schema.json", "", doc))
+	return finish(append(validateAgainst("manifest.schema.json", "", doc), emitterName(doc)...))
+}
+
+// emitterName warns on an emitter card named with more than two parts.
+func emitterName(doc any) []Problem {
+	m, ok := doc.(map[string]any)
+	if !ok || m["type"] != "emitter" {
+		return nil
+	}
+	name, ok := m["name"].(string)
+	if !ok {
+		return nil
+	}
+	if n := len(strings.Split(name, ".")); n > 2 {
+		return []Problem{{Code: "emitter-name", Path: "/name", Severity: SeverityWarning,
+			Message: fmt.Sprintf("emitter name %s has %d dot-separated parts, at most 2: the facet belongs in emits, not the name", name, n)}}
+	}
+	return nil
 }
 
 // ValidateIndex checks a decoded index against index.schema.json; a generated

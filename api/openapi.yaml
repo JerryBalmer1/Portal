@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.12.1
+  version: 0.13.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -157,7 +157,7 @@ paths:
     get:
       operationId: getEmitterPage
       tags: [page, emitters]
-      summary: The shell page (index.html) of one emitter, its layers newest first. The literal emitters segment wins over getShellPage's service, so this route also serves the shell for every page of the menu's emitters service (emitters/sources, emitters/runs, ...), which keep their paths. No emitter card can be named like one of those pages, since Graph.Node's manifest schema wants a dotted card name and a menu id has no dot, and boot refuses a ledger that holds one anyway (docs/design.md 44). 404 when tenant is not this process's tenant, or name is neither such a page nor an emitter (listEmitters).
+      summary: The shell page (index.html) of one emitter, built from its card (module, version, repo, url, emits) with its layers newest first, each with its source block's version, target and stamp (docs/design.md 49). The literal emitters segment wins over getShellPage's service, so this route also serves the shell for every page of the menu's emitters service (emitters/sources, emitters/runs, ...), which keep their paths. No emitter card can be named like one of those pages, since Graph.Node's manifest schema wants a dotted card name and a menu id has no dot, and boot refuses a ledger that holds one anyway (docs/design.md 44). 404 when tenant is not this process's tenant, or name is neither such a page nor an emitter (listEmitters).
       parameters:
         - $ref: "#/components/parameters/Tenant"
         - { name: name, in: path, required: true, schema: { type: string } }
@@ -497,7 +497,7 @@ paths:
     get:
       operationId: listEmitters
       tags: [emitters]
-      summary: The tenant's emitters as an envelope (module Portal), by name. An emitter is named by the module its layers carry, the module of a mounted layer's ontology (Graph.Emitter.Agent); a card of type emitter named Emitter.<X> is the emitter Graph.Emitter.<X>, one named otherwise is the emitter of its own name. An emitter some feed holds a card of is that Card node, under the card's own id ui:card:<feed>/<name>@<version> as listFeeds serves it (the newest push when several cards name it), with emitter (its name) and layers (how many mounted layers it produced). An emitter a mounted layer names with no card in any feed is an Emitter node, ui:emitter:<name>, with unknown true and layers. Every mounted layer is a Layer node, ui:layer:<name> (emitter, module, version, stamp, node and edge counts, mountedBy, path), joined Layer to its emitter by produced-by and back by has-layer.
+      summary: The tenant's emitters as an envelope (module Portal), one per name seen in a card or a layer's source block, matched by that block and never by name mangling (docs/design.md 49). An emitter is named by its card (Emitter.Agent); a mounted layer belongs to the emitter its Graph.Node source block names (source.emitter equal to the card name). An emitter some feed holds a card of is that Card node, under the card's own id ui:card:<feed>/<name>@<version> as listFeeds serves it (the newest push when several cards name it; module, repo, url and emits when the push recorded them), with emitter (its name), status, layers (how many mounted layers name it) and layerVersions (the source.version of those layers, distinct, sorted). status is ok when every such layer's source.version is the card's version, version-mismatch when one differs, no-layers when none names it. A name a layer's source.emitter gives with no card in any feed is an Emitter node, ui:emitter:<name>, status no-card. A layer with no source block is never matched to a card; it is listed under its envelope's module as an Emitter node, ui:module:<module>, status unstamped. Every mounted layer is a Layer node, ui:layer:<name> (emitter, module, version, stamp, node and edge counts, mountedBy, path, and its source block when it has one), joined Layer to its emitter by produced-by and back by has-layer. Ordered by name, an unstamped module after an emitter of the same name.
       responses:
         "200":
           description: The emitters and the layers they produced (module Portal).
@@ -509,11 +509,11 @@ paths:
   /api/tenants/{tenant}/emitters/{name}:
     parameters:
       - $ref: "#/components/parameters/Tenant"
-      - { name: name, in: path, required: true, description: "The emitter's name, as listEmitters serves it (Graph.Emitter.Agent).", schema: { type: string } }
+      - { name: name, in: path, required: true, description: "The emitter's name, as listEmitters serves it: a card's name or a layer's source.emitter (Emitter.Agent), or the module of an unstamped layer (Graph.Emitter.FileSystem).", schema: { type: string } }
     get:
       operationId: getEmitter
       tags: [emitters]
-      summary: One emitter as an envelope (module Portal) rooted at its node (as listEmitters serves it), with the Layer nodes of every mounted layer it produced, newest first by stamp, joined produced-by and has-layer. 404 when name is not one of listEmitters' emitters.
+      summary: One emitter as an envelope (module Portal) rooted at its node (as listEmitters serves it), with the Layer nodes of every mounted layer it produced, newest first by stamp, joined produced-by and has-layer. A card or source.emitter name is looked up before an unstamped module of the same name. 404 when name is not one of listEmitters' emitters.
       responses:
         "200":
           description: The emitter and its layers (module Portal).
@@ -668,13 +668,13 @@ paths:
       operationId: pushCard
       tags: [feeds]
       summary: >-
-        Publish one card: its manifest.yaml and the files of its folder. The manifest is checked with Graph.Node 0.3.0's
-        manifest schema (the lifted graph.ValidateManifest), and each file's path (the part's filename, relative to
+        Publish one card: its manifest.yaml and the files of its folder. The manifest is checked with Graph.Node 0.4.0's
+        manifest schema (an emitter card needs module, repo and emits) (the lifted graph.ValidateManifest), and each file's path (the part's filename, relative to
         the card's folder, forward slashes) must be clean. An oci feed gets an OCI artifact (repository: the feed URL's
         path and the card's name in lower case; tag: the version), a nuget feed a .nupkg (id: the card's name). Contributor
         or admin (403 for a reader, 401 without a token). A name and version the ledger or the feed already holds is 409.
         Every push that names a feed the tenant has is one line of the tenant's ledger, whatever its result (pushed,
-        duplicate, invalid, failed); the 201 body is that line.
+        duplicate, invalid, failed), with the card's module, repo, url and emits when it has them; the 201 body is that line.
       requestBody:
         required: true
         content:
@@ -1183,6 +1183,19 @@ components:
         message: { type: string }
         seq: { type: integer, description: "The line's number in the ledger, from 1 (docs/design.md 45). Every push writes it; only a line from before 0.10.0 lacks it." }
         prev: { type: string, description: "SHA-256 of the line before, 64 lower-case hex; 64 zeros for the first line. Written with seq." }
+        module: { type: string, description: "The card's module (Graph.Node 0.4.0; required on an emitter card): the module its envelopes name. Written from 0.13.0 when the card has one (docs/design.md 49)." }
+        repo: { type: string, description: "The card's source repository, by name. Written with module." }
+        url: { type: string, description: "Where the card's repository lives, http(s). Written when the card has one." }
+        emits:
+          type: array
+          description: "The card's emits, one item per facet: the facet and the node Kinds a layer of it holds. Written when the card has them."
+          items:
+            type: object
+            required: [facet, kinds]
+            additionalProperties: false
+            properties:
+              facet: { type: string }
+              kinds: { type: array, items: { type: string } }
     Error:
       type: object
       required: [code, message]

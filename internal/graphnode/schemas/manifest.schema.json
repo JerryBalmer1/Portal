@@ -2,14 +2,42 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://graphnode.jerrybalmer.dev/schemas/manifest.schema.json",
   "title": "GraphNode Manifest",
-  "description": "The card one packaged thing (an emitter, skill, tool, rule or workflow) carries as manifest.yaml in its folder. YAML on disk; validated as its JSON equivalent (design.md 21, 22).",
+  "description": "The card one packaged thing (an emitter, skill, tool, rule or workflow) carries as manifest.yaml in its folder. YAML on disk; validated as its JSON equivalent (design.md 21, 22, 27). An emitter card also requires module, repo and emits.",
   "type": "object",
   "required": ["name", "version", "type", "description"],
+  "allOf": [
+    {
+      "if":   { "properties": { "type": { "const": "emitter" } }, "required": ["type"] },
+      "then": { "required": ["module", "repo", "emits"] }
+    }
+  ],
   "properties": {
-    "name":        { "$ref": "#/$defs/name" },
+    "name":        { "$ref": "#/$defs/name", "description": "On an emitter, two segments, Emitter.<Source> (Emitter.Git, not Emitter.Git.Repository): the facet goes in emits, never in the name. A name of more than two segments on an emitter is a warning, code emitter-name." },
     "version":     { "$ref": "#/$defs/semver" },
     "type":        { "$ref": "#/$defs/type" },
     "description": { "type": "string", "minLength": 1 },
+    "module": {
+      "type": "string",
+      "pattern": "^[^\\s]+$",
+      "description": "The module the thing is, by the name its runtime imports, e.g. Graph.Emitter.Git.Repository; for an emitter, the module its envelopes name in module. No whitespace. Required on an emitter."
+    },
+    "repo": {
+      "type": "string",
+      "pattern": "^[^\\s]+$",
+      "description": "The source repository the thing is built from, by name, e.g. Graph.Emitter.Git.Repository. No whitespace. Required on an emitter."
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^https?://[^\\s]+$",
+      "description": "Where the repository lives, an http or https URL with no whitespace, e.g. https://github.com/JerryBalmer1/Graph.Emitter.Git.Repository."
+    },
+    "emits": {
+      "type": "array",
+      "description": "What the emitter writes, one item per facet: the facet (one face of its source, a kind of layer) and the node Kinds a layer of that facet holds. Required on an emitter.",
+      "items": { "$ref": "#/$defs/emit" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "tags": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
@@ -66,6 +94,31 @@
     "os": {
       "type": "string",
       "enum": ["windows", "linux", "macos"]
+    },
+    "facet": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "description": "One face of an emitter's source, lower-case words joined by single hyphens, e.g. repository, runs, schema."
+    },
+    "kind": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$",
+      "description": "A node Kind name, as node.schema.json's kind, e.g. Commit, PolicyDecision."
+    },
+    "emit": {
+      "type": "object",
+      "required": ["facet", "kinds"],
+      "properties": {
+        "facet": { "$ref": "#/$defs/facet" },
+        "kinds": {
+          "type": "array",
+          "description": "the node Kinds a layer of this facet holds, declared in the emitter's ontology",
+          "items": { "$ref": "#/$defs/kind" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
     },
     "need": {
       "type": "object",

@@ -1,0 +1,28 @@
+# Graph.Node 0.4.0 card (schemas/manifest.schema.json). Version is the psd1 ModuleVersion; one verb per
+# FunctionsToExport entry, effect from the function body (the strongest of read, write, destroy).
+# The psd1 has no Description; this one is the README's.
+# Named Emitter.Git (Graph.Node 0.4.0, design.md 27): the facet, repository, is in emits, not in the name.
+name: Emitter.Git
+version: 0.1.1
+type: emitter
+description: Graph.Node emitter for a git repository, Commit, Branch, Tag and Author nodes from git log and for-each-ref, with touches edges onto fs ids.
+# module is the name its envelopes carry; repo is where it is built from today (copied from Graph.Emitter.Git.Repository
+# on 2026-10-11). Facets and kinds as Graph.Node v0.4.0 tests/fixtures/manifest/emitters/.
+module: Graph.Emitter.Git.Repository
+repo: Portal.Emitters
+url: https://github.com/JerryBalmer1/Portal.Emitters
+emits:
+  - { facet: repository, kinds: [Commit, Branch, Tag, Author] }
+tags: [graph, git, emitter, ontology]
+needs:
+  - { name: PowerShell, version-range: ">=7.4", os: any }
+  # Runs only git log and git for-each-ref. The README asks 2.28+ for the tests' git init -b.
+  - { name: git, os: any }
+  # Imported at module load from ..\Graph.Node beside this folder; -LayersPath needs its graphnode binary.
+  - { name: Graph.Node, version-range: ">=0.2.1" }
+verbs:
+  # -LayersPath writes <stamp>.graph.json and copies ontology.yaml when absent.
+  - { name: Export-GitRepositoryGraph, description: "Reads git history and refs into one envelope, and with -LayersPath writes it.", effect: write }
+pins:
+  # .claude/skills/graph-node in this folder is a read-only copy at version 0.2.1.
+  Graph.Node: 0.2.1

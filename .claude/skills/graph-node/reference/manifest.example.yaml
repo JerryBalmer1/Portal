@@ -2,14 +2,20 @@ name: Emitter.Example
 version: 0.1.0
 type: emitter
 description: Reads an example source and writes one graph/1 envelope per run.
+module: Graph.Emitter.Example
+repo: Graph.Emitter.Example
+url: https://github.com/example/Graph.Emitter.Example
+emits:
+  - { facet: inventory, kinds: [Host, Service] }
+  - { facet: traffic, kinds: [Flow] }
 tags: [example, network]
 needs:
   - { name: PowerShell, version-range: ">=7.4", os: any }
-  - { name: Graph.Node, version-range: ^0.3.1 }
+  - { name: Graph.Node, version-range: ^0.4.0 }
   - { name: example-cli, version-range: ">=1.2 <2.0", os: windows }
 verbs:
   - { name: discover, command: Invoke-ExampleDiscover, description: Walk the source and write one envelope to the output folder., effect: read }
   - { name: tag, command: Set-ExampleTag, description: Write a tag onto each source item., effect: write }
   - { name: Remove-ExampleCache, description: Delete the local cache., effect: destroy, os: [windows, linux] }
 pins:
-  Graph.Node: 0.3.1
+  Graph.Node: 0.4.0

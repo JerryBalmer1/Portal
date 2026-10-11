@@ -1,0 +1,19 @@
+# Graph.Node 0.4.0 card (schemas/manifest.schema.json) for the ledger layer, whose envelopes name module
+# Claude.Agent.Ledger and whose source block names emitter Emitter.Ledger. A card only: the code lives in Portal.Agent.
+# The layer is built by agent/Orchestrator/tools/LedgerLayer.ps1 (Up), not by a Claude.Agent.Ledger function. Version
+# is the source block's, Claude.Agent.Ledger's psd1 ModuleVersion (the envelope's own version is LedgerLayer.ontology.yaml's,
+# 0.1.0). Kinds from LedgerLayer.ontology.yaml. No verbs: Up writes the layer, and it is an Invoke-Build task.
+name: Emitter.Ledger
+version: 0.3.0
+type: emitter
+description: The Claude.Agent ledger as a layer, one LedgerEntry per ledger.jsonl line chained by prev edges under a LedgerChain root, joined to Graph.Emitter.Agent's runs by records edges.
+module: Claude.Agent.Ledger
+repo: Portal.Agent
+url: https://github.com/JerryBalmer1/Portal.Agent
+emits:
+  - { facet: ledger, kinds: [LedgerChain, LedgerEntry] }
+tags: [graph, ledger, agent, emitter]
+needs:
+  - { name: PowerShell, version-range: ">=7.4", os: any }
+  # ledger: is registered from Graph.Node 0.3.2 and shared with Claude.Agent.Ledger from 0.3.3.
+  - { name: Graph.Node, version-range: ">=0.3.3" }

@@ -1,0 +1,23 @@
+# Graph.Node 0.4.0 card (schemas/manifest.schema.json) for the environment and alerts layers, whose envelopes name
+# module Claude.Agent.Orchestrator. A card only: the code lives in Portal.Agent, not here. Orchestrator is a compose
+# stack with dot-sourced tools, not a PowerShell module, so it has no psd1. Both layers write source.emitter
+# Emitter.Environment. Version is the environment layer's source.version, EnvironmentLayer.ontology.yaml's; the alerts
+# layer (Claude.Agent.Alerts' New-AgentAlertLayer) stamps Alerts' psd1 version instead, 0.4.0, so that facet does not
+# match. Kinds from EnvironmentLayer.ontology.yaml and Claude.Agent.Alerts' agent-alerts.ontology.yaml. No verbs: Up writes the layers, and it is an Invoke-Build task.
+name: Emitter.Environment
+version: 0.3.0
+type: emitter
+description: "The running Claude.Agent compose stack as a layer (the stack and its containers, images and networks under env: ids), and the agent-alerts layer raised over the runs, ledger and environment layers."
+module: Claude.Agent.Orchestrator
+repo: Portal.Agent
+url: https://github.com/JerryBalmer1/Portal.Agent
+emits:
+  - { facet: environment, kinds: [environment.instance, environment.image, environment.network] }
+  - { facet: alerts, kinds: [alert] }
+tags: [graph, environment, alerts, agent, docker, emitter]
+needs:
+  - { name: PowerShell, version-range: ">=7.4", os: any }
+  # Up reads docker inspect; the environment layer code itself never calls Docker.
+  - { name: docker, os: any }
+  # env: and alert:<fingerprint> are registered from Graph.Node 0.3.2 (Orchestrator's Preflight requires it).
+  - { name: Graph.Node, version-range: ">=0.3.2" }
