@@ -20,8 +20,10 @@
 // /<tenant>/environments/graph, its selected node after # (docs/design.md
 // 46), or the alerts at /<tenant>/compliance/alerts, each at
 // /<tenant>/compliance/alerts/<fingerprint>, with the open count by top
-// severity in a badge beside the mode (docs/design.md 47). The route is the URL, /<tenant>/<service>/<page>[/<id>],
-// /<tenant>/layers/<name>, /<tenant>/agents[/<name>],
+// severity in a badge beside the mode (docs/design.md 47), or the action
+// requests at /<tenant>/actions, each opening its ledger entry; a
+// container's node menu asks for one (docs/design.md 50). The route is the URL, /<tenant>/<service>/<page>[/<id>],
+// /<tenant>/layers/<name>, /<tenant>/agents[/<name>], /<tenant>/actions,
 // /<tenant>/emitters[/<name>] or /<tenant>/ledger[/<source>[/<seq>]], so a deep link survives a refresh. Which service is expanded, whether the rail is
 // collapsed and what the search box holds are the viewer's pointers, like a
 // Canvas selection (docs/design.md 11): never written.
@@ -38,11 +40,12 @@ import * as emitters from '/static/emitters.js';
 import * as ledger from '/static/ledger.js';
 import * as envgraph from '/static/envgraph.js';
 import * as alerts from '/static/alerts.js';
+import * as actions from '/static/actions.js';
 import { icon } from '/static/icons.js';
 import { refusal } from '/static/toast.js';
 
 // Page renderers by a Page's view; screen is drawn by screen.js.
-const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers, emitters, ledger, 'environments-graph': envgraph, alerts };
+const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers, emitters, ledger, 'environments-graph': envgraph, alerts, actions };
 
 const tenant = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || 'default');
 const client = createClient(tenant);
@@ -79,6 +82,7 @@ function route() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   if (parts[1] === 'layers' && parts[2] && !parts[3]) return layerRoute(parts[2]);
   if (parts[1] === 'agents' && !parts[3]) return agentRoute(parts[2] || null);
+  if (parts[1] === 'actions' && !parts[2]) return viewRoute('actions');
   // A page of the emitters service keeps its path; any other name is an emitter's.
   if (parts[1] === 'emitters' && !parts[3] && !(parts[2] && menu.pages.has(`emitters/${parts[2]}`))) return emitterRoute(parts[2] || null);
   // So does a page of the ledger service; any other name is a chain's source.
@@ -108,6 +112,15 @@ function agentRoute(name) {
   const path = list ? list.properties.path : '';
   const cut = path.indexOf('/');
   return { service: path.slice(0, cut), page: path.slice(cut + 1), id: name, agent: name, tab: null };
+}
+
+// viewRoute places /<tenant>/<view> under the Page whose view it is: the
+// actions page (Environments/Actions) at /<tenant>/actions.
+function viewRoute(view) {
+  const list = [...menu.pages.values()].find((p) => p.properties.view === view);
+  const path = list ? list.properties.path : '';
+  const cut = path.indexOf('/');
+  return { service: path.slice(0, cut), page: path.slice(cut + 1), id: null, tab: null };
 }
 
 function agentHref(name) {
@@ -175,8 +188,24 @@ function alertHref(fingerprint, q) {
   return `${href(page.properties.path, fingerprint)}${qs ? `?${qs}` : ''}`;
 }
 
-// nodeLinks are where the node menu's items lead (nodemenu.js).
-const nodeLinks = { kindHref, graphHref, layerHref: (name) => (name ? layerHref(name) : null), agentHref, ledgerHref, alertHref };
+// principalHref is where a principal is shown: an agent's page for type
+// agent, else its row on the Page whose view is users (Identity/Users),
+// marked by the fragment; null when type is unknown (no such principal).
+function principalHref(id, type, name) {
+  if (type === 'agent') return agentHref(name);
+  if (type !== 'user') return null;
+  const page = [...menu.pages.values()].find((p) => p.properties.view === 'users');
+  return page ? `${href(page.properties.path)}#${encodeURIComponent(id)}` : null;
+}
+
+// nodeLinks are where the node menu's items lead (nodemenu.js); act asks
+// for an action on a container as the viewer, refusal says why the viewer
+// may not (docs/design.md 50).
+const nodeLinks = {
+  kindHref, graphHref, layerHref: (name) => (name ? layerHref(name) : null), agentHref, ledgerHref, alertHref,
+  act: (action, n, confirm) => actions.ask({ client, navigate, ledgerHref }, action, n, confirm),
+  refusal: () => refusal(who),
+};
 
 // pageHref is where a Page lives: the agents page at /<tenant>/agents, the
 // emitters page at /<tenant>/emitters, every other at its path.
@@ -184,6 +213,7 @@ function pageHref(page) {
   if (page.properties.view === 'agents') return agentHref(null);
   if (page.properties.view === 'emitters') return emitterHref(null);
   if (page.properties.view === 'ledger') return ledgerHref(null);
+  if (page.properties.view === 'actions') return `/${encodeURIComponent(tenant)}/actions`;
   return href(page.properties.path);
 }
 
@@ -657,7 +687,7 @@ function drawPage(svc, page, r) {
   if (r.source) {
     ui.title.textContent = r.seq ? `${r.source} ${r.seq}` : `${r.source} ledger`;
     ui.title.dataset.page = `ledger:${r.source}${r.seq ? `/${r.seq}` : ''}`;
-    current = { mod: ledger, handle: ledger.open(ui.content, { client, bus, toolbar: ui.toolbar, source: r.source, seq: r.seq, run: r.run, before: r.before, navigate, ledgerHref, layerHref, alertHref }) };
+    current = { mod: ledger, handle: ledger.open(ui.content, { client, bus, toolbar: ui.toolbar, source: r.source, seq: r.seq, run: r.run, before: r.before, navigate, ledgerHref, layerHref, alertHref, graphHref, principalHref }) };
     return;
   }
   if (!page) {
@@ -690,7 +720,7 @@ function drawPage(svc, page, r) {
 }
 
 function pageCtx(page) {
-  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref, emitterHref, cardHref, ledgerHref, alertHref, nodeLinks };
+  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref, emitterHref, cardHref, ledgerHref, alertHref, nodeLinks, principalHref };
 }
 
 // reauth reads whoami again (a token the portal refuses is dropped) and

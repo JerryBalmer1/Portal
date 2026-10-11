@@ -460,6 +460,26 @@ svg.pt-eg [hidden] { display: none; }
 .pt-nodemenu-item[href]:hover, .pt-nodemenu-item[href]:focus { background: var(--gr-surface); outline: none; box-shadow: inset 2px 0 0 var(--gr-accent); }
 .pt-nodemenu-item[aria-disabled="true"] { color: var(--gr-text-muted); opacity: 0.55; cursor: default; }
 .pt-nodemenu-item[aria-disabled="true"]:focus { outline: 1px dashed var(--gr-line); outline-offset: -1px; }
+/* A container's actions (docs/design.md 50): buttons under a rule, since they ask and go nowhere. */
+.pt-nodemenu-sep { height: 1px; margin: 4px 6px; background: var(--gr-line); }
+button.pt-nodemenu-action { font: inherit; text-align: left; background: none; border: 0; cursor: pointer; }
+button.pt-nodemenu-action:not([aria-disabled="true"]):hover, button.pt-nodemenu-action:not([aria-disabled="true"]):focus { background: var(--gr-surface); outline: none; box-shadow: inset 2px 0 0 var(--gr-accent); }
+
+/* Actions (docs/design.md 50): requested is the gap, in the dev bar's amber; done green, failed red. */
+.pt-outcome { font-weight: 600; }
+.pt-outcome[data-outcome="requested"] { color: rgb(245,166,35); }
+.pt-outcome[data-outcome="done"] { color: var(--gr-ok); }
+.pt-outcome[data-outcome="failed"] { color: var(--gr-bad); }
+.pt-actions tbody tr.pt-action-row { cursor: pointer; }
+.pt-actions tbody tr[data-outcome="failed"] { box-shadow: inset 3px 0 0 var(--gr-bad); }
+.pt-output { margin: 0; padding: 8px 10px; max-height: 360px; overflow: auto; white-space: pre-wrap; font: 12px/1.45 ui-monospace, Consolas, monospace; background: var(--gr-base); border: var(--gr-border); border-radius: 6px; }
+.pt-asked a { font-weight: 600; }
+.pt-confirm-backdrop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,0.5); }
+.pt-confirm { max-width: 420px; padding: 16px 18px; background: var(--gr-raised); border: var(--gr-border); border-radius: 10px; box-shadow: 0 12px 40px rgba(0,0,0,0.55); }
+.pt-confirm h2 { margin: 0 0 8px; font-size: 16px; }
+.pt-confirm p { margin: 0 0 14px; color: var(--gr-text-muted); font-size: 13px; }
+.pt-confirm-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+.pt-confirm-ok { border-color: var(--gr-bad); color: var(--gr-bad); }
 
 /* Alerts (docs/design.md 47): critical in the chain's red, warning in the dev
    bar's amber, info muted. The banner's badge counts the open alerts at their

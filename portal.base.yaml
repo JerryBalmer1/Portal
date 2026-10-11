@@ -126,6 +126,7 @@ menu:
       - { id: instances, label: Instances, path: environments/instances, kind: environment.instance, filter: [container, compose, kubernetes, host] }
       - { id: images, label: Images, path: environments/images, kind: environment.image }
       - { id: networks, label: Networks, path: environments/networks, kind: environment.network }
+      - { id: actions, label: Actions, path: environments/actions, view: actions }
 
   - id: compliance
     label: Compliance

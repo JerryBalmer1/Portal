@@ -66,6 +66,9 @@ var (
 // card's (Graph.Node 0.4.0 requires all but URL on an emitter card), written
 // from 0.13.0 when the card has them, so the emitter's page is built from
 // the card as pushed (docs/design.md 49); a line before 0.13.0 has none.
+// Action is set on a line of kind action.request (docs/design.md 50), which
+// is written and read as an ActionRequest: of the rest, only At (when it was
+// requested), Name (the principal's name), Seq and Prev are set.
 type LedgerEntry struct {
 	At        string               `json:"at"`
 	Principal *string              `json:"principal"`
@@ -87,6 +90,7 @@ type LedgerEntry struct {
 	Repo      string               `json:"repo,omitempty"`
 	URL       string               `json:"url,omitempty"`
 	Emits     []graph.ManifestEmit `json:"emits,omitempty"`
+	Action    *ActionRequest       `json:"-"`
 }
 
 // LedgerLine is one line of ledger.jsonl with the SHA-256 of its bytes as
@@ -156,17 +160,22 @@ func loadLedger(path string) ([]LedgerEntry, [][]byte, error) {
 			continue
 		}
 		var e LedgerEntry
-		dec := json.NewDecoder(bytes.NewReader(line))
-		dec.DisallowUnknownFields()
-		err := dec.Decode(&e)
-		if err == nil && e.Result == ResultPushed && (e.Card == nil || e.Version == nil || e.Type == nil || e.Hash == nil) {
-			err = errors.New("a pushed entry names its card, version, type and hash")
-		}
-		if err != nil || e.At == "" || e.Feed == "" || e.Result == "" {
-			msg := "not a ledger entry"
-			if err != nil {
-				msg += ": " + err.Error()
+		var err error
+		if lineKind(line) == ActionRequestKind {
+			e, err = decodeAction(line)
+		} else {
+			dec := json.NewDecoder(bytes.NewReader(line))
+			dec.DisallowUnknownFields()
+			err = dec.Decode(&e)
+			if err == nil && e.Result == ResultPushed && (e.Card == nil || e.Version == nil || e.Type == nil || e.Hash == nil) {
+				err = errors.New("a pushed entry names its card, version, type and hash")
 			}
+			if err == nil && (e.At == "" || e.Feed == "" || e.Result == "") {
+				err = errors.New("a push names when, the feed and the result")
+			}
+		}
+		if err != nil {
+			msg := "not a ledger entry: " + err.Error()
 			return nil, nil, &ConfigError{File: path, Problems: []string{fmt.Sprintf("line %d: %s", n, msg)}}
 		}
 		out = append(out, e)
@@ -333,16 +342,27 @@ func (t *Tenant) Push(ctx context.Context, p Pusher, who Principal, feedID strin
 // record chains e to the ledger's last line (seq, prev), appends it to
 // ledger.jsonl (one line, one write, synced) and to the in-memory ledger,
 // and returns e with cause. A ledger that cannot be written is the error,
-// whatever cause was. Pushes are one at a time (pushMu), so no line comes
-// between the one read here and the one written.
+// whatever cause was. Appends are one at a time (ledgerMu), so no line comes
+// between the one read here and the one written; a push also holds pushMu
+// across its duplicate check. An action request (e.Action) is written as
+// its ActionRequest, its id ledger:<seq>.
 func (t *Tenant) record(e LedgerEntry, cause error) (LedgerEntry, error) {
+	t.ledgerMu.Lock()
+	defer t.ledgerMu.Unlock()
 	t.mu.RLock()
 	e.Seq, e.Prev = len(t.ledger)+1, zeroHash
 	if n := len(t.ledgerRaw); n > 0 {
 		e.Prev = lineHash(t.ledgerRaw[n-1])
 	}
 	t.mu.RUnlock()
-	line, err := json.Marshal(e)
+	var v any = e
+	if e.Action != nil {
+		a := *e.Action
+		a.ID, a.Seq, a.Prev = LedgerID(e.Seq), e.Seq, e.Prev
+		e.Action = &a
+		v = a
+	}
+	line, err := json.Marshal(v)
 	if err != nil {
 		return e, err
 	}

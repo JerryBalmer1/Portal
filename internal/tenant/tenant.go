@@ -63,6 +63,7 @@ type Tenant struct {
 	ledger      []LedgerEntry
 	ledgerRaw   [][]byte
 	pushMu      sync.Mutex
+	ledgerMu    sync.Mutex
 }
 
 // Options configures Load.

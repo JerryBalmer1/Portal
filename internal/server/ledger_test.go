@@ -15,10 +15,11 @@ import (
 	"github.com/JerryBalmer1/Portal/internal/tenant"
 )
 
-// The ledger fixtures (docs/design.md 45): twelve entries of the agent's
-// ledger, seq 44 to 55, nine of them in the agent-runs fixture's run; the
-// broken copy has entry 50 altered and re-hashed, so 51's prev no longer
-// names it, while its root still says valid.
+// The ledger fixtures (docs/design.md 45): fourteen entries of the agent's
+// ledger, seq 44 to 57, nine of them in the agent-runs fixture's run and the
+// last two the Runner's action results (docs/design.md 50); the broken copy
+// (twelve entries, 44 to 55) has entry 50 altered and re-hashed, so 51's
+// prev no longer names it, while its root still says valid.
 const (
 	ledgerFile       = "2026-10-09T02-51-00Z.ledger.graph.json"
 	brokenLedgerDir  = "../../tests/fixtures/layers/ledger-broken"
@@ -71,8 +72,8 @@ func TestKnownGoodLedgerVerifies(t *testing.T) {
 		t.Errorf("chains %s, want agent then portal", got)
 	}
 	a := props(env, "ui:ledger:agent")
-	if a["valid"] != true || num(a["count"]) != 12 || num(a["first"]) != 44 || num(a["last"]) != 55 || a["breakAt"] != nil || a["reason"] != nil {
-		t.Errorf("agent chain %v, want valid, 12 entries, 44 to 55, no break", a)
+	if a["valid"] != true || num(a["count"]) != 14 || num(a["first"]) != 44 || num(a["last"]) != 57 || a["breakAt"] != nil || a["reason"] != nil {
+		t.Errorf("agent chain %v, want valid, 14 entries, 44 to 57, no break", a)
 	}
 	if a["stamp"] != "2026-10-09T02:51:00Z" || a["layer"] != "ledger" || a["claimed"] != true || a["source"] != "agent" {
 		t.Errorf("agent chain %v", a)
@@ -172,18 +173,18 @@ func TestLedgerEntriesNewestFirstInPages(t *testing.T) {
 		return env, ids
 	}
 	env, ids := page("")
-	if env.Root != "ui:ledger:agent" || len(ids) != 12 || ids[0] != "ledger:55" || ids[11] != "ledger:44" || props(env, env.Root)["next"] != nil {
-		t.Errorf("root %s, entries %v, want ledger:55 down to ledger:44 and no next", env.Root, ids)
+	if env.Root != "ui:ledger:agent" || len(ids) != 14 || ids[0] != "ledger:57" || ids[13] != "ledger:44" || props(env, env.Root)["next"] != nil {
+		t.Errorf("root %s, entries %v, want ledger:57 down to ledger:44 and no next", env.Root, ids)
 	}
 	env, ids = page("?limit=5")
-	if strings.Join(ids, ",") != "ledger:55,ledger:54,ledger:53,ledger:52,ledger:51" || num(props(env, env.Root)["next"]) != 51 {
+	if strings.Join(ids, ",") != "ledger:57,ledger:56,ledger:55,ledger:54,ledger:53" || num(props(env, env.Root)["next"]) != 53 {
 		t.Errorf("first page %v, next %v", ids, props(env, env.Root)["next"])
 	}
 	// prev joins neighbours on the page; the last one's predecessor is on the next.
-	if !hasEdge(env, "ledger:52|ledger:51|prev") || hasEdge(env, "ledger:51|ledger:50|prev") {
+	if !hasEdge(env, "ledger:54|ledger:53|prev") || hasEdge(env, "ledger:53|ledger:52|prev") {
 		t.Error("prev edges on the page")
 	}
-	if !hasEdge(env, "ledger:52|"+fixtureRun+"/step-3|records") || !hasEdge(env, "ui:ledger:agent|ledger:55|has-entry") {
+	if !hasEdge(env, "ledger:53|"+fixtureRun+"|records") || !hasEdge(env, "ui:ledger:agent|ledger:57|has-entry") {
 		t.Error("records and has-entry edges")
 	}
 	env, ids = page("?limit=5&before=51")

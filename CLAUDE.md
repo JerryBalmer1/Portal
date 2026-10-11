@@ -6,7 +6,7 @@
 
 > **`internal/gen` is generated and READ-ONLY.** **`internal/graphnode` and `cmd/graphnode` are lifted from Graph.Node and READ-ONLY**: recopy them from Graph.Node's pinned tag (v0.4.0) when a new one is named (docs/design.md 4); the copy differs from the tag only in the import path (since v0.2.3 Graph.Node registers `ui:` to Portal itself, so no edit is registered; docs/design.md 34); Pester fails on any other drift.
 
-> **No write to any data layer, ever** (docs/design.md 2). The binary writes only under `-artifacts`, the tenant's two identity files `tenants/<tenant>/principals.yaml` and `tokens.yaml` (docs/design.md 38), and the tenant's push ledger `tenants/<tenant>/ledger.jsonl`, one appended line per push; beyond files, it sends a pushed card to one of the tenant's feeds (docs/design.md 40).
+> **No write to any data layer, ever** (docs/design.md 2). The binary writes only under `-artifacts`, the tenant's two identity files `tenants/<tenant>/principals.yaml` and `tokens.yaml` (docs/design.md 38), and the tenant's push ledger `tenants/<tenant>/ledger.jsonl`, one appended line per push or action request (docs/design.md 50: Portal asks, it never executes); beyond files, it sends a pushed card to one of the tenant's feeds (docs/design.md 40).
 
 > No `pwsh -Command { }`. Run multi-line PowerShell by writing it to a temp `.ps1` and `pwsh -NoProfile -File`. Pester runs only as `pwsh -NoProfile -File .\tests\Invoke-Tests.ps1`.
 

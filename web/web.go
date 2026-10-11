@@ -34,6 +34,7 @@ var static = map[string]string{
 	"envgraph.js":      "envgraph.js",
 	"nodemenu.js":      "nodemenu.js",
 	"alerts.js":        "alerts.js",
+	"actions.js":       "actions.js",
 	"canvas.js":        "canvas.js",
 	"table.js":         "table.js",
 	"detail.js":        "detail.js",

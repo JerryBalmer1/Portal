@@ -1,5 +1,5 @@
 module: Portal
-version: 0.13.0
+version: 0.14.0
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -186,7 +186,7 @@ kinds:
       - { name: prev, type: string, description: "The hash of the line before, as the line names it; absent on an unchained line." }
       - { name: unchained, type: boolean, description: "Source portal: a line written before 0.10.0, without seq and prev." }
       - { name: written, type: integer, description: "Source portal: the seq the line says, when it is not its line number." }
-      - { name: event, type: string, description: "Source agent: the line's kind (agent.start, policy.pre, ...)." }
+      - { name: event, type: string, description: "The line's kind: for the agent, its layer's event (agent.start, policy.pre, ...), or action.result for an entry whose kind is that; for Portal's own, action.request on an action request (docs/design.md 50)." }
       - { name: run, type: string, description: "Source agent: the Run id it belongs to, when it belongs to a run." }
       - { name: runLayer, type: string, description: "Source agent: the mounted runs layer holding that Run; the run's link is /<tenant>/layers/<runLayer>#<id>." }
       - { name: by, type: string, description: "Source portal: who pushed." }
@@ -195,6 +195,28 @@ kinds:
       - { name: version, type: string, description: "Source portal: the card's version, when the manifest gave one." }
       - { name: result, type: string, description: "Source portal: pushed, duplicate, invalid or failed." }
       - { name: message, type: string, description: "Source portal: the push's message." }
+      - { name: lineId, type: string, description: "Source portal, an action request: the id its line carries, ledger:<seq> (docs/design.md 50)." }
+      - { name: action, type: string, description: "Source portal, an action request: logs, stop or restart." }
+      - { name: subject, type: string, description: "Source portal, an action request: the container asked about, env:container/<project>/<service>." }
+      - { name: principal, type: string, description: "Source portal, an action request: who asked, ui:principal:<name>, from the token." }
+      - { name: status, type: string, description: "An action request: requested, as written. An action result: done or failed, as the Runner wrote it." }
+      - { name: outcome, type: string, description: "Source portal, an action request: requested until a result names it, then that result's status." }
+      - { name: resultId, type: string, description: "Source portal, an action request: the agent chain's result entry naming it, ledger:<seq> (the newest when several do)." }
+      - { name: resultSeq, type: integer, description: "Source portal, an action request: that result's seq; its page is /<tenant>/ledger/agent/<seq>." }
+      - { name: request, type: string, description: "Source agent, an action result: the request it answers, ledger:<seq> of Portal's own ledger, as the Runner wrote it." }
+      - { name: requestSeq, type: integer, description: "Source agent, an action result: that request's seq, when Portal's ledger holds it; its page is /<tenant>/ledger/portal/<seq>." }
+      - { name: started, type: string, description: "Source agent, an action result: when the Runner started it." }
+      - { name: finished, type: string, description: "Source agent, an action result: when it finished." }
+      - { name: exit, type: integer, description: "Source agent, an action result: the exit code." }
+      - { name: output, type: string, description: "Source agent, an action result: what it printed." }
+  Actions:
+    description: The tenant's action requests, as GET /api/tenants/{tenant}/actions serves them (docs/design.md 50), joined to each by has-action. Never on the screen graph.
+    idRule: "ui:actions"
+    properties:
+      - { name: count, type: integer, required: true, description: "Every action request in the tenant's ledger." }
+      - { name: requested, type: integer, required: true, description: "Those no result names yet: the gap." }
+      - { name: done, type: integer, required: true, description: "Those whose result's status is done." }
+      - { name: failed, type: integer, required: true, description: "Those whose result's status is failed." }
   Alerts:
     description: The tenant's alerts, as GET /api/tenants/{tenant}/alerts serves them (docs/design.md 47), one page joined by has-alert, with the counts the page's chips and the banner's badge read. Never on the screen graph.
     idRule: "ui:alerts"
@@ -280,6 +302,18 @@ edgeKinds:
   recorded-in:
     description: records reversed, a Run or Step to each entry of the agent's ledger that belongs to it.
     from: [Run, Step]
+    to: [LedgerEntry]
+  has-action:
+    description: The Actions list to each action request, a LedgerEntry of Portal's own ledger.
+    from: [Actions]
+    to: [LedgerEntry]
+  answered-by:
+    description: An action request (Portal's LedgerEntry) to the agent ledger's action result that names it (docs/design.md 50).
+    from: [LedgerEntry]
+    to: [LedgerEntry]
+  answers:
+    description: answered-by reversed, an action result to the request it names.
+    from: [LedgerEntry]
     to: [LedgerEntry]
   has-alert:
     description: The Alerts list to each Alert on its page.

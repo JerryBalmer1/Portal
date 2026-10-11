@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.13.0
+  version: 0.14.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -11,7 +11,7 @@ info:
     a write needs a token the tenant's tokens.yaml holds (401 without one), and a token it does not hold is refused
     on any request (401). A token belongs to a principal (principals.yaml) whose role decides what it may do: reader
     reads only, contributor writes everything but identity and settings, admin writes all; a write the role does not
-    allow is 403. A principal creates principals of a role equal to or below its own (attenuation). Data layers are mounted read-only and queried; nothing here ever writes to a data layer. A contributor or admin publishes a card to one of the tenant's feeds, and every push is one line of the tenant's ledger. Source of
+    allow is 403. A principal creates principals of a role equal to or below its own (attenuation). Data layers are mounted read-only and queried; nothing here ever writes to a data layer. A contributor or admin publishes a card to one of the tenant's feeds, and every push is one line of the tenant's ledger. A contributor or admin asks for an action on a container, as one line of the same ledger; Portal never executes it. Source of
     truth for the API surface: the Go server (cmd/portal) is generated from this file by oapi-codegen v2.8.0 and
     the JS client in web/client.js is checked against it by the Go spec tests.
 security:
@@ -40,6 +40,14 @@ tags:
     description: The environments graph (docs/design.md 46). Every node of an environment.* Kind under an env:compose/, env:container/, env:image/ or env:network/ id in the mounted layers, as their layers emit them, with every edge of a mounted layer that touches one and the node at its other end. Read-only; Portal reads env, tags and group from the nodes and infers none.
   - name: alerts
     description: Alerts (docs/design.md 47), read from every mounted layer holding nodes of Kind alert under the id alert:<fingerprint>, 64 lower-case hex (Portal.Agent's alert layer); any other id is no alert, and nothing maps one (docs/design.md 48), each with an about edge to its subject and a raised-in edge to its Run. A fingerprint in two layers is served from the later stamp. Read-only; Portal never writes an alert.
+  - name: actions
+    description: >-
+      Actions on containers (docs/design.md 50). Portal asks, the Runner executes, the ledger records, the graph shows the gap.
+      A request is one action.request line of tenants/<tenant>/ledger.jsonl (kind, id ledger:<seq>, action, subject, principal,
+      requested, status, then seq and prev), written as the token's principal; Portal never executes anything. Portal.Agent's
+      Runner answers with an action.result entry of the agent's ledger (request the request's ledger:<seq>, status done or
+      failed, started, finished, exit, output), which Portal reads from the mounted ledger layer only, never from an alert
+      layer's copies.
   - name: feeds
     description: Where the tenant publishes Graph.Node manifest cards (an OCI registry or a NuGet v3 feed), what each holds, and the push. Every push is one line of tenants/<tenant>/ledger.jsonl.
 paths:
@@ -209,6 +217,21 @@ paths:
         - $ref: "#/components/parameters/Tenant"
         - { name: source, in: path, required: true, schema: { type: string } }
         - { name: seq, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/actions:
+    get:
+      operationId: getActionsPage
+      tags: [page, actions]
+      summary: The shell page (index.html) listing the tenant's action requests, drawn under the menu's Page whose view is actions (Environments/Actions). Two segments, so no shell route competes. A request's own page is its ledger entry's, /<tenant>/ledger/portal/<seq>. 404 when tenant is not this process's tenant.
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
       responses:
         "200":
           description: index.html
@@ -544,7 +567,7 @@ paths:
     get:
       operationId: getLedger
       tags: [ledger]
-      summary: One chain's entries, newest first, one page, as an envelope (module Portal) rooted at its Ledger node (as listLedgers serves it, with entries, the count matching run, and next, the before of the next page). Each entry is a LedgerEntry node (seq, stamp, prev, hash), joined from the chain by has-entry and to the entry before by prev when both are on the page. An agent entry keeps its layer's id, ledger:<seq>, with event, run, runLayer (the mounted runs layer holding that Run) and its records edge to the Run or Step by the runs layer's id, which ends in that layer; a portal entry is ui:ledger:portal/<seq>, with by, feed, card, version, result and message. 404 for a source listLedgers does not serve.
+      summary: One chain's entries, newest first, one page, as an envelope (module Portal) rooted at its Ledger node (as listLedgers serves it, with entries, the count matching run, and next, the before of the next page). Each entry is a LedgerEntry node (seq, stamp, prev, hash), joined from the chain by has-entry and to the entry before by prev when both are on the page. An agent entry keeps its layer's id, ledger:<seq>, with event, run, runLayer (the mounted runs layer holding that Run) and its records edge to the Run or Step by the runs layer's id, which ends in that layer; a portal entry is ui:ledger:portal/<seq>, with by, feed, card, version, result and message, or, for an action request, as listActions serves it. An action result of the agent chain carries what listActions serves on it too. 404 for a source listLedgers does not serve.
       parameters:
         - { name: limit, in: query, required: false, description: "Entries per page, 1 to 1000; 100 when absent.", schema: { type: integer } }
         - { name: before, in: query, required: false, description: "Only entries whose seq is lower: the next of the page before.", schema: { type: integer } }
@@ -566,7 +589,7 @@ paths:
     get:
       operationId: getLedgerEntry
       tags: [ledger]
-      summary: One entry as an envelope (module Portal) rooted at it, as getLedger serves it, with its chain (has-entry), the entry before it (prev) and, for an agent entry, its records edge. 404 for a source listLedgers does not serve or a seq the chain lacks.
+      summary: One entry as an envelope (module Portal) rooted at it, as getLedger serves it, with its chain (has-entry), the entry before it (prev) and, for an agent entry, its records edge. An action request comes with its result (answered-by), and an action result with its request (answers), when the other chain holds it (docs/design.md 50). 404 for a source listLedgers does not serve or a seq the chain lacks.
       responses:
         "200":
           description: The entry, its chain and the entry before it (module Portal).
@@ -654,6 +677,72 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/actions:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listActions
+      tags: [actions]
+      summary: >-
+        The tenant's action requests, newest first, as an envelope (module Portal) rooted at ui:actions (Kind Actions: count,
+        and requested, done and failed, the requests by outcome), joined to each request by has-action. A request is the
+        LedgerEntry of its line in Portal's own chain, ui:ledger:portal/<seq>, as getLedgerEntry serves it: event
+        action.request, lineId (the ledger:<seq> its line carries), action, subject, principal, by, status (requested, as
+        written) and outcome (requested until a result names it, then the result's status), with resultId and resultSeq when
+        one does. Its result is the agent chain's LedgerEntry under the id its layer gave it, ledger:<seq>: event
+        action.result, request, status, started, finished, exit, output, requestSeq, and the node's source block as the layer
+        gives it; joined answered-by (request to result) and answers (result to request). When several results name one
+        request, the newest. Read from the mounted ledger layer only. Empty when no request was made.
+      responses:
+        "200":
+          description: The requests and their results (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      operationId: postAction
+      tags: [actions]
+      summary: >-
+        Ask for an action on a container: logs, stop or restart, on a subject env:container/<project>/<service>. The principal
+        is the token's, never the body's: a contributor or admin (403 for a reader, and for a token from before 0.5.0, which
+        belongs to no principal; 401 without a token). Appends one action.request line to tenants/<tenant>/ledger.jsonl,
+        chained like every line, and returns it as written; its id is ledger:<seq>, and its entry page
+        /<tenant>/ledger/portal/<seq>. Any other action, or a subject that is no container id, is 422. Portal executes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActionAsk" }
+      responses:
+        "201":
+          description: Asked; the ledger line.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionRequest" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/tenants/{tenant}/actions/{seq}:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+      - { name: seq, in: path, required: true, description: "The request's line in the tenant's ledger, the seq of its id ledger:<seq>.", schema: { type: integer } }
+    get:
+      operationId: getAction
+      tags: [actions]
+      summary: One action request as an envelope (module Portal) rooted at it, as listActions serves it, with its result and the answered-by and answers edges when the ledger layer holds one. 404 when that line of the tenant's ledger is no action request.
+      responses:
+        "200":
+          description: The request and its result (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/tenants/{tenant}/feeds/{feed}/push:
@@ -1196,6 +1285,29 @@ components:
             properties:
               facet: { type: string }
               kinds: { type: array, items: { type: string } }
+    ActionAsk:
+      type: object
+      description: What postAction asks for. Who asks is the token's principal, never named here.
+      required: [action, subject]
+      additionalProperties: false
+      properties:
+        action: { type: string, description: "logs, stop or restart; any other is 422." }
+        subject: { type: string, description: "A container: env:container/<project>/<service>; any other id is 422." }
+    ActionRequest:
+      type: object
+      description: One action.request line of tenants/<tenant>/ledger.jsonl, member for member as written (docs/design.md 50), the shape Portal.Agent's Runner reads.
+      required: [kind, id, action, subject, principal, requested, status, seq, prev]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [action.request] }
+        id: { type: string, description: "ledger:<seq>, seq the line's number in the tenant's ledger." }
+        action: { type: string, enum: [logs, stop, restart] }
+        subject: { type: string, description: "env:container/<project>/<service>." }
+        principal: { type: string, description: "Who asked: ui:principal:<name>, from the token." }
+        requested: { type: string, description: "When, UTC (2026-10-11T09:00:00.000Z)." }
+        status: { type: string, enum: [requested] }
+        seq: { type: integer, description: "The line's number in the ledger, from 1, as every line since 0.10.0." }
+        prev: { type: string, description: "SHA-256 of the line before, 64 lower-case hex; 64 zeros for the first line." }
     Error:
       type: object
       required: [code, message]

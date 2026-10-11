@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.14.0 — 2026-10-11
+
+- **Actions on containers: Portal asks, the Runner executes, the ledger records, the graph shows the gap** (docs/design.md 50).
+  - `POST .../actions` with `{action, subject}` appends one `action.request` line to `tenants/<t>/ledger.jsonl` and returns it. Its members are `kind`, `id` (`ledger:<seq>`), `action`, `subject`, `principal`, `requested`, `status`, `seq` and `prev`.
+  - The principal comes from the token, never the body: a body naming one is 400. A reader or a legacy token is 403.
+  - Only logs, stop or restart, on an `env:container/` subject; anything else is 422.
+  - Portal executes nothing.
+- **Results come from the ledger layer only.** An agent ledger entry with `kind: action.result` (`request`, `status`, `started`, `finished`, `exit`, `output`, its source block) answers the request whose `ledger:<seq>` it names, the newest when several do. An alert layer's copy answers nothing.
+  - **Split chains**, as Jerry chose: the request stays `ui:ledger:portal/<seq>`, with `lineId` carrying the contract id, and the result stays `ledger:<seq>`.
+- **`GET .../actions`** serves the requests newest first under `ui:actions` (Kind `Actions`: `count`, `requested`, `done`, `failed`). Each request has an `outcome` and joins its result through `answered-by` and `answers`. `GET .../actions/{seq}` serves one request.
+- **The menu.** A container's right-click menu, on the graph and on an Instances row, gains Logs, Stop and Restart:
+  - Stop and Restart ask first in an in-page dialog.
+  - A notice links the new id to its ledger entry.
+  - The three are greyed with why while the viewer may not write.
+- **Environments/Actions** at `/<t>/actions` has the columns action, subject, principal, requested, status (amber requested, green done, red failed) and result. A row opens the request's ledger entry.
+- **Ledger entry pages** link a request to its result and back. A result's output is shown in a `pre` block.
+- **Fixtures.**
+  - The ledger layer fixture gains entries 56 (logs, done) and 57 (restart, failed, exit 1), so it now holds 14 entries, 44 to 57.
+  - `tests/fixtures/ledger/actions.ledger.jsonl` holds three requests; the third is unanswered.
+- **Go** 107 to 112: `TestPostActionValidatesAndTakesThePrincipalFromTheToken`, `TestActionsJoinTheirResults`, `TestActionResultsAreReadFromTheLedgerLayerOnly`, `TestActionLinesSurviveARestartAndABadOneStopsIt` and `TestActionSubjectsAreTheGraphsContainers`.
+- **Pester** 118 to 124: a new `Actions` block (tag `Actions`) of six Its. The Ledger and Environments graph blocks are updated for the fixture and the new menu items.
+
 ## 0.13.0 — 2026-10-11
 
 - **Emitters match by source block, never by name** (docs/design.md 49).

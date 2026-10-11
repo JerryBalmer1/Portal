@@ -26,13 +26,17 @@ const (
 )
 
 // chains is the tenant's chains in listing order: agent, when a ledger
-// layer is mounted, then portal.
+// layer is mounted, then portal, with each action request joined to its
+// result (joinActions).
 func (s *Server) chains() []*store.Chain {
 	var out []*store.Chain
-	if c, ok := s.p.AgentLedger(); ok {
-		out = append(out, c)
+	portal := s.portalChain()
+	agent, ok := s.p.AgentLedger()
+	if ok {
+		out = append(out, agent)
 	}
-	return append(out, s.portalChain())
+	joinActions(portal, agent)
+	return append(out, portal)
 }
 
 func (s *Server) chain(source string) (*store.Chain, bool) {
@@ -54,6 +58,16 @@ func (s *Server) portalChain() *store.Chain {
 			Props: map[string]any{"by": l.Name, "feed": l.Feed, "result": l.Result, "message": l.Message}}
 		if l.Seq != 0 && l.Seq != n {
 			e.Written = l.Seq
+		}
+		if a := l.Action; a != nil {
+			// An action request (docs/design.md 50): its line's own members,
+			// lineId the id it carries.
+			e.Props = map[string]any{"event": a.Kind, "lineId": a.ID, "action": a.Action, "subject": a.Subject,
+				"principal": a.Principal, "by": l.Name, "status": a.Status}
+			e.Name = a.Action + " " + a.Subject
+			c.Entries = append(c.Entries, e)
+			c.Stamp = l.At
+			continue
 		}
 		e.Name = l.Result
 		if l.Card != nil {
@@ -118,7 +132,7 @@ func entryNode(c *store.Chain, e store.ChainEntry, runLayer map[string]string) g
 	for k, v := range e.Props {
 		props[k] = v
 	}
-	return graph.Node{ID: e.ID, Kind: store.LedgerKind, Name: e.Name, Properties: props}
+	return graph.Node{ID: e.ID, Kind: store.LedgerKind, Name: e.Name, Properties: props, Source: e.Source}
 }
 
 // runLayers maps each agent Run id to the mounted layer holding it.
@@ -242,9 +256,30 @@ func (s *Server) GetLedgerEntry(w http.ResponseWriter, r *http.Request, name api
 	env := servedEnvelope(time.Now().UTC().Format(store.StampLayout))
 	env.Root = e.ID
 	env.Nodes = append(env.Nodes, root)
-	addEntries(env, c, root.ID, entries, s.runLayers())
+	runLayer := s.runLayers()
+	addEntries(env, c, root.ID, entries, runLayer)
+	s.addAnswer(env, e, runLayer)
 	env.Recount()
 	writeJSON(w, http.StatusOK, env)
+}
+
+// addAnswer puts the other half of an action into env beside e: a
+// request's result, joined answered-by, or a result's request, joined
+// answers, when the other chain holds it (docs/design.md 50).
+func (s *Server) addAnswer(env *graph.Envelope, e store.ChainEntry, runLayer map[string]string) {
+	portal, agent, pairs := s.actionPairs()
+	for _, p := range pairs {
+		if p.res == nil || (p.req.ID != e.ID && p.res.ID != e.ID) {
+			continue
+		}
+		if p.req.ID == e.ID {
+			env.Nodes = append(env.Nodes, entryNode(agent, *p.res, runLayer))
+		} else {
+			env.Nodes = append(env.Nodes, entryNode(portal, p.req, runLayer))
+		}
+		env.Edges = append(env.Edges, graph.NewEdge(p.req.ID, p.res.ID, "answered-by"), graph.NewEdge(p.res.ID, p.req.ID, "answers"))
+		return
+	}
 }
 
 // ledgerCounts counts the agent chain's entries by run, or is nil when no

@@ -321,8 +321,8 @@ func TestAlertLayerIsNotTheLedgerNorAnEnvironment(t *testing.T) {
 	base := envPortal(t, h, [2]string{fixtureRunLayer, runsDir}, [2]string{"ledger", ledgerDir})
 	h.do(t, base, "POST", "/api/tenants/default/layers", variedAlerts(t), 201)
 	ledgers := served(t, h.do(t, base, "GET", "/api/tenants/default/ledger", "", 200))
-	if a := props(ledgers, "ui:ledger:agent"); a["layer"] != "ledger" || num(a["count"]) != 12 || a["valid"] != true {
-		t.Errorf("agent chain %v; want the ledger layer's twelve entries", a)
+	if a := props(ledgers, "ui:ledger:agent"); a["layer"] != "ledger" || num(a["count"]) != 14 || a["valid"] != true {
+		t.Errorf("agent chain %v; want the ledger layer's fourteen entries", a)
 	}
 	if g, _ := environmentGraph(t, h, base); len(g.Nodes) != 0 {
 		t.Errorf("environments graph holds %d nodes from the alert layer's copy", len(g.Nodes))

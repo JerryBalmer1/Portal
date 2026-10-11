@@ -19,7 +19,8 @@ export function refusal(who, need = 'contributor') {
 let box = null;
 
 // toast shows err's code, message and problems (an Error object from
-// client.js), or text, for a few seconds, newest at the bottom.
+// client.js), or text, or a DOM node (an action's asked notice, with its
+// link), for a few seconds, newest at the bottom.
 export function toast(err, ms = 5000) {
   if (!box) {
     box = document.createElement('div');
@@ -32,6 +33,8 @@ export function toast(err, ms = 5000) {
   t.className = 'pt-toast';
   if (typeof err === 'string') {
     t.textContent = err;
+  } else if (err instanceof Node) {
+    t.appendChild(err);
   } else {
     const code = (err && err.code) || 'error';
     t.dataset.code = code;

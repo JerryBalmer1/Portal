@@ -53,7 +53,7 @@ func (s *Server) resolver(stamp string) *resolver {
 func (r *resolver) entry(id string) (graph.Node, bool) {
 	if r.entries == nil {
 		r.entries = map[string]graph.Node{}
-		if c, ok := r.s.p.AgentLedger(); ok {
+		if c, ok := r.s.chain(tenant.SourceAgent); ok {
 			runLayer := r.s.runLayers()
 			for _, e := range c.Entries {
 				r.entries[e.ID] = entryNode(c, e, runLayer)

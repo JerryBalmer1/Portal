@@ -6,9 +6,20 @@
 // the node has no edge for is greyed, with why in its title, never hidden.
 // What each links to is read from the environments graph's edges
 // (GET .../environments/graph), never stored. Arrow keys, Home and End move
-// through it, Enter follows, Escape and Tab close it.
+// through it, Enter follows, Escape and Tab close it. On a container, and
+// only there, three more items ask for an action (docs/design.md 50): Logs,
+// Stop and Restart, buttons, since they go nowhere; each asks through
+// links.act, greyed with why while the viewer may not write.
 
 let openMenu = null;
+
+// ACTIONS are the container's action items, in menu order; stop and
+// restart are confirmed first, logs is not.
+export const ACTIONS = [
+  { label: 'Logs', action: 'logs', confirm: false },
+  { label: 'Stop', action: 'stop', confirm: true },
+  { label: 'Restart', action: 'restart', confirm: true },
+];
 
 // ENV_ID is the four env: forms Graph.Node 0.3.3 registers to
 // Claude.Agent.Orchestrator (docs/design.md 48): env:compose/<project>,
@@ -20,6 +31,14 @@ const ENV_ID = /^env:(compose\/[^/\\ ]+|container\/[^/\\ ]+\/[^/\\ ]+|image\/[^\
 // a Kind starting environment. under an env: id. A bare id is none.
 export function isEnvironment(n) {
   return String(n.kind || '').startsWith('environment.') && ENV_ID.test(String(n.id || ''));
+}
+
+// isContainer is whether the menu offers actions on n: an environment
+// node of Kind environment.instance whose properties.kind is container.
+// The API takes only an env:container/ id as a subject, which every such
+// node has.
+export function isContainer(n) {
+  return isEnvironment(n) && n.kind === 'environment.instance' && n.properties?.kind === 'container';
 }
 
 // detailsHref is where a node is shown, as the API serves it: a Run's or
@@ -41,7 +60,10 @@ export function detailsHref(n, g, links) {
 // each {label, href, why}: href null when greyed, why saying what is
 // missing. links: {kindHref(kind, id), graphHref(id), layerHref(name),
 // agentHref(name), ledgerHref(source, seq), alertHref(fingerprint)}, each
-// null when the menu has no page for it.
+// null when the menu has no page for it, and act(action, n, confirm) and
+// refusal(), which ask for an action and say why the viewer may not. A
+// container also gets ACTIONS, each {label, action, confirm, why}, why ''
+// unless refusal() says otherwise.
 export function items(n, g, links) {
   const byId = new Map((g.nodes || []).map((x) => [x.id, x]));
   const runs = n.kind === 'Run' ? [n] : (g.edges || [])
@@ -56,12 +78,17 @@ export function items(n, g, links) {
   let runsHref = null;
   if (n.kind === 'Principal') runsHref = details;
   else if (run) runsHref = detailsHref(run, g, links);
-  return [
+  const list = [
     { label: 'Details', href: details, why: n.kind === 'Principal' ? 'no has-run edge: it holds no mounted run' : `no page lists ${n.kind}` },
     { label: 'Show graph', href: links.graphHref(n.id), why: 'the menu has no environments graph' },
     { label: 'Runs', href: runsHref, why: n.kind === 'Principal' ? 'no has-run edge: it holds no mounted run' : 'no hosts edge to a mounted run' },
     ledgerItem(runs, links, run ? 'the agent ledger records nothing of this run' : 'no hosts edge to a mounted run'),
   ];
+  if (isContainer(n) && links.act) {
+    const why = links.refusal ? links.refusal() : '';
+    for (const a of ACTIONS) list.push({ ...a, why });
+  }
+  return list;
 }
 
 // ledgerItem is Ledger: the agent chain's entries of the first of runs
@@ -89,6 +116,7 @@ export function open(ev, n, g, links, navigate, from, list = items(n, g, links))
   head.title = n.id;
   menu.appendChild(head);
   const entries = list.map((it) => {
+    if (it.action) return actionItem(menu, it, n, links);
     const a = document.createElement('a');
     a.className = 'pt-nodemenu-item';
     a.setAttribute('role', 'menuitem');
@@ -139,6 +167,37 @@ export function open(ev, n, g, links, navigate, from, list = items(n, g, links))
   openMenu = { menu, from, off: () => { document.removeEventListener('pointerdown', outside, true); window.removeEventListener('blur', onBlur); } };
   focusAt(0);
   return menu;
+}
+
+// actionItem is one of ACTIONS as a button: it asks through links.act,
+// or is greyed with why. The first one follows a separator.
+function actionItem(menu, it, n, links) {
+  if (!menu.querySelector('.pt-nodemenu-sep')) {
+    const sep = document.createElement('div');
+    sep.className = 'pt-nodemenu-sep';
+    sep.setAttribute('role', 'separator');
+    menu.appendChild(sep);
+  }
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'pt-nodemenu-item pt-nodemenu-action';
+  b.setAttribute('role', 'menuitem');
+  b.tabIndex = -1;
+  b.textContent = it.label;
+  b.dataset.item = it.action;
+  b.dataset.action = it.action;
+  if (it.why) {
+    b.setAttribute('aria-disabled', 'true');
+    b.title = it.why;
+  } else {
+    b.title = `ask the Runner to ${it.action} ${n.id}${it.confirm ? ' (asks you first)' : ''}`;
+    b.addEventListener('click', () => {
+      close(false);
+      links.act(it.action, n, it.confirm);
+    });
+  }
+  menu.appendChild(b);
+  return b;
 }
 
 function onBlur() {

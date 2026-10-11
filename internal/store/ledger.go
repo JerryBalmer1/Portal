@@ -21,7 +21,18 @@ const (
 	AgentLedgerPrefix = "ledger:"
 	// ZeroHash is the prev of a chain's first entry, seq 1.
 	ZeroHash = "0000000000000000000000000000000000000000000000000000000000000000"
+	// ActionResultKind is the kind of the Runner's answer to an action
+	// request (docs/design.md 50): an entry of the agent's ledger whose
+	// properties carry kind action.result, request (the request line's
+	// ledger:<seq> in Portal's own ledger), status, started, finished, exit
+	// and output. It is read from the ledger layer only, never from an
+	// alert layer's copies.
+	ActionResultKind = "action.result"
 )
+
+// ResultFields are the properties of an action.result entry Portal serves
+// as the layer gives them.
+var ResultFields = []string{"request", "status", "started", "finished", "exit", "output"}
 
 // Why a chain breaks.
 const (
@@ -50,6 +61,9 @@ type ChainEntry struct {
 	Unchained bool
 	Name      string
 	Props     map[string]any
+	// Source is the entry node's own source block in its layer, kept for
+	// an action result: where the Runner wrote it.
+	Source []graph.Source
 }
 
 // Chain is one ledger chain, oldest entry first, and its verify.
@@ -179,6 +193,15 @@ func (p *Portal) AgentLedger() (*Chain, bool) {
 		e.Run, _ = n.Properties["run"].(string)
 		if ev, ok := n.Properties["event"].(string); ok {
 			e.Props["event"] = ev
+		}
+		if k, _ := n.Properties["kind"].(string); k == ActionResultKind {
+			e.Props["event"] = k
+			for _, f := range ResultFields {
+				if v, ok := n.Properties[f]; ok && v != nil {
+					e.Props[f] = v
+				}
+			}
+			e.Source = n.Source
 		}
 		c.Entries = append(c.Entries, e)
 	}

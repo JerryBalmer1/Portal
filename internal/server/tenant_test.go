@@ -194,7 +194,7 @@ func TestMenuShape(t *testing.T) {
 		"ui:rail:workflows":          {"All"},
 		"ui:rail:workflows:all":      {"Plan", "Runs", "History"},
 		"ui:rail:workflows:all:runs": {"Steps"},
-		"ui:rail:environments":       {"Graph", "Instances", "Images", "Networks"},
+		"ui:rail:environments":       {"Graph", "Instances", "Images", "Networks", "Actions"},
 		"ui:rail:compliance":         {"Alerts", "Rules", "Findings", "Reports"},
 		"ui:rail:policy":             {"Rules", "Decisions"},
 		"ui:rail:ledger":             {"Entries", "Verify", "Keys"},

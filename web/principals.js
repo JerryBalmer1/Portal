@@ -3,8 +3,9 @@
 // each (name, role, created, created by), and an Add form (name and role)
 // that only an admin may send, and only for a role up to its own
 // (attenuation); the portal checks both again (docs/design.md 38). A refused
-// add is a toast. The banner's search filters the rows. Identity/Agents is
-// agents.js since 0.8.0 (docs/design.md 43).
+// add is a toast. The banner's search filters the rows; the row whose id
+// follows # is marked, where an action's principal links (docs/design.md
+// 50). Identity/Agents is agents.js since 0.8.0 (docs/design.md 43).
 import { toast, guard, refusal } from '/static/toast.js';
 
 const ROLES = ['reader', 'contributor', 'admin'];
@@ -69,6 +70,12 @@ export function mount(el, ctx) {
     }
     list.replaceChildren(t);
     apply();
+    const target = decodeURIComponent(location.hash.slice(1));
+    const hit = target && rows.find((r) => r.row.dataset.principal === target);
+    if (hit) {
+      hit.row.classList.add('pt-target');
+      hit.row.setAttribute('aria-current', 'true');
+    }
   }).catch((err) => {
     list.className = 'pt-card pt-error-card';
     list.textContent = `${err.code}: ${err.message}`;

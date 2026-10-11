@@ -10,7 +10,9 @@
 // /<tenant>/ledger/<source>/<seq>, from GET .../ledger/{source}/{seq}. A
 // ?run= on the entries' URL keeps only that run's entries; ?before= pages.
 // An entry's page has an alerts row linking each alert about the entry
-// (docs/design.md 47). Nothing here writes.
+// (docs/design.md 47). An action request's page links its result and an
+// action result's links its request, the result's output in a pre block
+// (docs/design.md 50). Nothing here writes.
 import { aboutLinks } from '/static/alerts.js';
 
 // mount draws the chains into el. ctx: {client, toolbar, bus, navigate, ledgerHref, layerHref}.
@@ -49,7 +51,7 @@ export function mount(el, ctx) {
 }
 
 // open draws one chain's entries, or one entry when ctx.seq is set, into el.
-// ctx: {client, toolbar, bus, source, seq, run, before, navigate, ledgerHref, layerHref, alertHref}.
+// ctx: {client, toolbar, bus, source, seq, run, before, navigate, ledgerHref, layerHref, alertHref, graphHref, principalHref}.
 export function open(el, ctx) {
   return ctx.seq ? entry(el, ctx) : entries(el, ctx);
 }
@@ -107,6 +109,11 @@ function entries(el, ctx) {
       if (agent) {
         row.insertCell().textContent = q.event || '';
         row.insertCell().appendChild(runLink(ctx, q, records.get(n.id)));
+      } else if (q.event === 'action.request') {
+        row.dataset.event = q.event;
+        row.insertCell().textContent = `${q.action} · ${q.outcome}`;
+        row.insertCell().textContent = q.subject;
+        row.insertCell().textContent = q.by;
       } else {
         row.insertCell().textContent = q.unchained ? `${q.result} (unchained)` : q.result;
         row.insertCell().textContent = q.card ? `${q.card}${q.version ? `@${q.version}` : ''}` : '';
@@ -116,7 +123,7 @@ function entries(el, ctx) {
       hc.className = 'pt-hash';
       hc.textContent = short(q.hash);
       hc.title = q.hash;
-      rows.push({ row, text: `${q.seq} ${q.stamp} ${q.event || q.result || ''} ${q.run || q.card || ''}`.toLowerCase() });
+      rows.push({ row, text: `${q.seq} ${q.stamp} ${q.event || q.result || ''} ${q.run || q.card || q.subject || ''} ${q.action || ''}`.toLowerCase() });
     }
     h.off = searchable(ctx.bus, rows, count, 'entries', p.entries > rows.length ? ` · ${p.entries} in all` : '');
     wrap.appendChild(t);
@@ -166,6 +173,7 @@ function entry(el, ctx) {
     field('seq', String(q.seq));
     field('stamp', q.stamp);
     for (const k of ['event', 'result', 'card', 'version', 'feed', 'by', 'message']) field(k, q[k]);
+    const waits = actionFields(ctx, n, env, field);
     if (q.run) field('run', runLink(ctx, q, rec && rec.to));
     field('hash', q.hash);
     if (q.prev) {
@@ -182,9 +190,58 @@ function entry(el, ctx) {
       field('verify', `the chain breaks here: ${p.reason}`);
     }
     wrap.appendChild(dl);
-    return aboutLinks(ctx, n.id).then((links) => { if (links) field('alerts', links); });
+    return Promise.all([waits, aboutLinks(ctx, n.id).then((links) => { if (links) field('alerts', links); })]);
   }).catch((err) => fail(wrap, err));
   return h;
+}
+
+// actionFields adds an action's own fields to an entry's page: for a
+// request, what was asked, of what, by whom, its outcome and its result
+// (linking the agent chain's entry); for a result, the request it answers
+// (linking Portal's entry), its status, times, exit and the output in a
+// pre block, and where the Runner wrote it. Resolves once the principal's
+// link is drawn.
+function actionFields(ctx, n, env, field) {
+  const q = n.properties;
+  if (q.event === 'action.request') {
+    field('action', q.action);
+    const graph = ctx.graphHref && ctx.graphHref(q.subject);
+    field('subject', graph ? go(ctx, graph, q.subject) : q.subject);
+    field('line id', q.lineId);
+    field('status', q.status);
+    const out = document.createElement('span');
+    out.className = 'pt-outcome';
+    out.dataset.outcome = q.outcome;
+    out.textContent = q.outcome;
+    field('outcome', out);
+    if (q.resultSeq) field('answered by', go(ctx, ctx.ledgerHref('agent', q.resultSeq), q.resultId));
+    else field('answered by', 'nothing yet: no action.result in the ledger layer names ' + q.lineId);
+    return ctx.client.listPrincipals().then((people) => {
+      const p = people.nodes.find((x) => x.id === q.principal);
+      const to = p && ctx.principalHref ? ctx.principalHref(p.id, p.properties?.type, p.name) : null;
+      field('principal', to ? go(ctx, to, q.principal) : q.principal);
+    }).catch(() => field('principal', q.principal));
+  }
+  if (q.event === 'action.result') {
+    const back = env.edges.find((e) => e.kind === 'answers' && e.from === n.id);
+    field('answers', q.requestSeq && back ? go(ctx, ctx.ledgerHref('portal', q.requestSeq), `${q.request} (portal ${q.requestSeq})`)
+      : `${q.request || 'nothing'}: no such request in the tenant's ledger`);
+    const st = document.createElement('span');
+    st.className = 'pt-outcome';
+    st.dataset.outcome = q.status;
+    st.textContent = q.status;
+    field('status', st);
+    for (const k of ['started', 'finished']) field(k, q[k]);
+    if (q.exit !== undefined) field('exit', String(q.exit));
+    if (q.output !== undefined) {
+      const pre = document.createElement('pre');
+      pre.className = 'pt-output';
+      pre.textContent = q.output;
+      field('output', pre);
+    }
+    for (const s of n.source || []) field('written by', [s.tool, s.path && `${s.path}${s.line ? `:${s.line}` : ''}`].filter(Boolean).join(' · '));
+  }
+  return Promise.resolve();
 }
 
 export function destroy(h) {

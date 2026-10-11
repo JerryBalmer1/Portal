@@ -45,7 +45,7 @@ const (
 // mountLayerUnscoped, gone since 0.7.0 (410).
 var pageLoaded = map[string]bool{"getIndex": true, "getStatic": true, "getShellPage": true, "getShellItem": true, "getLayerPage": true,
 	"getAgentsPage": true, "getAgentPage": true, "getEmittersPage": true, "getEmitterPage": true, "getLedgerPage": true,
-	"getLedgerSourcePage": true, "getLedgerEntryPage": true, "mountLayerUnscoped": true}
+	"getLedgerSourcePage": true, "getLedgerEntryPage": true, "getActionsPage": true, "mountLayerUnscoped": true}
 
 func init() {
 	text := func(r io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
@@ -411,6 +411,18 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 		{"GET", "/api/tenants/default/ledger/agent/x", "", 400},
 		{"GET", "/api/tenants/default/ledger/nope/1", "", 404},
 		{"GET", "/api/tenants/other/ledger/agent/50", "", 404},
+		{"GET", "/default/actions", "", 200},
+		{"GET", "/other/actions", "", 404},
+		{"GET", "/api/tenants/default/actions", "", 200},
+		{"GET", "/api/tenants/other/actions", "", 404},
+		{"POST", "/api/tenants/default/actions", `{"action":"logs","subject":"env:container/claude-agent-dev/agent"}`, 201},
+		{"POST", "/api/tenants/default/actions", `{"action":"nuke","subject":"env:container/claude-agent-dev/agent"}`, 422},
+		{"POST", "/api/tenants/default/actions", `{"action":"logs","subject":"env:container/a/b","principal":"ui:principal:x"}`, 400},
+		{"POST", "/api/tenants/other/actions", `{"action":"logs","subject":"env:container/claude-agent-dev/agent"}`, 404},
+		{"GET", "/api/tenants/default/actions/1", "", 200},
+		{"GET", "/api/tenants/default/actions/99", "", 404},
+		{"GET", "/api/tenants/default/actions/x", "", 400},
+		{"GET", "/api/tenants/other/actions/1", "", 404},
 		{"GET", "/default/environments/graph", "", 200},
 		{"GET", "/default/environments/graph/" + url.PathEscape(envCompose), "", 200},
 		{"GET", "/other/environments/graph", "", 404},
