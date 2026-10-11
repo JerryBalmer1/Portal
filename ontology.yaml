@@ -1,5 +1,5 @@
 module: Portal
-version: 0.7.0
+version: 0.8.0
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -52,11 +52,12 @@ kinds:
       - { name: layer, type: string, required: true, description: "Mounted layer name." }
       - { name: node, type: string, required: true, description: "Node id in that layer." }
   Mount:
-    description: A data layer mounted by path through POST /api/layers, recorded on screen so an approved snap mounts it again at boot. Written by the mount, removed by a mount of the same name from an inline envelope; it draws nothing and has no edges.
+    description: A data layer mounted by path through POST /api/tenants/{tenant}/layers, recorded on screen so an approved snap mounts it again at boot. Written by the mount, removed by a mount of the same name from an inline envelope; it draws nothing and has no edges.
     idRule: "ui:mount:<layer name>"
     properties:
-      - { name: layer, type: string, required: true, description: "The layer name, as POST /api/layers took it." }
+      - { name: layer, type: string, required: true, description: "The layer name, as the mount took it." }
       - { name: path, type: string, required: true, description: "The path as given, made absolute: a .graph.json file, or a directory whose newest *.graph.json is mounted at boot." }
+      - { name: mountedBy, type: string, description: "Id of the principal whose token mounted it, so its runs group under that principal again after a boot (docs/design.md 43). Absent for a token that names no principal." }
   Service:
     description: One entry of the shell's left rail, built from the tenant's merged config (portal.base.yaml, then tenants/<tenant>/portal.yaml) and served by GET /api/tenants/{tenant}/menu. Never on the screen graph. Its pages hang off it by has-page; its icon is its State's.
     idRule: "ui:rail:<service id>"
@@ -81,8 +82,31 @@ kinds:
     properties:
       - { name: type, type: string, required: true, description: "user or agent. Only users are created in 0.5.0; agents are minted via Marker, later." }
       - { name: role, type: string, required: true, description: "reader (GET only), contributor (every write but identity and settings) or admin (all)." }
-      - { name: created, type: string, required: true, description: "When it was created, UTC (2026-10-11T09:00:00.000Z)." }
+      - { name: created, type: string, description: "When it was created, UTC (2026-10-11T09:00:00.000Z). Absent only on dev-bootstrap in GET .../agents when principals.yaml does not hold it (docs/design.md 43)." }
       - { name: createdBy, type: string, description: "Id of the principal that created it. Absent only on the tenant's first admin, made by New-PortalToken -Bootstrap." }
+  Run:
+    description: One agent run, as GET /api/tenants/{tenant}/agents serves it (docs/design.md 43). It is a Run node of a mounted layer whose module is Graph.Emitter.Agent, under that node's own id, with the counts of what it contains. Portal mints no id under agent:, which Graph.Emitter.Agent owns; it re-serves the emitter's. Joined from the principal whose token mounted its layer by has-run; never on the screen graph.
+    idRule: "agent:run/<stamp>, the emitter's Run id as it is in the layer"
+    properties:
+      - { name: layer, type: string, required: true, description: "The mounted layer the Run is in; its page is /<tenant>/layers/<layer>." }
+      - { name: startedAt, type: string, required: true, description: "The emitter's startedAt, UTC ending Z." }
+      - { name: stopped, type: boolean, required: true, description: "The emitter's stopped." }
+      - { name: finishedAt, type: string, description: "The emitter's finishedAt; absent when not stopped." }
+      - { name: exit, type: integer, description: "The emitter's exit; absent when it has none." }
+      - { name: steps, type: integer, required: true, description: "Step nodes the Run contains." }
+      - { name: allow, type: integer, required: true, description: "PolicyDecision nodes under the Run whose effect is allow." }
+      - { name: deny, type: integer, required: true, description: "PolicyDecision nodes under the Run whose effect is deny." }
+      - { name: witness, type: integer, required: true, description: "PolicyDecision nodes under the Run whose effect is witness." }
+  Decision:
+    description: One policy decision of a Run, a PolicyDecision node of the same layer under its own id. Served by GET /api/tenants/{tenant}/agents/{name}/runs only, joined from its Run by has-decision; never on the screen graph.
+    idRule: "agent:run/<stamp>/step-<n>/<pre|post>, the emitter's PolicyDecision id as it is in the layer"
+    properties:
+      - { name: layer, type: string, required: true, description: "The mounted layer the decision is in." }
+      - { name: effect, type: string, required: true, description: "allow, deny or witness." }
+      - { name: phase, type: string, required: true, description: "pre or post." }
+      - { name: rule, type: string, required: true, description: "rules[n] or default, as ledgered." }
+      - { name: step, type: integer, required: true, description: "The ordinal of the Step it was made on." }
+      - { name: reason, type: string, description: "The hook's reason; pre decisions only." }
   Feed:
     description: Where cards are published (docs/design.md 40). Built from the merged config's feeds (portal.base.yaml, then tenants/<tenant>/portal.yaml) and served by GET /api/tenants/{tenant}/feeds with the cards pushed to it; never on the screen graph. POST .../feeds/<id>/push publishes a card, contributor or admin.
     idRule: "ui:feed:<feed id>"
@@ -132,6 +156,14 @@ edgeKinds:
     description: A Feed to a Card pushed to it.
     from: [Feed]
     to: [Card]
+  has-run:
+    description: A Principal to each Run in a layer its token mounted; a Run of a layer mounted with no principal's token hangs off dev-bootstrap (docs/design.md 43).
+    from: [Principal]
+    to: [Run]
+  has-decision:
+    description: A Run to each of its policy decisions.
+    from: [Run]
+    to: [Decision]
   has-state:
     description: Any screen node, or a rail Service or Page, to its display State.
     from: [Container, Widget, Layout, Category, Ref, Service, Page]

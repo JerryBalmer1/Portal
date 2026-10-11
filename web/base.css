@@ -316,6 +316,12 @@ body.pt-rail-collapsed { --pt-rail-w: 52px; }
 .pt-table tbody tr:hover { background: var(--gr-surface); }
 .pt-table td a { text-decoration: none; color: var(--gr-text); }
 .pt-table td a:hover { color: var(--gr-accent); text-decoration: underline; }
+.pt-table tbody tr.pt-target { background: var(--gr-surface); box-shadow: inset 3px 0 0 var(--gr-accent); }
+.pt-deny { color: var(--gr-bad); font-weight: 600; }
+.pt-runs tr.pt-decisions td { padding-top: 0; font-size: 12px; color: var(--gr-text-muted); }
+.pt-runs tr[data-run] td { border-bottom: 0; }
+.pt-table td a.pt-decision { display: inline-block; margin: 0 10px 2px 0; color: var(--gr-text-muted); }
+.pt-table td a.pt-decision.pt-deny { color: var(--gr-bad); }
 .pt-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
 .pt-dot.pt-ok { background: var(--gr-ok); }
 .pt-dot.pt-bad { background: var(--gr-bad); }

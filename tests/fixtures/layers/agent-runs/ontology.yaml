@@ -1,0 +1,107 @@
+module: Graph.Emitter.Agent
+version: 0.1.2
+kinds:
+  AgentFile:
+    description: A Markdown file that instructs an agent - CLAUDE.md, AGENTS.md or a .md file under .claude/ - relative to the walked repo.
+    idRule: "agent:<path relative to the repo, forward slashes>"
+    properties:
+      - { name: path, type: string, required: true, description: "Path relative to the repo, forward slashes." }
+      - { name: lineCount, type: integer, required: true }
+      - { name: sectionCount, type: integer, required: true }
+      - { name: ruleCount, type: integer, required: true }
+    display: { color: "#7B61FF", shape: hexagon, size: 3, label: "{properties.path}" }
+  Section:
+    description: One Markdown heading of an AgentFile and the lines under it up to the next heading. Front matter and fenced code are not read.
+    idRule: "agent:<file path>#<heading slug>, a repeated slug in the same file suffixed -2, -3 in file order"
+    properties:
+      - { name: heading, type: string, required: true }
+      - { name: level, type: integer, required: true, description: "1 to 6, the number of # marks." }
+      - { name: line, type: integer, required: true, description: "1-based line of the heading." }
+    display: { color: "#00A3A3", shape: square, size: 2, label: "{properties.heading}" }
+  Rule:
+    description: One imperative bullet or sentence under a heading, starting with Never, Always, Do not, Only or Must.
+    idRule: "agent:<section id>/rule-<n>, n counting from 1 in section order"
+    properties:
+      - { name: text, type: string, required: true, description: "The bullet or sentence, Markdown markers stripped." }
+      - { name: keyword, type: string, required: true, description: "Never, Always, Do not, Only or Must." }
+      - { name: line, type: integer, required: true, description: "1-based line the rule starts on." }
+    display: { color: "#E8710A", shape: diamond, size: 1, label: "{properties.keyword}" }
+  Run:
+    description: One Claude.Agent container run in a ledger stream, from an agent.egress-check line to the next agent.stop (Claude.Agent.Ledger docs/stream-contract.md).
+    idRule: "agent:run/<the egress-check line's stamp, as written in the ledger>"
+    properties:
+      - { name: startedAt, type: string, required: true, description: "The egress-check stamp, UTC ending Z, whole seconds." }
+      - { name: stopped, type: boolean, required: true, description: "Whether the run has an agent.stop." }
+      - { name: seqFirst, type: integer, description: "Lowest writer seq in the run." }
+      - { name: seqLast, type: integer, description: "Highest writer seq in the run." }
+      - { name: finishedAt, type: string, description: "The agent.stop stamp, UTC ending Z, whole seconds; absent when not stopped." }
+      - { name: exit, type: integer, description: "agent.run exitCode; absent in probe mode or with no agent.run." }
+      - { name: auth, type: string, description: "agent.start auth, oauth or apikey." }
+      - { name: mode, type: string, description: "agent.start mode, run or probe." }
+      - { name: hostname, type: string, description: "agent.start hostname, the container id." }
+      - { name: policySha256, type: string, description: "agent.start policySha256, the SHA-256 of the policy.json that decided the run." }
+    display: { color: "#1A73E8", shape: hexagon, size: 3, label: "{name}" }
+  Step:
+    description: One tool call of a Run, opened by its pre policy line.
+    idRule: "agent:run/<stamp>/step-<n>, the Run id plus /step-<n>, n counting from 1 in ledger order"
+    properties:
+      - { name: ordinal, type: integer, required: true, description: "n in the id." }
+      - { name: text, type: string, required: true, description: "kindAction (else tool) and the target, e.g. File.delete /work/policy-smoke.txt." }
+    display: { color: "#F9AB00", shape: circle, size: 2, label: "{properties.text}" }
+  Action:
+    description: The tool invocation a Step made, as the policy hook recorded it.
+    idRule: "agent:run/<stamp>/step-<n>/action, the Step id plus /action"
+    properties:
+      - { name: tool, type: string, required: true, description: "Claude Code tool name." }
+      - { name: target, type: string, description: "The path the policy decided on, else the Bash command." }
+      - { name: kindAction, type: string, description: "Kind.action; absent for an unmapped tool." }
+      - { name: command, type: string, description: "The Bash command, verbatim." }
+    display: { color: "#5F6368", shape: square, size: 1, label: "{name}" }
+  PolicyDecision:
+    description: One policy.allow, policy.deny or policy.witness line on an Action, pre or post. Display is per Kind, so a deny is not drawn red yet (design.md 7).
+    idRule: "agent:run/<stamp>/step-<n>/<phase>, the Step id plus /pre or /post"
+    properties:
+      - { name: verdict, type: string, required: true, description: "allow or deny; witness counts as allow." }
+      - { name: effect, type: string, required: true, description: "allow, deny or witness, the ledger kind's suffix." }
+      - { name: phase, type: string, required: true, description: "pre or post." }
+      - { name: rule, type: string, required: true, description: "rules[n] or default, as ledgered." }
+      - { name: ruleIndex, type: integer, description: "n of rules[n]; absent for default." }
+      - { name: ruleText, type: string, description: "The rule in the run's policy.json, e.g. File.delete deny; absent unless -PolicyPath is that file." }
+      - { name: reason, type: string, description: "The hook's reason; pre lines only." }
+      - { name: seq, type: integer, description: "The ledger line's writer seq." }
+    display: { color: "#34A853", shape: diamond, size: 1, label: "{properties.verdict}" }
+edgeKinds:
+  contains:
+    description: An AgentFile contains each of its Sections; a Section contains each Rule under it; a Run contains each of its Steps; a Step contains its Action.
+    from: [AgentFile, Section, Run, Step]
+    to: [Section, Rule, Step, Action]
+    display: { color: "#5F6368", style: solid }
+  applies-to:
+    description: "A Rule names a path in the repo; the edge ends on that path's fs: id, owned by Graph.Emitter.FileSystem."
+    from: [Rule]
+    to: [File, Directory]
+    display: { color: "#D93025", style: dashed }
+  decided:
+    description: An Action to each PolicyDecision made on it, pre and post.
+    from: [Action]
+    to: [PolicyDecision]
+    display: { color: "#34A853", style: solid }
+  follows:
+    description: A PolicyDecision to the agent Rule whose text names its policy rule's Kind.action; the Rule node is copied into the run layer (design.md 7).
+    from: [PolicyDecision]
+    to: [Rule]
+    display: { color: "#E8710A", style: dashed }
+findingKinds:
+  denied: { description: "On a PolicyDecision node whose verdict is deny, so a renderer can mark it.", severity: warning }
+  rule-unmatched: { description: "A PolicyDecision with no follows edge - no ruleText, the default, no -AgentGraph, or no Rule names its Kind.action.", severity: info }
+  policy-unread: { description: "A Run's ruleText is unknown - no -PolicyPath, or the file could not be read.", severity: warning }
+  policy-mismatch: { description: "The -PolicyPath file's SHA-256 is not the Run's policySha256.", severity: warning }
+  run-not-stopped: { description: "A Run with no agent.stop - the next egress-check or the end of the ledger came first.", severity: warning }
+  outside-run: { description: "A writer line before the first agent.egress-check.", severity: warning }
+  ledger-rejected: { description: "A ledger.rejected line - the keeper refused a spooled line.", severity: warning }
+  unknown-kind: { description: "A line whose kind the stream contract does not list; it is not drawn.", severity: info }
+  post-without-pre: { description: "A post policy line with no matching pre line.", severity: warning }
+  denied-call-ran: { description: "A post line for a call the policy denied.", severity: error }
+  contract-break: { description: "A line that breaks the stream contract; it is skipped.", severity: error }
+  prev-mismatch: { description: "prev is not the SHA-256 of the line before.", severity: error }
+  seq-gap: { description: "seq is not the previous seq + 1.", severity: error }

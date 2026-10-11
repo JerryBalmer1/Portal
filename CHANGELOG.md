@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 — 2026-10-11
+
+- **Agents are principals.** There is no Agent Kind. An agent is a principal of type `agent`, or one whose token mounted a layer whose module is Graph.Emitter.Agent and which holds a Run. Runs mounted with no principal's token (a token from before 0.5.0, or a `-mount` flag at start) are dev-bootstrap's. When principals.yaml lacks dev-bootstrap, it is served with no `created`.
+- **Runs keep the emitter's ids.** New Kinds `Run` (`agent:run/<stamp>`: `layer`, stamps, `steps`, `allow`, `deny`, `witness`) and `Decision` (`agent:run/<stamp>/step-<n>/<pre|post>`: `layer`, `effect`, `phase`, `rule`, `step`, `reason`). New edges `has-run` (Principal to Run) and `has-decision` (Run to Decision). Portal mints nothing under `agent:`. The portal check takes those ids only in what the API serves; the screen refuses them (`id-prefix`).
+- **API.** `GET /api/tenants/{tenant}/agents` (`listAgents`) and `GET .../agents/{name}/runs` (`listAgentRuns`, runs newest first with their decisions; 404 for a name that is no agent). `LayerSummary` gains `mountedBy`.
+- **Pages.** `GET /{tenant}/agents` (`getAgentsPage`) and `GET /{tenant}/agents/{name}` (`getAgentPage`, 404 for a name that is no agent). Identity/Agents (`view: agents`) is now `web/agents.js`, linked at `/<tenant>/agents`. An agent's page lists its runs, the deny count in red, the layer linking to its page and each decision to its row there: the layer page marks the node a `#<id>` names. `principals.js` draws Identity/Users only. A menu service with the id `agents` is refused at boot.
+- **A mount records who made it.** The Mount node gains `mountedBy`, so a path mount's runs keep their agent after an approval and a restart.
+- **Fixture.** `tests/fixtures/layers/agent-runs/`: Portal.Emitters' `emitters/Agent/artifacts/layers` runs layer and its ontology at cd862d9.
+- **Go** 79 to 83: `TestAgentsGroupRunsByTheMountingPrincipal`, `TestAgentsLegacyMountAndASharedRunID`, `TestAgentOfAPathMountSurvivesApproveAndRestart`, `TestScreenRefusesABorrowedID`. The spec test exercises the four new operations; `TestBadOverlayFailsBoot` covers the `agents` service id.
+- **Pester** 100 to 101: the agents pages in Chrome (counts, the red deny, the layer link, each decision link and the marked row). The Identity/Agents empty state's text changed.
+- **docs/manual-check-list.md**: items 1.18 and 2.11. Three lines from 0.7.0 (items 1.17 and 2.10) held control characters where `\t`, `\f` and `\2026` had been read as escapes; they are repaired.
+- **Version.** 0.8.0 in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated. docs/design.md 43.
+
 ## 0.7.0 — 2026-10-11
 
 - **A layer has an address.** `POST /api/tenants/{tenant}/layers` answers 201 with `Location: /<tenant>/layers/<name>`, the layer's page.

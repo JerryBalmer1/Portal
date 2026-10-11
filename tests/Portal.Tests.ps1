@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.7.0 and needs PowerShell 7.4' {
+    It 'is version 0.8.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.7.0'
+        $m.ModuleVersion | Should -Be '0.8.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,12 +302,12 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.7.0, the thirteen Kinds, the nine edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.8.0, the fifteen Kinds, the eleven edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.7\.0$'
-        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card') { $text | Should -Match "(?m)^  ${k}:" }
-        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card') { $text | Should -Match "(?m)^  ${e}:" }
+        $text | Should -Match '(?m)^version: 0\.8\.0$'
+        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision') { $text | Should -Match "(?m)^  ${k}:" }
+        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
     }
     It 'the FileSystem fixture passes graphnode validate and has its ontology beside it' {
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.7.0'
+        $s.version | Should -Be '0.8.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -707,6 +707,31 @@ Describe 'Live portal' {
         $dom | Should -Match 'No summary yet'
         $dom | Should -Match 'data-principal="pester"|data-principal="anonymous"'
     }
+    It 'Identity/Agents lists the principal that mounted runs; its page lists them, deny count in red, linking the layer and each decision' {
+        $runs = Join-Path $Fixtures 'layers' 'agent-runs'
+        $before = Get-ChildItem $runs -File | ForEach-Object { "$($_.Name) $((Get-FileHash $_.FullName).Hash)" }
+        $run = 'agent:run/2026-10-09T02:50:43.7976027Z'
+        $l = Mount-PortalLayer -Name agent-runs -Path $runs -Url $Url
+        $l.mountedBy | Should -Be 'ui:principal:pester'
+        $api = Invoke-RestMethod "$Url/api/tenants/default/agents/pester/runs"
+        ($api.nodes | Where-Object kind -EQ 'Run').id | Should -Be $run
+        @($api.nodes | Where-Object kind -EQ 'Decision').Count | Should -Be 5
+        [int](Invoke-WebRequest "$Url/default/agents/nobody" -SkipHttpErrorCheck).StatusCode | Should -Be 404
+        $dom = Get-PageDom $Url '/default/agents'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $dom | Should -Match '<tr data-agent="pester"><td><a href="/default/agents/pester">pester</a></td><td>user</td><td>admin</td><td>1</td><td><span class="pt-deny" data-deny="1">1</span></td><td>2026-10-09T02:50:43Z</td></tr>'
+        $dom | Should -Match '<span class="pt-count">1 agents</span>'
+        $dom | Should -Match 'href="/default/agents" class="pt-page" data-page="ui:rail:identity:agents" aria-current="page"'
+        $dom = Get-PageDom $Url '/default/agents/pester'
+        $dom | Should -Match '<h1 class="pt-title" id="title"[^>]*>pester</h1>'
+        $dom | Should -Match '<span class="pt-badge" id="agent-stats"[^>]*>1 runs · 1 denied</span>'
+        $dom | Should -Match ('<tr data-run="' + [regex]::Escape($run) + '" title="[^"]*"><td>2026-10-09T02:50:43Z</td><td>2026-10-09T02:50:56Z</td><td>3</td><td>4</td><td><span class="pt-deny" data-deny="1">1</span></td><td>0</td><td>0</td><td><a href="/default/layers/agent-runs">agent-runs</a></td></tr>')
+        $links = @([regex]::Matches($dom, '<a href="/default/layers/agent-runs#([^"]+)" class="pt-decision pt-(allow|deny|witness)"') | ForEach-Object { "$([uri]::UnescapeDataString($_.Groups[1].Value)) $($_.Groups[2].Value)" })
+        $links | Should -Be @("$run/step-1/pre allow", "$run/step-1/post allow", "$run/step-2/pre allow", "$run/step-2/post allow", "$run/step-3/pre deny")
+        $dom = Get-PageDom $Url "/default/layers/agent-runs#$([uri]::EscapeDataString("$run/step-3/pre"))"
+        $dom | Should -Match ('<tr data-id="' + [regex]::Escape("$run/step-3/pre") + '" class="pt-target" aria-current="true">')
+        Get-ChildItem $runs -File | ForEach-Object { "$($_.Name) $((Get-FileHash $_.FullName).Hash)" } | Should -Be $before
+    }
     It 'never writes to a mounted layer' {
         $before = Get-ChildItem $FsFixture -File | ForEach-Object { "$($_.Name) $((Get-FileHash $_.FullName).Hash)" }
         $null = Invoke-RestMethod "$Url/api/tenants/default/layers/filesystem/nodes?kind=File"
@@ -811,7 +836,7 @@ Describe 'Identity' {
         $users | Should -Match '<button type="submit" class="gr-btn" disabled="" title="sign in to write" data-readonly="true">Add</button>'
         $agents = Get-PageDom $IdUrl '/default/identity/agents'
         $agents | Should -Match 'No agents yet'
-        $agents | Should -Match 'minted via Marker, later'
+        $agents | Should -Match 'An agent is a principal holding runs'
         $agents | Should -Not -Match 'data-form="add-user"'
         $tokens = Get-PageDom $IdUrl '/default/settings/tokens'
         $tokens | Should -Match "<tr data-token=""$RootId""><td>root</td>"

@@ -1,0 +1,338 @@
+{
+  "schema": "graph/1",
+  "ontology": "ontology.yaml",
+  "module": "Graph.Emitter.Agent",
+  "version": "0.1.2",
+  "layer": "2026-10-09T02:50:56Z",
+  "root": "agent:run/2026-10-09T02:50:43.7976027Z",
+  "nodes": [
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z",
+      "kind": "Run",
+      "name": "run 46..54 (ed543aff0ee7)",
+      "properties": {
+        "stopped": true,
+        "finishedAt": "2026-10-09T02:50:56Z",
+        "startedAt": "2026-10-09T02:50:43Z",
+        "policySha256": "87170a9851c71bc2b5d4a35a540a38d7741ac04b77b08424a944530217c710ad",
+        "hostname": "ed543aff0ee7",
+        "auth": "oauth",
+        "exit": 0,
+        "mode": "run",
+        "seqFirst": 46,
+        "seqLast": 54
+      },
+      "source": [
+        {
+          "line": 1,
+          "path": "C:\\__Code\\Graph.Emitter.Agent\\tests\\fixtures\\policy-smoke.ledger-0.2.3.jsonl",
+          "tool": "Graph.Emitter.Agent"
+        }
+      ]
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-1",
+      "kind": "Step",
+      "name": "File.read /etc/hostname",
+      "properties": {
+        "ordinal": 1,
+        "text": "File.read /etc/hostname"
+      },
+      "source": [
+        {
+          "line": 3,
+          "path": "C:\\__Code\\Graph.Emitter.Agent\\tests\\fixtures\\policy-smoke.ledger-0.2.3.jsonl",
+          "tool": "Graph.Emitter.Agent"
+        }
+      ]
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/action",
+      "kind": "Action",
+      "name": "Read /etc/hostname",
+      "properties": {
+        "target": "/etc/hostname",
+        "kindAction": "File.read",
+        "tool": "Read"
+      }
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/pre",
+      "kind": "PolicyDecision",
+      "name": "allow rules[3] (pre)",
+      "properties": {
+        "ruleIndex": 3,
+        "effect": "allow",
+        "ruleText": "File.read allow",
+        "rule": "rules[3]",
+        "reason": "File.read /etc/hostname allowed by policy rules[3]",
+        "seq": 48,
+        "phase": "pre",
+        "verdict": "allow"
+      },
+      "source": [
+        {
+          "line": 3,
+          "path": "C:\\__Code\\Graph.Emitter.Agent\\tests\\fixtures\\policy-smoke.ledger-0.2.3.jsonl",
+          "tool": "Graph.Emitter.Agent"
+        }
+      ]
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/post",
+      "kind": "PolicyDecision",
+      "name": "allow rules[3] (post)",
+      "properties": {
+        "ruleIndex": 3,
+        "effect": "allow",
+        "ruleText": "File.read allow",
+        "rule": "rules[3]",
+        "seq": 49,
+        "phase": "post",
+        "verdict": "allow"
+      },
+      "source": [
+        {
+          "line": 4,
+          "path": "C:\\__Code\\Graph.Emitter.Agent\\tests\\fixtures\\policy-smoke.ledger-0.2.3.jsonl",
+          "tool": "Graph.Emitter.Agent"
+        }
+      ]
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-2",
+      "kind": "Step",
+      "name": "File.write /work/policy-smoke.txt",
+      "properties": {
+        "ordinal": 2,
+        "text": "File.write /work/policy-smoke.txt"
+      },
+      "source": [
+        {
+          "line": 5,
+          "path": "C:\\__Code\\Graph.Emitter.Agent\\tests\\fixtures\\policy-smoke.ledger-0.2.3.jsonl",
+          "tool": "Graph.Emitter.Agent"
+        }
+      ]
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/action",
+      "kind": "Action",
+      "name": "Write /work/policy-smoke.txt",
+      "properties": {
+        "target": "/work/policy-smoke.txt",
+        "kindAction": "File.write",
+        "tool": "Write"
+      }
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/pre",
+      "kind": "PolicyDecision",
+      "name": "allow rules[4] (pre)",
+      "properties": {
+        "ruleIndex": 4,
+        "effect": "allow",
+        "ruleText": "File.write allow /work/**",
+        "rule": "rules[4]",
+        "reason": "File.write /work/policy-smoke.txt allowed by policy rules[4] (paths /work/**)",
+        "seq": 50,
+        "phase": "pre",
+        "verdict": "allow"
+      },
+      "source": [
+        {
+          "line": 5,
+          "path": "C:\\__Code\\Graph.Emitter.Agent\\tests\\fixtures\\policy-smoke.ledger-0.2.3.jsonl",
+          "tool": "Graph.Emitter.Agent"
+        }
+      ]
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/post",
+      "kind": "PolicyDecision",
+      "name": "allow rules[4] (post)",
+      "properties": {
+        "ruleIndex": 4,
+        "effect": "allow",
+        "ruleText": "File.write allow /work/**",
+        "rule": "rules[4]",
+        "seq": 51,
+        "phase": "post",
+        "verdict": "allow"
+      },
+      "source": [
+        {
+          "line": 6,
+          "path": "C:\\__Code\\Graph.Emitter.Agent\\tests\\fixtures\\policy-smoke.ledger-0.2.3.jsonl",
+          "tool": "Graph.Emitter.Agent"
+        }
+      ]
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-3",
+      "kind": "Step",
+      "name": "File.delete /work/policy-smoke.txt",
+      "properties": {
+        "ordinal": 3,
+        "text": "File.delete /work/policy-smoke.txt"
+      },
+      "source": [
+        {
+          "line": 7,
+          "path": "C:\\__Code\\Graph.Emitter.Agent\\tests\\fixtures\\policy-smoke.ledger-0.2.3.jsonl",
+          "tool": "Graph.Emitter.Agent"
+        }
+      ]
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-3/action",
+      "kind": "Action",
+      "name": "Bash /work/policy-smoke.txt",
+      "properties": {
+        "target": "/work/policy-smoke.txt",
+        "kindAction": "File.delete",
+        "command": "rm /work/policy-smoke.txt",
+        "tool": "Bash"
+      }
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-3/pre",
+      "kind": "PolicyDecision",
+      "name": "deny rules[2] (pre)",
+      "properties": {
+        "ruleIndex": 2,
+        "effect": "deny",
+        "ruleText": "File.delete deny",
+        "rule": "rules[2]",
+        "reason": "File.delete /work/policy-smoke.txt denied by policy rules[2]",
+        "seq": 52,
+        "phase": "pre",
+        "verdict": "deny"
+      },
+      "source": [
+        {
+          "line": 7,
+          "path": "C:\\__Code\\Graph.Emitter.Agent\\tests\\fixtures\\policy-smoke.ledger-0.2.3.jsonl",
+          "tool": "Graph.Emitter.Agent"
+        }
+      ],
+      "findings": [
+        {
+          "kind": "denied",
+          "severity": "warning",
+          "message": "File.delete /work/policy-smoke.txt denied by policy rules[2]"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z|agent:run/2026-10-09T02:50:43.7976027Z/step-1|contains",
+      "kind": "contains",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-1"
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-1|agent:run/2026-10-09T02:50:43.7976027Z/step-1/action|contains",
+      "kind": "contains",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z/step-1",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/action"
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/action|agent:run/2026-10-09T02:50:43.7976027Z/step-1/pre|decided",
+      "kind": "decided",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/action",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/pre"
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/action|agent:run/2026-10-09T02:50:43.7976027Z/step-1/post|decided",
+      "kind": "decided",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/action",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/post"
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z|agent:run/2026-10-09T02:50:43.7976027Z/step-2|contains",
+      "kind": "contains",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-2"
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-2|agent:run/2026-10-09T02:50:43.7976027Z/step-2/action|contains",
+      "kind": "contains",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z/step-2",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/action"
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/action|agent:run/2026-10-09T02:50:43.7976027Z/step-2/pre|decided",
+      "kind": "decided",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/action",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/pre"
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/action|agent:run/2026-10-09T02:50:43.7976027Z/step-2/post|decided",
+      "kind": "decided",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/action",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/post"
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z|agent:run/2026-10-09T02:50:43.7976027Z/step-3|contains",
+      "kind": "contains",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-3"
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-3|agent:run/2026-10-09T02:50:43.7976027Z/step-3/action|contains",
+      "kind": "contains",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z/step-3",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-3/action"
+    },
+    {
+      "id": "agent:run/2026-10-09T02:50:43.7976027Z/step-3/action|agent:run/2026-10-09T02:50:43.7976027Z/step-3/pre|decided",
+      "kind": "decided",
+      "from": "agent:run/2026-10-09T02:50:43.7976027Z/step-3/action",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-3/pre"
+    }
+  ],
+  "findings": [
+    {
+      "kind": "rule-unmatched",
+      "severity": "info",
+      "message": "no follows edge: no -AgentGraph given",
+      "target": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/pre"
+    },
+    {
+      "kind": "rule-unmatched",
+      "severity": "info",
+      "message": "no follows edge: no -AgentGraph given",
+      "target": "agent:run/2026-10-09T02:50:43.7976027Z/step-1/post"
+    },
+    {
+      "kind": "rule-unmatched",
+      "severity": "info",
+      "message": "no follows edge: no -AgentGraph given",
+      "target": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/pre"
+    },
+    {
+      "kind": "rule-unmatched",
+      "severity": "info",
+      "message": "no follows edge: no -AgentGraph given",
+      "target": "agent:run/2026-10-09T02:50:43.7976027Z/step-2/post"
+    },
+    {
+      "kind": "rule-unmatched",
+      "severity": "info",
+      "message": "no follows edge: no -AgentGraph given",
+      "target": "agent:run/2026-10-09T02:50:43.7976027Z/step-3/pre"
+    }
+  ],
+  "counts": {
+    "nodes": 12,
+    "edges": 11,
+    "byKind": {
+      "Run": 1,
+      "Step": 3,
+      "Action": 3,
+      "PolicyDecision": 5
+    }
+  }
+}

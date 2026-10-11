@@ -39,6 +39,12 @@ var nodeFields = map[string]bool{
 
 var layoutModes = []string{"grid", "flow", "canvas"}
 
+// borrowedIDs are the Kinds whose nodes keep the id another module gave
+// them, by that module's prefix: a Run and a Decision are Graph.Emitter.Agent's
+// Run and PolicyDecision re-served (docs/design.md 43). Only in an envelope
+// the API serves; a screen node is always ui:.
+var borrowedIDs = map[string]string{"Run": "agent:", "Decision": "agent:"}
+
 // touched names the elements a write added or changed. The portal checks
 // only those; Graph.Node checks the whole next screen.
 type touched struct {
@@ -71,7 +77,7 @@ func (p *Portal) check(next *graph.Envelope, raw []byte, t touched) []graph.Prob
 	idx := next.NodeIndex()
 	for i, n := range next.Nodes {
 		if t.nodes[n.ID] {
-			problems = append(problems, p.checkNode(next, fmt.Sprintf("/nodes/%d", i), n)...)
+			problems = append(problems, p.checkNode(next, fmt.Sprintf("/nodes/%d", i), n, false)...)
 		}
 	}
 	for i, e := range next.Edges {
@@ -100,12 +106,19 @@ func errorsOnly(ps []graph.Problem) []graph.Problem {
 	return out
 }
 
-func (p *Portal) checkNode(env *graph.Envelope, at string, n graph.Node) []graph.Problem {
+// checkNode checks one node against the portal ontology; served is an
+// envelope the API serves (CheckEnvelope), where a borrowed Kind keeps its
+// owner's id.
+func (p *Portal) checkNode(env *graph.Envelope, at string, n graph.Node, served bool) []graph.Problem {
 	var out []graph.Problem
 	add := func(code, path, msg string) {
 		out = append(out, graph.Problem{Code: code, Path: at + path, Message: msg, Severity: graph.SeverityError})
 	}
-	if !strings.HasPrefix(n.ID, IDPrefix) {
+	if prefix, ok := borrowedIDs[n.Kind]; ok && served {
+		if err := graph.ValidID(prefix, n.ID); err != nil || !strings.HasPrefix(n.ID, prefix) {
+			add("id-prefix", "/id", fmt.Sprintf("%s id %q must be the %s id it has in its layer, %s...", n.Kind, n.ID, prefix, prefix))
+		}
+	} else if !strings.HasPrefix(n.ID, IDPrefix) {
 		add("id-prefix", "/id", fmt.Sprintf("screen node id %q must start with %q", n.ID, IDPrefix))
 	}
 	def, ok := p.ont.Kinds[n.Kind]

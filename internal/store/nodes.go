@@ -51,7 +51,7 @@ func (p *Portal) CheckEnvelope(env *graph.Envelope) []graph.Problem {
 	idx := env.NodeIndex()
 	var out []graph.Problem
 	for i, n := range env.Nodes {
-		out = append(out, p.checkNode(env, pathOf("nodes", i), n)...)
+		out = append(out, p.checkNode(env, pathOf("nodes", i), n, true)...)
 	}
 	for i, e := range env.Edges {
 		out = append(out, p.checkEdge(env, idx, pathOf("edges", i), e)...)

@@ -36,12 +36,14 @@ const (
 	specPath    = "../../api/openapi.yaml"
 	clientPath  = "../../web/client.js"
 	fixtureDir  = "../../tests/fixtures/layers/filesystem"
+	runsDir     = "../../tests/fixtures/layers/agent-runs"
 	invalidPath = "../../tests/fixtures/invalid.graph.json"
 )
 
 // Operations the page loads directly rather than through client.js, and
 // mountLayerUnscoped, gone since 0.7.0 (410).
-var pageLoaded = map[string]bool{"getIndex": true, "getStatic": true, "getShellPage": true, "getShellItem": true, "getLayerPage": true, "mountLayerUnscoped": true}
+var pageLoaded = map[string]bool{"getIndex": true, "getStatic": true, "getShellPage": true, "getShellItem": true, "getLayerPage": true,
+	"getAgentsPage": true, "getAgentPage": true, "mountLayerUnscoped": true}
 
 func init() {
 	text := func(r io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
@@ -303,6 +305,8 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 	}
 	fixture, _ := filepath.Abs(fixtureDir)
 	fixtureJSON, _ := json.Marshal(fixture)
+	runs, _ := filepath.Abs(runsDir)
+	runsJSON, _ := json.Marshal(runs)
 	envBody := `{"name":"inline","envelope":{"schema":"graph/1","module":"M","layer":"2026-10-09T00:00:00Z","nodes":[{"id":"a","kind":"K"}],"edges":[]}}`
 	ref := url.PathEscape("ui:ref:filesystem/fs:src")
 
@@ -352,6 +356,17 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 		{"GET", "/default/layers/filesystem", "", 200},
 		{"GET", "/default/layers/nope", "", 404},
 		{"GET", "/other/layers/filesystem", "", 404},
+		{"GET", "/default/agents", "", 200},
+		{"GET", "/other/agents", "", 404},
+		{"GET", "/api/tenants/default/agents", "", 200},
+		{"GET", "/api/tenants/other/agents", "", 404},
+		{"POST", "/api/tenants/default/layers", `{"name":"agent-runs","path":` + string(runsJSON) + `}`, 201},
+		{"GET", "/default/agents/tester", "", 200},
+		{"GET", "/default/agents/reed", "", 404},
+		{"GET", "/other/agents/tester", "", 404},
+		{"GET", "/api/tenants/default/agents/tester/runs", "", 200},
+		{"GET", "/api/tenants/default/agents/reed/runs", "", 404},
+		{"GET", "/api/tenants/other/agents/tester/runs", "", 404},
 		{"GET", "/static/portal.js", "", 200},
 		{"GET", "/static/base.css", "", 200},
 		{"GET", "/static/cytoscape.min.js", "", 200},

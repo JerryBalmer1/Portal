@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.7.0
+  version: 0.8.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -30,6 +30,8 @@ tags:
     description: The tenant's merged config, its menu, who is calling, and its service connections.
   - name: identity
     description: The tenant's principals and their bearer tokens. Reads are open, as every read is; writes are admin only.
+  - name: agents
+    description: Agent runs, read from every mounted layer whose module is Graph.Emitter.Agent and grouped by the principal whose token mounted the layer (docs/design.md 43). Read-only.
   - name: feeds
     description: Where the tenant publishes Graph.Node manifest cards (an OCI registry or a NuGet v3 feed), what each holds, and the push. Every push is one line of tenants/<tenant>/ledger.jsonl.
 paths:
@@ -86,6 +88,37 @@ paths:
       operationId: getLayerPage
       tags: [page, layers]
       summary: The shell page (index.html) at one mounted layer's page, which shows its name, node and edge counts, layer stamp and its nodes. mountLayer's Location points here. The literal layers segment wins over getShellPage's service, so no menu service may have the path layers. 404 when tenant is not this process's tenant or no layer of that name is mounted.
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/agents:
+    get:
+      operationId: getAgentsPage
+      tags: [page, agents]
+      summary: The shell page (index.html) listing the tenant's agents, drawn under the menu's Page whose view is agents (Identity/Agents). Two segments, so no shell route competes. 404 when tenant is not this process's tenant.
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/agents/{name}:
+    get:
+      operationId: getAgentPage
+      tags: [page, agents]
+      summary: The shell page (index.html) of one agent, its runs newest first. The literal agents segment wins over getShellPage's service, so no menu service may have the id agents. 404 when tenant is not this process's tenant or name is not an agent (listAgents).
       parameters:
         - $ref: "#/components/parameters/Tenant"
         - { name: name, in: path, required: true, schema: { type: string } }
@@ -335,6 +368,37 @@ paths:
       responses:
         "200":
           description: The feeds and their cards (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/agents:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: The tenant's agents as an envelope (module Portal). An agent is a Principal node, ui:principal:<name>, as listPrincipals serves it. Each principal of type agent is one, and so is each principal whose token mounted a layer holding a Run. Every Run node of every mounted layer whose module is Graph.Emitter.Agent is a Run node here under its own id, agent:run/<stamp>, carrying its layer, its stamps, its step count and its decisions counted by effect (allow, deny, witness), and is joined Principal to Run by has-run. A layer mounted with no principal's token (a token from before 0.5.0, or a -mount flag at start) hangs its runs off dev-bootstrap. A Run id in two layers is served once, from the layer with the later stamp.
+      responses:
+        "200":
+          description: The agents and their runs (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/agents/{name}/runs:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+      - { name: name, in: path, required: true, description: "The principal's name, the tail of ui:principal:<name>.", schema: { type: string } }
+    get:
+      operationId: listAgentRuns
+      tags: [agents]
+      summary: One agent's runs, newest first by startedAt, as an envelope (module Portal) of the Principal, its Run nodes (as listAgents serves them) and each Run's Decision nodes, one per PolicyDecision of the layer under its own id (effect, phase, rule, step, reason), joined has-run and has-decision. 404 when name is not one of listAgents' principals.
+      responses:
+        "200":
+          description: The agent, its runs and their decisions (module Portal).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
@@ -1048,6 +1112,9 @@ components:
         path:
           type: string
           description: The file mounted, when mounted from disk.
+        mountedBy:
+          type: string
+          description: Id of the principal whose token mounted the layer (ui:principal:<name>). Absent when none did, a token from before 0.5.0 or a -mount flag at start; listAgents then hangs its runs off dev-bootstrap.
         counts: { $ref: "#/components/schemas/Counts" }
         hasOntology: { type: boolean }
         ontologyProblems:

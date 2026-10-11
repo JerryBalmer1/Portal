@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.7.0 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 in full (Go 79 tests, Smoke passed, Pester 100 passed); item 1.17 run as written from its own `pwsh -NoProfile -File`, its Expect the output seen; 2.10's two pages read with headless Chrome (`--dump-dom`) on the same portal its block starts, without the click, so its Expect is the DOM seen at each route; 2.9 read the same way, headless, against the portal already on 8200 (tenants/default, mode dev; its cards from earlier pushes): every Expect held, and the hash hover is each hash's `title`, read not hovered. Not run for 0.7.0: 3.7 (Docker is not running here), so 2.9 did not follow it; 0.1, 0.3, 1.1 to 1.16 and 3.1 to 3.6, 3.8 (their code is unchanged or covered by Pester and Smoke; 1.7 and 1.3 mount through the tenant route, which only gained a header); 2.1 to 2.8, which are interactive.
+Verified for: 0.8.0 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 in full (Go 83 tests, Smoke passed, Pester 101 passed); item 1.18 run as written from its own `pwsh -NoProfile -File`, its Expect the output seen; 2.11 read with headless Chrome (`--dump-dom`) at `/default/agents`, `/default/agents/check` and the layer page with the decision's `#` on the same portal its block starts, without the clicks, so its Expect is the DOM seen at each route. Not run for 0.8.0: 3.7 (Docker is not running here), so 2.9 did not follow it; 0.1, 0.3, 1.1 to 1.17 and 3.1 to 3.6, 3.8 (their code is unchanged or covered by Pester and Smoke); 2.1 to 2.10, which are interactive (2.7's Agents text is the new empty state, which Pester reads, and 2.10's paths were repaired, not rerun).
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (79 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 100, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 99, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
+Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (83 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 101, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 100, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -455,7 +455,7 @@ Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' -Tenants $t
 try {
     $auth = @{ Authorization = "Bearer $($admin.Token)" }
-    $body = @{ name = 'fs'; path = (Resolve-Path .	estsixtures\layersilesystem).Path } | ConvertTo-Json
+    $body = @{ name = 'fs'; path = (Resolve-Path .\tests\fixtures\layers\filesystem).Path } | ConvertTo-Json
     $r = Invoke-WebRequest "$($p.Url)/api/tenants/default/layers" -Method POST -ContentType 'application/json' -Headers $auth -Body $body
     "mount: $([int]$r.StatusCode) Location $($r.Headers['Location'])"
     $page = Invoke-WebRequest "$($p.Url)$($r.Headers['Location'])" -SkipHttpErrorCheck
@@ -468,6 +468,39 @@ try {
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
 ```
 Expect: `mount: 201 Location /default/layers/fs`; `page: 200 text/html; charset=utf-8`; `not mounted: 404`; `old route: 410 {"code":"gone","message":"POST /api/layers is gone; mount with POST /api/tenants/default/layers"}`; `layers: fs` (the old route mounted nothing; docs/design.md 42).
+
+### 1.18 Agents: runs grouped by the principal that mounted them; a flag mount is dev-bootstrap's
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-1.18-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"
+Set-Content "$t\default\portal.yaml" 'mode: demo'
+$admin = New-PortalToken -Name check -Bootstrap -Tenants $t
+$dir = Join-Path $env:TEMP 'portal-check-1.18'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$runs = (Resolve-Path .\tests\fixtures\layers\agent-runs).Path
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' -Mount @{ 'flag-runs' = $runs } -Tenants $t
+try {
+    $u = "$($p.Url)/api/tenants/default"
+    $show = { param($env) ($env.nodes | Where-Object kind -EQ 'Principal').name -join ',' }
+    "at start: $(& $show (Invoke-RestMethod "$u/agents"))"
+    $env:PORTAL_TOKEN = $admin.Token
+    $l = Mount-PortalLayer -Name agent-runs -Path $runs -Url $p.Url
+    "mounted by: $($l.mountedBy)"
+    $a = Invoke-RestMethod "$u/agents"
+    "after the mount: $(& $show $a)"
+    $run = $a.nodes | Where-Object kind -EQ 'Run'
+    "run: $($run.id) layer $($run.properties.layer) steps $($run.properties.steps) allow $($run.properties.allow) deny $($run.properties.deny) witness $($run.properties.witness)"
+    $r = Invoke-RestMethod "$u/agents/check/runs"
+    "decisions: $((@($r.nodes | Where-Object kind -EQ 'Decision') | ForEach-Object { "$($_.id -replace '^.*/(step-\d+/\w+)$', '$1') $($_.properties.effect)" }) -join '; ')"
+    "no agent: $([int](Invoke-WebRequest "$u/agents/nobody/runs" -SkipHttpErrorCheck).StatusCode)"
+    "pages: $([int](Invoke-WebRequest "$($p.Url)/default/agents" -SkipHttpErrorCheck).StatusCode) $([int](Invoke-WebRequest "$($p.Url)/default/agents/check" -SkipHttpErrorCheck).StatusCode) $([int](Invoke-WebRequest "$($p.Url)/default/agents/nobody" -SkipHttpErrorCheck).StatusCode)"
+    "Mount node: $((Get-PortalScreen -Url $p.Url).nodes | Where-Object id -EQ 'ui:mount:agent-runs' | ForEach-Object { $_.properties.mountedBy })"
+}
+finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `at start: dev-bootstrap` (a `-Mount` flag names no principal, and this tenant's principals.yaml lacks dev-bootstrap, so it is served with no `created`); `mounted by: ui:principal:check`; `after the mount: check`, because both layers hold the same Run id and the later mount's copy is the one served; `run: agent:run/2026-10-09T02:50:43.7976027Z layer agent-runs steps 3 allow 4 deny 1 witness 0`; `decisions: step-1/pre allow; step-1/post allow; step-2/pre allow; step-2/post allow; step-3/pre deny`; `no agent: 404`; `pages: 200 200 404`; `Mount node: ui:principal:check` (docs/design.md 43).
 
 ## 2. Page
 
@@ -585,7 +618,7 @@ Read-Host 'Hover Add; give the avatar the admin token; Add "ann" as reader; open
 Get-Content "$env:PORTAL_TENANTS\default\principals.yaml"
 Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 ```
-Expect: as anonymous Users lists `check`, `admin`, its created time and `bootstrap`, and the Add button is greyed with `sign in to write`. Signed in, the avatar reads `check` and the role list offers reader, contributor and admin; Add shows `Added ann. Issue its token with New-PortalToken -Name ann.` and a row `ann`, `reader`, `<created>`, `check`. Agents shows `No agents yet` and `Agents are minted via Marker, later.` Tokens lists `check` with a 12-digit hash and its created time; the first Revoke turns into `Revoke <hash>?`, the second removes it, and the page drops the now-refused token and reads as anonymous. The printed principals.yaml ends with ann's entry, `createdBy: 'ui:principal:check'`.
+Expect: as anonymous Users lists `check`, `admin`, its created time and `bootstrap`, and the Add button is greyed with `sign in to write`. Signed in, the avatar reads `check` and the role list offers reader, contributor and admin; Add shows `Added ann. Issue its token with New-PortalToken -Name ann.` and a row `ann`, `reader`, `<created>`, `check`. Agents shows `No agents yet` and `An agent is a principal holding runs: mount a Graph.Emitter.Agent runs layer (Mount-PortalLayer) and its runs list under the principal whose token mounted it.` Tokens lists `check` with a 12-digit hash and its created time; the first Revoke turns into `Revoke <hash>?`, the second removes it, and the page drops the now-refused token and reads as anonymous. The printed principals.yaml ends with ann's entry, `createdBy: 'ui:principal:check'`.
 
 ### 2.8 Dev mode in the browser: the amber bar, Use dev token, a reader cannot Add
 ```powershell
@@ -614,14 +647,35 @@ $null = New-Item -ItemType Directory -Force "$t\default"
 Set-Content "$t\default\portal.yaml" 'mode: demo'
 $dir = Join-Path $env:TEMP 'portal-check-2.10'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .	estsixtures\layersilesystem -Tenants $t
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem -Tenants $t
 try {
     Start-Process "$($p.Url)/default/graph/layers"
     Read-Host 'Read Graph/Layers, click filesystem, press Enter here to stop'
 }
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: Graph/Layers is the fourth page under Graph and is marked current; the toolbar reads `1 layers`; one row, `filesystem · Graph.Emitter.FileSystem 0.1.0 · 52 · 51 · 2026-10-09T00:51:29Z · <repo>	estsixtures\layersilesystem6-10-09T00-51-29Z.graph.json`. Clicking `filesystem` opens `/default/layers/filesystem` in place: the title `filesystem`, crumbs `default › Graph › Layers › filesystem`, Graph/Layers still current in the rail, a toolbar badge `52 nodes · 51 edges · 2026-10-09T00:51:29Z`, then `52 nodes`, and 52 rows of id, kind, label, updated, the first `fs:. · Directory · Graph.Emitter.FileSystem · 2026-10-09T00:51:29Z`.
+Expect: Graph/Layers is the fourth page under Graph and is marked current; the toolbar reads `1 layers`; one row, `filesystem · Graph.Emitter.FileSystem 0.1.0 · 52 · 51 · 2026-10-09T00:51:29Z · <repo>\tests\fixtures\layers\filesystem\2026-10-09T00-51-29Z.graph.json`. Clicking `filesystem` opens `/default/layers/filesystem` in place: the title `filesystem`, crumbs `default › Graph › Layers › filesystem`, Graph/Layers still current in the rail, a toolbar badge `52 nodes · 51 edges · 2026-10-09T00:51:29Z`, then `52 nodes`, and 52 rows of id, kind, label, updated, the first `fs:. · Directory · Graph.Emitter.FileSystem · 2026-10-09T00:51:29Z`.
+
+### 2.11 Identity/Agents lists the agents; an agent's page lists its runs, deny in red, linking the layer and each decision
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-2.11-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"
+Set-Content "$t\default\portal.yaml" 'mode: demo'
+$admin = New-PortalToken -Name check -Bootstrap -Tenants $t
+$dir = Join-Path $env:TEMP 'portal-check-2.11'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' -Tenants $t
+try {
+    $env:PORTAL_TOKEN = $admin.Token
+    $null = Mount-PortalLayer -Name agent-runs -Path .\tests\fixtures\layers\agent-runs -Url $p.Url
+    Start-Process "$($p.Url)/default/agents"
+    Read-Host 'Read Identity/Agents, click check, read its runs, click "step 3 pre deny", press Enter here to stop'
+}
+finally { $env:PORTAL_TOKEN = $null; Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: the rail's Identity/Agents links to `/default/agents` and is marked current; the crumbs read `default › Identity › Agents`; the toolbar `1 agents`; one row, `check · user · admin · 1 · 1 · 2026-10-09T02:50:43Z`, the `1` under denied in red. Clicking `check` opens `/default/agents/check` in place: the title `check`, crumbs `default › Identity › Agents › check`, a badge `1 runs · 1 denied` (`user · admin` on hover), then `1 runs`, and one run row, `2026-10-09T02:50:43Z · 2026-10-09T02:50:56Z · 3 · 4 · 1 · 0 · 0 · agent-runs`, the deny `1` in red and `agent-runs` a link to `/default/layers/agent-runs`. Under it, five links, `step 1 pre allow` to `step 3 pre deny`, the last in red, each with the decision's name and reason on hover. Clicking `step 3 pre deny` opens the layer page with Graph/Layers current, and the row `agent:run/2026-10-09T02:50:43.7976027Z/step-3/pre · PolicyDecision · deny rules[2] (pre)` marked and scrolled into view (docs/design.md 43).
 
 ## 3. PowerShell
 

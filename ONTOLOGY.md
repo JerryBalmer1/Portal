@@ -2,7 +2,7 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.7.0, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.8.0, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here; Run and Decision keep the `agent:` ids Graph.Emitter.Agent gave them, and Portal never mints one), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 
@@ -15,8 +15,11 @@ Module `Portal`, version 0.7.0, id prefix `ui:` (registered to Portal in Graph.N
 | Shell theme | The config's `theme` block, the shell's own settings: not a node and not node display, which stays in State and Theme nodes. `graph.wheelZoomSpeed` (number, 0.1 to 5, base 1.0) scales the Canvas's mouse-wheel zoom step; an overlay may override it, and a value outside the range stops the binary at boot (docs/design.md 37). |
 | Menu | The shell's left rail, built from the merged config's `menu` tree and served by `GET /api/tenants/<tenant>/menu` as an envelope of Service and Page nodes. Not the screen graph: it is never written or snapped. |
 | Service | Kind. One rail entry (`ui:rail:<service>`): `path`, `order`, `dock` (`bottom` pins it to the foot of the rail: Settings). Its pages hang off it by `has-page`; its icon is its State's `icon`. |
-| Page | Kind. One page of a Service (`ui:rail:<service>:<page>`), routed at `/<tenant>/<path>`. `view` says what draws it: `table` (the nodes of `nodeKind`), `screen` (the screen node `screen` names, a Designer's `sections` only when given), `connections`, `users` or `agents` (the tenant's principals of that type), `tokens` (its bearer tokens) or `feeds` (its feeds and their cards, read-only). `filter` lists `properties.kind` values offered as chips. A Page's own Pages are the tabs of its item page, `/<tenant>/<path>/<id>`. |
-| Principal | Kind. Who may hold a token in a tenant: `ui:principal:<name>` with `type` (`user` or `agent`; only users are created in 0.5.0, agents are minted via Marker, later), `role`, `created` and `createdBy`, the creator's id, absent only on the tenant's first admin. Kept in `tenants/<tenant>/principals.yaml` (gitignored), served by `GET /api/tenants/<tenant>/principals`, added by an admin through `POST` there (Identity/Users' Add). Never on the screen graph. Also who a request is (`GET .../auth/whoami`): a token's principal, or `anonymous` with no token, which reads only (docs/design.md 38). |
+| Page | Kind. One page of a Service (`ui:rail:<service>:<page>`), routed at `/<tenant>/<path>`. `view` says what draws it: `table` (the nodes of `nodeKind`), `screen` (the screen node `screen` names, a Designer's `sections` only when given), `connections`, `users` (the tenant's principals of type user), `agents` (its agents and their runs, at `/<tenant>/agents`), `tokens` (its bearer tokens) or `feeds` (its feeds and their cards, read-only). `filter` lists `properties.kind` values offered as chips. A Page's own Pages are the tabs of its item page, `/<tenant>/<path>/<id>`. |
+| Principal | Kind. Who may hold a token in a tenant: `ui:principal:<name>` with `type` (`user` or `agent`; only users are created in 0.5.0, agents are minted via Marker, later), `role`, `created` (absent only on dev-bootstrap in `GET .../agents` when `principals.yaml` lacks it) and `createdBy`, the creator's id, absent only on the tenant's first admin. Kept in `tenants/<tenant>/principals.yaml` (gitignored), served by `GET /api/tenants/<tenant>/principals`, added by an admin through `POST` there (Identity/Users' Add). Never on the screen graph. Also who a request is (`GET .../auth/whoami`): a token's principal, or `anonymous` with no token, which reads only (docs/design.md 38). |
+| Agent | A principal holding runs, not a Kind of its own: each principal of type `agent`, and each principal whose token mounted a layer of Graph.Emitter.Agent runs. Runs mounted with no principal's token (a legacy token, a `-mount` flag at start) are dev-bootstrap's. Served by `GET /api/tenants/<tenant>/agents`; listed at `/<tenant>/agents` (Identity/Agents), each at `/<tenant>/agents/<name>` (docs/design.md 43). |
+| Run | Kind. One agent run: a Run node of a mounted layer whose module is Graph.Emitter.Agent, served under that node's own id `agent:run/<stamp>` with its `layer`, `startedAt`, `stopped`, `finishedAt`, `exit`, `steps` and its decisions counted by effect (`allow`, `deny`, `witness`). Joined from its agent by `has-run`. A Run id in two layers is served once, from the later stamp. Never on the screen graph (docs/design.md 43). |
+| Decision | Kind. One policy decision of a Run: a PolicyDecision node of the same layer under its own id, `agent:run/<stamp>/step-<n>/<pre\|post>`, with `layer`, `effect`, `phase`, `rule`, `step` and `reason`. Joined from its Run by `has-decision`; served by `GET .../agents/<name>/runs` only. Its page link is the layer page with the id after `#`, which marks its row (docs/design.md 43). |
 | Bootstrap | `New-PortalToken -Name <name> -Bootstrap`: makes a tenant's first principal, an admin with `createdBy` null, and its token. Once: with any principal already in `principals.yaml` it is an error, and a file with a second null `createdBy` stops the binary (docs/design.md 38). dev-bootstrap does not count: the real first admin is made beside it. |
 | dev-bootstrap | The admin `Invoke-Build Dev` mints in a tenant of mode dev, `ui:principal:dev-bootstrap`, `createdBy` null wherever it sits in `principals.yaml`. Its tokens work only in mode dev (401 otherwise); `GET .../dev-token` hands one to the page's "Use dev token", only to 127.0.0.1. The name is reserved: no Add and no `New-PortalToken -Name` makes it (docs/design.md 39). |
 | Role | What a principal may do: `reader` (GET only), `contributor` (every write but identity and settings) or `admin` (all). Identity is creating principals and revoking tokens. A write the role does not allow is 403; a write with no token stays 401 (docs/design.md 38). |
@@ -44,7 +47,7 @@ Module `Portal`, version 0.7.0, id prefix `ui:` (registered to Portal in Graph.N
 | Display Kind | State or Theme: the only Kinds whose `properties` may hold display keys (docs/design.md 5). |
 | Ref | Kind. A stand-in on screen for one node of a mounted layer (`layer`, `node`), so `displays` stays inside the envelope (docs/design.md 9). |
 | Data layer | A Graph.Node envelope mounted read-only under a name (`POST /api/tenants/<tenant>/layers`); never written (docs/design.md 2). Each mounted layer has a page, `/<tenant>/layers/<name>`, the mount's `Location`: its counts, stamp and nodes, linked from Graph/Layers (docs/design.md 42). A page that draws a screen node shows its layer in the toolbar: name, node and edge counts and stamp (docs/design.md 33, 36). |
-| Mount | Kind. A layer mounted by path through `POST /api/tenants/<tenant>/layers`, recorded on screen as `ui:mount:<layer>` (`layer`, `path` as given, made absolute), so an approved snap mounts it again at boot. A mount by envelope removes it; flag mounts are never recorded. No edges; it draws nothing (docs/design.md 33). |
+| Mount | Kind. A layer mounted by path through `POST /api/tenants/<tenant>/layers`, recorded on screen as `ui:mount:<layer>` (`layer`, `path` as given, made absolute, and `mountedBy`, the principal whose token mounted it), so an approved snap mounts it again at boot, under the same principal (docs/design.md 43). A mount by envelope removes it; flag mounts are never recorded. No edges; it draws nothing (docs/design.md 33). |
 | Source | A Widget's `source`: a layer name and optional `?kind=&from=` query. |
 | Bounds | `{x, y, w, h}`: grid cells under grid, pixels under canvas. |
 | Snap | The screen graph written to `artifacts/snaps/<stamp>.graph.json`; `<stamp>` is UTC with milliseconds, `:` as `-`. The newest is what the next start boots from. |
@@ -63,12 +66,14 @@ Module `Portal`, version 0.7.0, id prefix `ui:` (registered to Portal in Graph.N
 | State | `collapsed`, `selected`, `scroll`, `icon` | (target of `has-state`) |
 | Theme | `color`, `opacity`, `font` | (target of `themed-by`) |
 | Ref | **`layer`**, **`node`** | `has-state` → State |
-| Mount | **`layer`**, **`path`** | (none) |
+| Mount | **`layer`**, **`path`**, `mountedBy` | (none) |
 | Service | **`path`**, `order`, `dock` | `has-page` → Page; `has-state` → State |
 | Page | **`path`**, `order`, `nodeKind`, `view`, `screen`, `sections`, `filter` | `has-page` → Page; `has-state` → State |
-| Principal | **`type`**, **`role`**, **`created`**, `createdBy` | (none) |
+| Principal | **`type`**, **`role`**, `created`, `createdBy` | `has-run` → Run |
 | Feed | **`kind`**, **`url`**, **`visibility`**, `order`, `tokenEnv` | `has-card` → Card |
 | Card | **`feed`**, **`version`**, **`type`**, **`hash`**, `digest`, **`pushed`**, **`pushedBy`** | (target of `has-card`) |
+| Run | **`layer`**, **`startedAt`**, **`stopped`**, `finishedAt`, `exit`, **`steps`**, **`allow`**, **`deny`**, **`witness`** | `has-decision` → Decision |
+| Decision | **`layer`**, **`effect`**, **`phase`**, **`rule`**, **`step`**, `reason` | (target of `has-decision`) |
 
 Finding Kinds: `absent` (info), set by the diff on an element in snap a and not in snap b; `approved` (info), set by Approve on the snap envelope, its message the note.
 
@@ -78,7 +83,7 @@ Graph.Node's: `schema`, `duplicate-node`, `duplicate-edge`, `dangling-edge`, `ed
 
 | Code | Means |
 |---|---|
-| `id-prefix` | A screen node id does not start `ui:`. |
+| `id-prefix` | A screen node id does not start `ui:`; or, in an envelope the API serves, a Run or Decision id that is not a valid `agent:` id. On the screen a Run or Decision is `ui:` like any node. |
 | `unknown-kind` | The Kind is not in `ontology.yaml`. |
 | `unknown-property` | A property the Kind does not declare. |
 | `property-type` | A property of the wrong type, a required one missing, `mode` not grid/flow/canvas, `bounds` or `scroll` malformed, a Theme `color` not `#rrggbb`, `opacity` outside 0 to 1, a blank `font`, a Mount whose `layer` is not a layer name or whose id is not `ui:mount:<layer>`. Also a Category with no `properties` at all, which Graph.Node 0.2.0 lets through (docs/design.md 10). |

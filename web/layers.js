@@ -4,8 +4,10 @@
 // /<tenant>/layers/<name>, where mountLayer's Location points, shows one
 // layer: its counts and stamp in the toolbar and its nodes from GET
 // .../layers/{name}/nodes as the table pages draw nodes (nodes.js), the
-// banner's search box filtering them (docs/design.md 42). Nothing here
-// writes; a layer is mounted through the API (Mount-PortalLayer).
+// banner's search box filtering them (docs/design.md 42). A node id after #
+// in the URL marks that node's row and scrolls to it: an agent's decision
+// links there (docs/design.md 43). Nothing here writes; a layer is mounted
+// through the API (Mount-PortalLayer).
 import * as nodes from '/static/nodes.js';
 
 // mount draws the list into el. ctx: {client, toolbar, bus, navigate, layerHref}.
@@ -90,6 +92,13 @@ export function open(el, ctx) {
     h.off = () => ctx.bus.removeEventListener('search', onSearch);
     apply();
     wrap.appendChild(t);
+    const target = decodeURIComponent(location.hash.slice(1));
+    const hit = target && rows.find((r) => r.row.dataset.id === target);
+    if (hit) {
+      hit.row.classList.add('pt-target');
+      hit.row.setAttribute('aria-current', 'true');
+      hit.row.scrollIntoView({ block: 'center' });
+    }
   }).catch((err) => {
     wrap.classList.add('pt-error-card');
     wrap.textContent = `${err.code}: ${err.message}`;

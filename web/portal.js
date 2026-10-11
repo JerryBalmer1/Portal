@@ -10,9 +10,11 @@
 // node drawn by screen.js, the service connections (docs/design.md 36), or
 // the tenant's principals and tokens (docs/design.md 38), or its feeds and
 // the cards they hold (docs/design.md 40), or the mounted layers, each with
-// its own page at /<tenant>/layers/<name> (docs/design.md 42).
-// The route is the URL, /<tenant>/<service>/<page>[/<id>] or
-// /<tenant>/layers/<name>, so a deep link survives a refresh. Which service is expanded, whether the rail is
+// its own page at /<tenant>/layers/<name> (docs/design.md 42), or the
+// agents, principals holding runs, at /<tenant>/agents and each at
+// /<tenant>/agents/<name> (docs/design.md 43).
+// The route is the URL, /<tenant>/<service>/<page>[/<id>],
+// /<tenant>/layers/<name> or /<tenant>/agents[/<name>], so a deep link survives a refresh. Which service is expanded, whether the rail is
 // collapsed and what the search box holds are the viewer's pointers, like a
 // Canvas selection (docs/design.md 11): never written.
 import { createClient, getToken, setToken } from '/static/client.js';
@@ -23,11 +25,12 @@ import * as principals from '/static/principals.js';
 import * as tokens from '/static/tokens.js';
 import * as feeds from '/static/feeds.js';
 import * as layers from '/static/layers.js';
+import * as agents from '/static/agents.js';
 import { icon } from '/static/icons.js';
 import { refusal } from '/static/toast.js';
 
 // Page renderers by a Page's view; screen is drawn by screen.js.
-const VIEWS = { table: nodes, connections, users: principals, agents: principals, tokens, feeds, layers };
+const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers };
 
 const tenant = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || 'default');
 const client = createClient(tenant);
@@ -63,6 +66,7 @@ export function railModel(env) {
 function route() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   if (parts[1] === 'layers' && parts[2] && !parts[3]) return layerRoute(parts[2]);
+  if (parts[1] === 'agents' && !parts[3]) return agentRoute(parts[2] || null);
   return { service: parts[1] || '', page: parts[2] || '', id: parts[3] || null, tab: new URLSearchParams(location.search).get('tab') };
 }
 
@@ -78,6 +82,26 @@ function layerRoute(name) {
 
 function layerHref(name) {
   return `/${encodeURIComponent(tenant)}/layers/${encodeURIComponent(name)}`;
+}
+
+// agentRoute places /<tenant>/agents under the Page whose view is agents
+// (Identity/Agents), and /<tenant>/agents/<name> as its item; no service has
+// the path agents (the binary refuses one).
+function agentRoute(name) {
+  const list = [...menu.pages.values()].find((p) => p.properties.view === 'agents');
+  const path = list ? list.properties.path : '';
+  const cut = path.indexOf('/');
+  return { service: path.slice(0, cut), page: path.slice(cut + 1), id: name, agent: name, tab: null };
+}
+
+function agentHref(name) {
+  return `/${encodeURIComponent(tenant)}/agents${name ? `/${encodeURIComponent(name)}` : ''}`;
+}
+
+// pageHref is where a Page lives: the agents page at /<tenant>/agents, every
+// other at its path.
+function pageHref(page) {
+  return page.properties.view === 'agents' ? agentHref(null) : href(page.properties.path);
 }
 
 function href(path, id) {
@@ -205,8 +229,9 @@ function drawMode() {
 function drawCrumbs(svc, page, r) {
   const parts = [[href(firstPage(null)), tenant]];
   if (svc) parts.push([href(firstPage(svc)), svc.name]);
-  if (page) parts.push([href(page.properties.path), page.name]);
-  if (r.id) parts.push([href(page ? page.properties.path : `${r.service}/${r.page}`, r.id), r.id]);
+  if (page) parts.push([pageHref(page), page.name]);
+  if (r.agent) parts.push([agentHref(r.agent), r.agent]);
+  else if (r.id) parts.push([href(page ? page.properties.path : `${r.service}/${r.page}`, r.id), r.id]);
   ui.crumbs.replaceChildren();
   parts.forEach(([to, text], i) => {
     const li = document.createElement('li');
@@ -220,7 +245,7 @@ function drawCrumbs(svc, page, r) {
     }
     ui.crumbs.appendChild(li);
   });
-  document.title = `${r.layer || (page ? page.name : 'Not found')} · ${config.product.name}`;
+  document.title = `${r.layer || r.agent || (page ? page.name : 'Not found')} · ${config.product.name}`;
 }
 
 function drawWho() {
@@ -410,7 +435,7 @@ function drawService(svc, r) {
     ul.className = 'pt-pages';
     for (const page of menu.kids(svc.id)) {
       const item = document.createElement('li');
-      const a = link(href(page.properties.path), page.name, 'pt-page');
+      const a = link(pageHref(page), page.name, 'pt-page');
       a.dataset.page = page.id;
       if (`${r.service}/${r.page}` === page.properties.path) a.setAttribute('aria-current', 'page');
       item.appendChild(a);
@@ -438,7 +463,7 @@ function showFlyout(li, svc, r) {
   const ul = document.createElement('ul');
   for (const page of menu.kids(svc.id)) {
     const item = document.createElement('li');
-    const a = link(href(page.properties.path), page.name, 'pt-page');
+    const a = link(pageHref(page), page.name, 'pt-page');
     if (`${r.service}/${r.page}` === page.properties.path) a.setAttribute('aria-current', 'page');
     item.appendChild(a);
     ul.appendChild(item);
@@ -479,6 +504,12 @@ function drawPage(svc, page, r) {
     current = { mod: layers, handle: layers.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.layer }) };
     return;
   }
+  if (r.agent) {
+    ui.title.textContent = r.agent;
+    ui.title.dataset.page = `agent:${r.agent}`;
+    current = { mod: agents, handle: agents.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.agent, navigate, layerHref }) };
+    return;
+  }
   if (!page) {
     ui.title.textContent = 'Not found';
     ui.content.appendChild(errorCard({ code: 'not_found', message: `no page ${r.service}/${r.page} in tenant ${tenant}'s menu` }));
@@ -504,7 +535,7 @@ function drawPage(svc, page, r) {
 }
 
 function pageCtx(page) {
-  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref };
+  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref };
 }
 
 // reauth reads whoami again (a token the portal refuses is dropped) and

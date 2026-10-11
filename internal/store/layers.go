@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -21,20 +22,26 @@ type Layer struct {
 	Env              *graph.Envelope
 	Ontology         map[string]any
 	OntologyProblems []graph.Problem
+	// MountedBy is the id of the principal whose token mounted the layer,
+	// "" when none did: a token from before 0.5.0, or a mount at start
+	// (docs/design.md 43).
+	MountedBy string
 }
 
 var layerName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
-// Mount is the body of POST /api/layers.
+// Mount is the body of POST /api/tenants/{tenant}/layers, and By the
+// principal whose token sent it, which the body cannot set.
 type Mount struct {
 	Name     string          `json:"name"`
 	Path     string          `json:"path"`
 	Envelope json.RawMessage `json:"envelope"`
+	By       string          `json:"-"`
 }
 
 // MountKind is the screen Kind that records a layer mounted by path through
-// POST /api/layers, so an approved snap mounts it again at boot
-// (docs/design.md 33).
+// POST /api/tenants/{tenant}/layers, so an approved snap mounts it again at
+// boot (docs/design.md 33), under the principal that mounted it (43).
 const MountKind = "Mount"
 
 // MountID is the id of the Mount node recording layer name.
@@ -45,8 +52,9 @@ func MountID(name string) string { return "ui:mount:" + name }
 // problems; an ontology that cannot be read or fails is reported on the
 // layer, which then draws grey. A mount by path records itself on the screen
 // as the Mount node ui:mount:<name> with the path as given (a directory
-// stays a directory); a mount by envelope removes that node, since an inline
-// envelope cannot be read again.
+// stays a directory) and, as mountedBy, the principal that sent it; a mount
+// by envelope removes that node, since an inline envelope cannot be read
+// again.
 func (p *Portal) MountLayer(m Mount) (*Layer, error) { return p.mount(m, true) }
 
 // MountAtStart mounts one layer without touching the screen: cmd/portal's
@@ -55,7 +63,7 @@ func (p *Portal) MountLayer(m Mount) (*Layer, error) { return p.mount(m, true) }
 func (p *Portal) MountAtStart(m Mount) (*Layer, error) { return p.mount(m, false) }
 
 // Remount mounts the layer each Mount node on the screen records, in screen
-// order, without touching the screen. A layer that cannot be mounted (its
+// order and under the principal it records, without touching the screen. A layer that cannot be mounted (its
 // file gone, its envelope invalid) is reported in failed and left unmounted;
 // it never stops the boot, and its Mount node stays.
 func (p *Portal) Remount() (mounted []*Layer, failed []error) {
@@ -65,7 +73,8 @@ func (p *Portal) Remount() (mounted []*Layer, failed []error) {
 		if n.Kind == MountKind {
 			layer, _ := n.Properties["layer"].(string)
 			path, _ := n.Properties["path"].(string)
-			ms = append(ms, Mount{Name: layer, Path: path})
+			by, _ := n.Properties["mountedBy"].(string)
+			ms = append(ms, Mount{Name: layer, Path: path, By: by})
 		}
 	}
 	p.mu.Unlock()
@@ -108,7 +117,7 @@ func (p *Portal) mount(m Mount, record bool) (*Layer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadRequest, err)
 	}
-	l := &Layer{Name: m.Name, Path: path, Env: env}
+	l := &Layer{Name: m.Name, Path: path, Env: env, MountedBy: m.By}
 	l.Ontology, l.OntologyProblems = loadLayerOntology(path, env.Ontology)
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -119,7 +128,7 @@ func (p *Portal) mount(m Mount, record bool) (*Layer, error) {
 				return nil, err
 			}
 		}
-		if err := p.recordMount(m.Name, given); err != nil {
+		if err := p.recordMount(m.Name, given, m.By); err != nil {
 			return nil, err
 		}
 	}
@@ -133,19 +142,24 @@ func (p *Portal) mount(m Mount, record bool) (*Layer, error) {
 	return l, nil
 }
 
-// recordMount makes the screen's Mount node for layer name say path, or
-// removes it when path is empty (an inline mount). The write is checked like
-// any other and leaves the screen as it is when nothing changes, so mounting
-// the same path again does not restamp it. Caller holds mu.
-func (p *Portal) recordMount(name, path string) error {
+// recordMount makes the screen's Mount node for layer name say path and the
+// principal by (left out when ""), or removes it when path is empty (an
+// inline mount). The write is checked like any other and leaves the screen
+// as it is when nothing changes, so mounting the same path again does not
+// restamp it. Caller holds mu.
+func (p *Portal) recordMount(name, path, by string) error {
 	id := MountID(name)
 	i, ok := p.screen.NodeIndex()[id]
 	if path == "" && !ok {
 		return nil
 	}
+	props := map[string]any{"layer": name, "path": path}
+	if by != "" {
+		props["mountedBy"] = by
+	}
 	if path != "" && ok {
 		n := p.screen.Nodes[i]
-		if n.Kind == MountKind && n.Name == name && len(n.Properties) == 2 && n.Properties["layer"] == name && n.Properties["path"] == path {
+		if n.Kind == MountKind && n.Name == name && reflect.DeepEqual(n.Properties, props) {
 			return nil
 		}
 	}
@@ -164,7 +178,7 @@ func (p *Portal) recordMount(name, path string) error {
 		}
 		next.Edges = kept
 	} else {
-		n := graph.Node{ID: id, Kind: MountKind, Name: name, Properties: map[string]any{"layer": name, "path": path}}
+		n := graph.Node{ID: id, Kind: MountKind, Name: name, Properties: props}
 		if ok {
 			next.Nodes[i] = n
 		} else {

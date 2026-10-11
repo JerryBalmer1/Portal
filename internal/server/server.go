@@ -206,6 +206,9 @@ func (s *Server) MountLayer(w http.ResponseWriter, r *http.Request, tenant api.T
 		writeError(w, http.StatusBadRequest, "bad_request", "mount body is {name, path} or {name, envelope}: "+err.Error(), nil)
 		return
 	}
+	// The layer's runs group under this principal (docs/design.md 43); a
+	// token from before 0.5.0 has no id.
+	m.By = principal(r).ID
 	l, err := s.p.MountLayer(m)
 	if err != nil {
 		writeStoreError(w, err)
@@ -350,7 +353,7 @@ func (s *Server) GetOntology(w http.ResponseWriter, r *http.Request, tenant api.
 
 func summary(l *store.Layer) api.LayerSummary {
 	return api.LayerSummary{
-		Name: l.Name, Module: l.Env.Module, Version: l.Env.Version, Stamp: l.Env.Layer, Path: l.Path,
+		Name: l.Name, Module: l.Env.Module, Version: l.Env.Version, Stamp: l.Env.Layer, Path: l.Path, MountedBy: l.MountedBy,
 		Counts: counts(recount(l.Env)), HasOntology: l.Ontology != nil, OntologyProblems: problems(l.OntologyProblems),
 	}
 }

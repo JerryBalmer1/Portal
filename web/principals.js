@@ -1,17 +1,17 @@
-// Identity/Users and Identity/Agents: the tenant's principals of one type,
-// from GET /api/tenants/{tenant}/principals (an envelope of Principal
-// nodes), one row each (name, role, created, created by). Users has an Add
-// form (name and role) that only an admin may send, and only for a role up
-// to its own (attenuation); the portal checks both again (docs/design.md
-// 38). A refused add is a toast. Agents are not created in 0.5.0, so that
-// page is its empty state. The banner's search filters the rows.
+// Identity/Users: the tenant's principals of type user, from GET
+// /api/tenants/{tenant}/principals (an envelope of Principal nodes), one row
+// each (name, role, created, created by), and an Add form (name and role)
+// that only an admin may send, and only for a role up to its own
+// (attenuation); the portal checks both again (docs/design.md 38). A refused
+// add is a toast. The banner's search filters the rows. Identity/Agents is
+// agents.js since 0.8.0 (docs/design.md 43).
 import { toast, guard, refusal } from '/static/toast.js';
 
 const ROLES = ['reader', 'contributor', 'admin'];
 
 // mount draws into el. ctx: {client, page, toolbar, bus, who}.
 export function mount(el, ctx) {
-  const type = ctx.page.properties.view === 'agents' ? 'agent' : 'user';
+  const type = 'user';
   const root = document.createElement('div');
   root.className = 'pt-stack';
   root.dataset.principals = type;
@@ -44,13 +44,8 @@ export function mount(el, ctx) {
       list.dataset.kind = 'Principal';
       const t = document.createElement('h2');
       const p = document.createElement('p');
-      if (type === 'agent') {
-        t.textContent = 'No agents yet';
-        p.textContent = 'Agents are minted via Marker, later. Until then every token belongs to a user.';
-      } else {
-        t.textContent = 'No users yet';
-        p.textContent = `Make the first admin with New-PortalToken -Name <name> -Bootstrap (tenants/${ctx.client.tenant}/principals.yaml).`;
-      }
+      t.textContent = 'No users yet';
+      p.textContent = `Make the first admin with New-PortalToken -Name <name> -Bootstrap (tenants/${ctx.client.tenant}/principals.yaml).`;
       list.replaceChildren(t, p);
       count.textContent = `0 ${type}s`;
       return;
@@ -79,7 +74,7 @@ export function mount(el, ctx) {
     list.textContent = `${err.code}: ${err.message}`;
   });
 
-  if (type === 'user') root.appendChild(addForm(ctx, load));
+  root.appendChild(addForm(ctx, load));
   root.appendChild(list);
   load();
   return h;
