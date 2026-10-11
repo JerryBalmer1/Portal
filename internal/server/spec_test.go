@@ -37,13 +37,15 @@ const (
 	clientPath  = "../../web/client.js"
 	fixtureDir  = "../../tests/fixtures/layers/filesystem"
 	runsDir     = "../../tests/fixtures/layers/agent-runs"
+	ledgerDir   = "../../tests/fixtures/layers/ledger"
 	invalidPath = "../../tests/fixtures/invalid.graph.json"
 )
 
 // Operations the page loads directly rather than through client.js, and
 // mountLayerUnscoped, gone since 0.7.0 (410).
 var pageLoaded = map[string]bool{"getIndex": true, "getStatic": true, "getShellPage": true, "getShellItem": true, "getLayerPage": true,
-	"getAgentsPage": true, "getAgentPage": true, "getEmittersPage": true, "getEmitterPage": true, "mountLayerUnscoped": true}
+	"getAgentsPage": true, "getAgentPage": true, "getEmittersPage": true, "getEmitterPage": true, "getLedgerPage": true,
+	"getLedgerSourcePage": true, "getLedgerEntryPage": true, "mountLayerUnscoped": true}
 
 func init() {
 	text := func(r io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
@@ -307,6 +309,8 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 	fixtureJSON, _ := json.Marshal(fixture)
 	runs, _ := filepath.Abs(runsDir)
 	runsJSON, _ := json.Marshal(runs)
+	ledger, _ := filepath.Abs(ledgerDir)
+	ledgerJSON, _ := json.Marshal(ledger)
 	envBody := `{"name":"inline","envelope":{"schema":"graph/1","module":"M","layer":"2026-10-09T00:00:00Z","nodes":[{"id":"a","kind":"K"}],"edges":[]}}`
 	ref := url.PathEscape("ui:ref:filesystem/fs:src")
 
@@ -378,6 +382,33 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 		{"GET", "/api/tenants/default/emitters/Graph.Emitter.Agent", "", 200},
 		{"GET", "/api/tenants/default/emitters/Graph.Emitter.Terraform", "", 404},
 		{"GET", "/api/tenants/other/emitters/Graph.Emitter.Agent", "", 404},
+		{"GET", "/default/ledger", "", 200},
+		{"GET", "/other/ledger", "", 404},
+		{"GET", "/api/tenants/default/ledger", "", 200},
+		{"GET", "/api/tenants/other/ledger", "", 404},
+		{"GET", "/default/ledger/agent", "", 404},
+		{"GET", "/api/tenants/default/ledger/agent", "", 404},
+		{"POST", "/api/tenants/default/layers", `{"name":"ledger","path":` + string(ledgerJSON) + `}`, 201},
+		{"GET", "/default/ledger/agent", "", 200},
+		{"GET", "/default/ledger/portal", "", 200},
+		{"GET", "/default/ledger/verify", "", 200},
+		{"GET", "/default/ledger/nope", "", 404},
+		{"GET", "/other/ledger/agent", "", 404},
+		{"GET", "/api/tenants/default/ledger/agent", "", 200},
+		{"GET", "/api/tenants/default/ledger/agent?limit=2&before=50&run=" + url.QueryEscape(fixtureRun), "", 200},
+		{"GET", "/api/tenants/default/ledger/agent?limit=1001", "", 400},
+		{"GET", "/api/tenants/default/ledger/portal", "", 200},
+		{"GET", "/api/tenants/default/ledger/nope", "", 404},
+		{"GET", "/api/tenants/other/ledger/agent", "", 404},
+		{"GET", "/default/ledger/agent/50", "", 200},
+		{"GET", "/default/ledger/agent/99", "", 404},
+		{"GET", "/default/ledger/entries/some-id", "", 200},
+		{"GET", "/other/ledger/agent/50", "", 404},
+		{"GET", "/api/tenants/default/ledger/agent/50", "", 200},
+		{"GET", "/api/tenants/default/ledger/agent/99", "", 404},
+		{"GET", "/api/tenants/default/ledger/agent/x", "", 400},
+		{"GET", "/api/tenants/default/ledger/nope/1", "", 404},
+		{"GET", "/api/tenants/other/ledger/agent/50", "", 404},
 		{"GET", "/static/portal.js", "", 200},
 		{"GET", "/static/base.css", "", 200},
 		{"GET", "/static/cytoscape.min.js", "", 200},

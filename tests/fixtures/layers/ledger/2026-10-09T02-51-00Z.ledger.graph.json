@@ -1,0 +1,296 @@
+{
+  "schema": "graph/1",
+  "ontology": "ontology.yaml",
+  "module": "Portal.Agent",
+  "version": "0.1.0",
+  "layer": "2026-10-09T02:51:00Z",
+  "root": "ledger:55",
+  "nodes": [
+    {
+      "id": "ledger:44",
+      "kind": "LedgerEntry",
+      "name": "44 policy.load",
+      "properties": {
+        "seq": 44,
+        "stamp": "2026-10-09T02:50:41Z",
+        "event": "policy.load",
+        "prev": "e19a63f99a84c6078af8f28aa779b83106346fbf303247d4190f1162909c3306",
+        "hash": "2f80b60e1a5e1fb886093f6cf58e318ef74523312ee3c284083165067bcff799"
+      }
+    },
+    {
+      "id": "ledger:45",
+      "kind": "LedgerEntry",
+      "name": "45 keeper.check",
+      "properties": {
+        "seq": 45,
+        "stamp": "2026-10-09T02:50:42Z",
+        "event": "keeper.check",
+        "prev": "2f80b60e1a5e1fb886093f6cf58e318ef74523312ee3c284083165067bcff799",
+        "hash": "7e254bf4531203ec1369104be23c1cf9ebe072e264ef321f99fbe3ed24ccd4d3"
+      }
+    },
+    {
+      "id": "ledger:46",
+      "kind": "LedgerEntry",
+      "name": "46 agent.egress-check",
+      "properties": {
+        "seq": 46,
+        "stamp": "2026-10-09T02:50:43Z",
+        "event": "agent.egress-check",
+        "prev": "7e254bf4531203ec1369104be23c1cf9ebe072e264ef321f99fbe3ed24ccd4d3",
+        "hash": "dfdbe3902e0a438080f54261dd7feab51c4b411d9e04fa263b9cc65520d2eac3",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      }
+    },
+    {
+      "id": "ledger:47",
+      "kind": "LedgerEntry",
+      "name": "47 agent.start",
+      "properties": {
+        "seq": 47,
+        "stamp": "2026-10-09T02:50:44Z",
+        "event": "agent.start",
+        "prev": "dfdbe3902e0a438080f54261dd7feab51c4b411d9e04fa263b9cc65520d2eac3",
+        "hash": "681c015dc964f3e8053e104d3f487aa1049088a6e9085099b557de9ffb95757f",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      }
+    },
+    {
+      "id": "ledger:48",
+      "kind": "LedgerEntry",
+      "name": "48 policy.pre",
+      "properties": {
+        "seq": 48,
+        "stamp": "2026-10-09T02:50:45Z",
+        "event": "policy.pre",
+        "prev": "681c015dc964f3e8053e104d3f487aa1049088a6e9085099b557de9ffb95757f",
+        "hash": "23ea239be3a4e37ee16f0ad9676f85db6fb0be69711e5937894cab05bea9de46",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      }
+    },
+    {
+      "id": "ledger:49",
+      "kind": "LedgerEntry",
+      "name": "49 policy.post",
+      "properties": {
+        "seq": 49,
+        "stamp": "2026-10-09T02:50:46Z",
+        "event": "policy.post",
+        "prev": "23ea239be3a4e37ee16f0ad9676f85db6fb0be69711e5937894cab05bea9de46",
+        "hash": "3047d8bae511d42b9d0bcc846f1a1d89e8c0be1fed1ae75f80611618ccdb4f8f",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      }
+    },
+    {
+      "id": "ledger:50",
+      "kind": "LedgerEntry",
+      "name": "50 policy.pre",
+      "properties": {
+        "seq": 50,
+        "stamp": "2026-10-09T02:50:47Z",
+        "event": "policy.pre",
+        "prev": "3047d8bae511d42b9d0bcc846f1a1d89e8c0be1fed1ae75f80611618ccdb4f8f",
+        "hash": "9c8cb352b0e55ea3e68fc9fb3625a75064e6c5a7247ea7df794af345af630b12",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      }
+    },
+    {
+      "id": "ledger:51",
+      "kind": "LedgerEntry",
+      "name": "51 policy.post",
+      "properties": {
+        "seq": 51,
+        "stamp": "2026-10-09T02:50:48Z",
+        "event": "policy.post",
+        "prev": "9c8cb352b0e55ea3e68fc9fb3625a75064e6c5a7247ea7df794af345af630b12",
+        "hash": "df7fa4937ff1e31f07623b09a01c728790e6c0b9b1678e043e03029fad4e11d7",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      }
+    },
+    {
+      "id": "ledger:52",
+      "kind": "LedgerEntry",
+      "name": "52 policy.pre",
+      "properties": {
+        "seq": 52,
+        "stamp": "2026-10-09T02:50:49Z",
+        "event": "policy.pre",
+        "prev": "df7fa4937ff1e31f07623b09a01c728790e6c0b9b1678e043e03029fad4e11d7",
+        "hash": "695eb11685a1d288fa5923efbd58ad08c5836b62f32147aa0af3119bdb829c60",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      }
+    },
+    {
+      "id": "ledger:53",
+      "kind": "LedgerEntry",
+      "name": "53 agent.run",
+      "properties": {
+        "seq": 53,
+        "stamp": "2026-10-09T02:50:52Z",
+        "event": "agent.run",
+        "prev": "695eb11685a1d288fa5923efbd58ad08c5836b62f32147aa0af3119bdb829c60",
+        "hash": "df27bba3bd7681f03e863ba7d83d2308dac9504ad39fc3d5fc6d91927a191699",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      }
+    },
+    {
+      "id": "ledger:54",
+      "kind": "LedgerEntry",
+      "name": "54 agent.stop",
+      "properties": {
+        "seq": 54,
+        "stamp": "2026-10-09T02:50:53Z",
+        "event": "agent.stop",
+        "prev": "df27bba3bd7681f03e863ba7d83d2308dac9504ad39fc3d5fc6d91927a191699",
+        "hash": "1ae5aa52d870d9f59901d6a210c35dd9d06b0b938a5c1cac21332076668984a8",
+        "run": "agent:run/2026-10-09T02:50:43.7976027Z"
+      }
+    },
+    {
+      "id": "ledger:55",
+      "kind": "LedgerEntry",
+      "name": "55 keeper.check",
+      "properties": {
+        "seq": 55,
+        "stamp": "2026-10-09T02:50:55Z",
+        "event": "keeper.check",
+        "prev": "1ae5aa52d870d9f59901d6a210c35dd9d06b0b938a5c1cac21332076668984a8",
+        "hash": "887b1e87c08c2da1198c7b942552fcc5fd34092b0ea57e2d0b652a10c0c10ecf",
+        "valid": true,
+        "count": 12,
+        "first": 44,
+        "last": 55
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "ledger:45|ledger:44|prev",
+      "kind": "prev",
+      "from": "ledger:45",
+      "to": "ledger:44"
+    },
+    {
+      "id": "ledger:46|ledger:45|prev",
+      "kind": "prev",
+      "from": "ledger:46",
+      "to": "ledger:45"
+    },
+    {
+      "id": "ledger:46|agent:run/2026-10-09T02:50:43.7976027Z|records",
+      "kind": "records",
+      "from": "ledger:46",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    },
+    {
+      "id": "ledger:47|ledger:46|prev",
+      "kind": "prev",
+      "from": "ledger:47",
+      "to": "ledger:46"
+    },
+    {
+      "id": "ledger:47|agent:run/2026-10-09T02:50:43.7976027Z|records",
+      "kind": "records",
+      "from": "ledger:47",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    },
+    {
+      "id": "ledger:48|ledger:47|prev",
+      "kind": "prev",
+      "from": "ledger:48",
+      "to": "ledger:47"
+    },
+    {
+      "id": "ledger:48|agent:run/2026-10-09T02:50:43.7976027Z/step-1|records",
+      "kind": "records",
+      "from": "ledger:48",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-1"
+    },
+    {
+      "id": "ledger:49|ledger:48|prev",
+      "kind": "prev",
+      "from": "ledger:49",
+      "to": "ledger:48"
+    },
+    {
+      "id": "ledger:49|agent:run/2026-10-09T02:50:43.7976027Z/step-1|records",
+      "kind": "records",
+      "from": "ledger:49",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-1"
+    },
+    {
+      "id": "ledger:50|ledger:49|prev",
+      "kind": "prev",
+      "from": "ledger:50",
+      "to": "ledger:49"
+    },
+    {
+      "id": "ledger:50|agent:run/2026-10-09T02:50:43.7976027Z/step-2|records",
+      "kind": "records",
+      "from": "ledger:50",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-2"
+    },
+    {
+      "id": "ledger:51|ledger:50|prev",
+      "kind": "prev",
+      "from": "ledger:51",
+      "to": "ledger:50"
+    },
+    {
+      "id": "ledger:51|agent:run/2026-10-09T02:50:43.7976027Z/step-2|records",
+      "kind": "records",
+      "from": "ledger:51",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-2"
+    },
+    {
+      "id": "ledger:52|ledger:51|prev",
+      "kind": "prev",
+      "from": "ledger:52",
+      "to": "ledger:51"
+    },
+    {
+      "id": "ledger:52|agent:run/2026-10-09T02:50:43.7976027Z/step-3|records",
+      "kind": "records",
+      "from": "ledger:52",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z/step-3"
+    },
+    {
+      "id": "ledger:53|ledger:52|prev",
+      "kind": "prev",
+      "from": "ledger:53",
+      "to": "ledger:52"
+    },
+    {
+      "id": "ledger:53|agent:run/2026-10-09T02:50:43.7976027Z|records",
+      "kind": "records",
+      "from": "ledger:53",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    },
+    {
+      "id": "ledger:54|ledger:53|prev",
+      "kind": "prev",
+      "from": "ledger:54",
+      "to": "ledger:53"
+    },
+    {
+      "id": "ledger:54|agent:run/2026-10-09T02:50:43.7976027Z|records",
+      "kind": "records",
+      "from": "ledger:54",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    },
+    {
+      "id": "ledger:55|ledger:54|prev",
+      "kind": "prev",
+      "from": "ledger:55",
+      "to": "ledger:54"
+    }
+  ],
+  "counts": {
+    "nodes": 12,
+    "edges": 20,
+    "byKind": {
+      "LedgerEntry": 12
+    }
+  }
+}

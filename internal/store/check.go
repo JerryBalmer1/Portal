@@ -41,9 +41,14 @@ var layoutModes = []string{"grid", "flow", "canvas"}
 
 // borrowedIDs are the Kinds whose nodes keep the id another module gave
 // them, by that module's prefix: a Run and a Decision are Graph.Emitter.Agent's
-// Run and PolicyDecision re-served (docs/design.md 43). Only in an envelope
-// the API serves; a screen node is always ui:.
-var borrowedIDs = map[string]string{"Run": "agent:", "Decision": "agent:"}
+// Run and PolicyDecision re-served (docs/design.md 43), and an agent
+// LedgerEntry the ledger:<seq> its layer gave it (45). Only in an envelope
+// the API serves; a screen node is always ui:. A LedgerEntry of Portal's own
+// ledger is ui:, so that Kind takes either.
+var borrowedIDs = map[string]string{"Run": "agent:", "Decision": "agent:", LedgerKind: AgentLedgerPrefix}
+
+// ownIDs are the borrowed Kinds whose nodes may also be Portal's own, ui:.
+var ownIDs = map[string]bool{LedgerKind: true}
 
 // touched names the elements a write added or changed. The portal checks
 // only those; Graph.Node checks the whole next screen.
@@ -114,7 +119,7 @@ func (p *Portal) checkNode(env *graph.Envelope, at string, n graph.Node, served 
 	add := func(code, path, msg string) {
 		out = append(out, graph.Problem{Code: code, Path: at + path, Message: msg, Severity: graph.SeverityError})
 	}
-	if prefix, ok := borrowedIDs[n.Kind]; ok && served {
+	if prefix, ok := borrowedIDs[n.Kind]; ok && served && !(ownIDs[n.Kind] && strings.HasPrefix(n.ID, IDPrefix)) {
 		if err := graph.ValidID(prefix, n.ID); err != nil || !strings.HasPrefix(n.ID, prefix) {
 			add("id-prefix", "/id", fmt.Sprintf("%s id %q must be the %s id it has in its layer, %s...", n.Kind, n.ID, prefix, prefix))
 		}

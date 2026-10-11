@@ -30,6 +30,7 @@ var static = map[string]string{
 	"layers.js":        "layers.js",
 	"agents.js":        "agents.js",
 	"emitters.js":      "emitters.js",
+	"ledger.js":        "ledger.js",
 	"canvas.js":        "canvas.js",
 	"table.js":         "table.js",
 	"detail.js":        "detail.js",

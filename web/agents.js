@@ -7,8 +7,10 @@
 // its runs from GET .../agents/{name}/runs, newest first: stamps, steps,
 // decisions by effect with the deny count in red, the layer linking to its
 // page, and each decision linking to its node on that page
-// (/<tenant>/layers/<layer>#<id>). The banner's search filters the rows.
-// Nothing here writes.
+// (/<tenant>/layers/<layer>#<id>). While a ledger layer is mounted, each run
+// also counts its ledger entries, linking to them on the agent chain's page,
+// /<tenant>/ledger/agent?run=<id> (docs/design.md 45). The banner's search
+// filters the rows. Nothing here writes.
 
 // mount draws the list into el. ctx: {client, toolbar, bus, navigate, agentHref}.
 export function mount(el, ctx) {
@@ -58,7 +60,7 @@ export function mount(el, ctx) {
   return h;
 }
 
-// open draws one agent's runs into el. ctx: {client, toolbar, bus, name, navigate, layerHref}.
+// open draws one agent's runs into el. ctx: {client, toolbar, bus, name, navigate, layerHref, ledgerHref}.
 export function open(el, ctx) {
   const wrap = document.createElement('div');
   wrap.className = 'pt-card pt-table-card';
@@ -95,7 +97,9 @@ export function open(el, ctx) {
     }
     const t = document.createElement('table');
     t.className = 'pt-table pt-runs';
-    const cols = ['started', 'finished', 'steps', 'allow', 'deny', 'witness', 'exit', 'layer'];
+    // The ledger column only while a ledger layer is mounted: the API counts then.
+    const ledgered = runs.some((r) => r.properties.ledger !== undefined);
+    const cols = ['started', 'finished', 'steps', 'allow', 'deny', 'witness', 'exit', 'layer', ...(ledgered ? ['ledger'] : [])];
     head(t, cols);
     const body = t.createTBody();
     const rows = [];
@@ -108,6 +112,12 @@ export function open(el, ctx) {
       row.insertCell().appendChild(denyCount(p.deny));
       for (const v of [p.witness, p.exit ?? '']) row.insertCell().textContent = v;
       row.insertCell().appendChild(go(ctx, ctx.layerHref(p.layer), p.layer));
+      if (ledgered) {
+        const a = go(ctx, `${ctx.ledgerHref('agent')}?run=${encodeURIComponent(r.id)}`, String(p.ledger ?? 0));
+        a.className = 'pt-ledger-count';
+        a.dataset.run = r.id;
+        row.insertCell().appendChild(a);
+      }
       const ds = (decisions.get(r.id) || []).map((id) => byId.get(id)).filter(Boolean);
       const sub = body.insertRow();
       sub.className = 'pt-decisions';

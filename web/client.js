@@ -23,6 +23,9 @@ export const ROUTES = Object.freeze({
   listAgentRuns: { method: 'GET', path: '/api/tenants/{tenant}/agents/{name}/runs' },
   listEmitters: { method: 'GET', path: '/api/tenants/{tenant}/emitters' },
   getEmitter: { method: 'GET', path: '/api/tenants/{tenant}/emitters/{name}' },
+  listLedgers: { method: 'GET', path: '/api/tenants/{tenant}/ledger' },
+  getLedger: { method: 'GET', path: '/api/tenants/{tenant}/ledger/{source}' },
+  getLedgerEntry: { method: 'GET', path: '/api/tenants/{tenant}/ledger/{source}/{seq}' },
   listFeeds: { method: 'GET', path: '/api/tenants/{tenant}/feeds' },
   pushCard: { method: 'POST', path: '/api/tenants/{tenant}/feeds/{feed}/push' },
   listNodes: { method: 'GET', path: '/api/tenants/{tenant}/nodes' },
@@ -115,6 +118,9 @@ export function createClient(tenant, base = '') {
     listAgentRuns: (name) => call('listAgentRuns', { params: { name } }),
     listEmitters: () => call('listEmitters'),
     getEmitter: (name) => call('getEmitter', { params: { name } }),
+    listLedgers: () => call('listLedgers'),
+    getLedger: (source, { limit, before, run } = {}) => call('getLedger', { params: { source }, query: { limit, before, run } }),
+    getLedgerEntry: (source, seq) => call('getLedgerEntry', { params: { source, seq } }),
     listFeeds: () => call('listFeeds'),
     // pushCard(feed, manifest, files): manifest a Blob of manifest.yaml, files [{path, blob}]. Nothing on the page
     // pushes in 0.6.0; Portal.Agent and Publish-PortalCard do.

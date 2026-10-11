@@ -159,6 +159,7 @@ func TestBadOverlayFailsBoot(t *testing.T) {
 		"menu:\n  - id: extra\n    label: Extra\n    path: extra\n    children: [{ id: p, label: P, path: extra/p }]\n":              "/menu/13/children/0/kind",
 		"menu:\n  - id: layers\n    label: Layers\n    path: layers\n    children: [{ id: p, label: P, path: layers/p, kind: k }]\n": "/menu/13/id: layers is the route of the layer pages",
 		"menu:\n  - id: agents\n    label: Agents\n    path: agents\n    children: [{ id: p, label: P, path: agents/p, kind: k }]\n": "/menu/13/id: agents is the route of the agent pages",
+		"menu:\n  - id: ledger\n    children: [{ id: portal, label: P, path: ledger/portal, kind: k }]\n":                            "/children/3/id: portal is a ledger source, whose entries' route /<tenant>/ledger/portal this page would take",
 		"menu: [": "yaml",
 	} {
 		_, err := load(t, map[string]string{"portal.yaml": overlay})

@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.9.0 and needs PowerShell 7.4' {
+    It 'is version 0.10.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.9.0'
+        $m.ModuleVersion | Should -Be '0.10.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,12 +302,12 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.9.0, the seventeen Kinds, the thirteen edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.10.0, the nineteen Kinds, the seventeen edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.9\.0$'
-        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer') { $text | Should -Match "(?m)^  ${k}:" }
-        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer') { $text | Should -Match "(?m)^  ${e}:" }
+        $text | Should -Match '(?m)^version: 0\.10\.0$'
+        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry') { $text | Should -Match "(?m)^  ${k}:" }
+        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
     }
     It 'the FileSystem fixture passes graphnode validate and has its ontology beside it' {
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.9.0'
+        $s.version | Should -Be '0.10.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -1392,7 +1392,11 @@ feeds:
         $e.files | Should -Be 3 -Because 'manifest.yaml, install.yaml and docs/read me.md; .notes is left out'
         $e.hash | Should -Match '^sha256:[0-9a-f]{64}$'
         $e.digest | Should -BeNullOrEmpty
-        @($e.PSObject.Properties.Name) | Should -Be @('at', 'principal', 'name', 'role', 'feed', 'kind', 'card', 'version', 'type', 'hash', 'digest', 'files', 'result', 'message')
+        @($e.PSObject.Properties.Name) | Should -Be @('at', 'principal', 'name', 'role', 'feed', 'kind', 'card', 'version', 'type', 'hash', 'digest', 'files', 'result', 'message', 'seq', 'prev')
+        # Chained (docs/design.md 45): seq is the line number, prev the SHA-256 of the line before.
+        $lines = @(Get-Content -LiteralPath $Ledger | Where-Object { $_ })
+        $e.seq | Should -Be $lines.Count
+        $e.prev | Should -Be ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($lines[-2]))).ToLowerInvariant())
     }
     It 'a card that fails Graph.Node''s manifest schema is 422 with its problems, and an invalid ledger line' {
         $bad = Join-Path $TestDrive 'bad-card'
@@ -1566,5 +1570,93 @@ Describe 'Emitters' {
         $dom | Should -Match '<p class="pt-produced-by" data-emitter="Graph.Emitter.Agent">produced by <a href="/default/emitters/Graph.Emitter.Agent">Graph.Emitter.Agent</a> 0.1.3</p>'
         $dom = Get-PageDom $EmUrl '/default/layers/filesystem'
         $dom | Should -Match '<p class="pt-produced-by" data-emitter="Graph.Emitter.FileSystem">produced by <a href="/default/emitters/Graph.Emitter.FileSystem">Graph.Emitter.FileSystem</a> <span class="pt-unknown-badge"[^>]*>unknown</span></p>'
+    }
+}
+Describe 'Ledger' {
+    # docs/design.md 45. A tenant of its own: admin root (-Bootstrap) and a push ledger of one line from before 0.10.0
+    # (no seq, no prev: the unchained head). root mounts the agent-runs fixture and the ledger fixture, twelve entries of
+    # the agent's ledger, seq 44 to 55, nine of them in the run; then the broken copy under the same name, whose entry 50
+    # was altered, so the chain breaks at 51.
+    BeforeAll {
+        $script:LgTenants = Join-Path $TestDrive 'lg-tenants'
+        $td = Join-Path $LgTenants 'default'
+        $null = New-Item -ItemType Directory -Force -Path $td
+        Set-Content -LiteralPath (Join-Path $td 'portal.yaml') -Encoding utf8NoBOM -Value '{}'
+        $script:LgRoot = New-PortalToken -Name root -Bootstrap -Tenants $LgTenants
+        Set-Content -LiteralPath (Join-Path $td 'ledger.jsonl') -Encoding utf8NoBOM -Value ('{"at":"2026-10-11T00:00:00.000Z","principal":"ui:principal:root","name":"root","role":"admin","feed":"cards-oci","kind":"oci",' +
+            '"card":"Emitter.Agent","version":"0.1.3","type":"emitter","hash":"sha256:' + ('ab' * 32) + '","digest":"sha256:' + ('cd' * 32) + '","files":1,"result":"pushed","message":"Emitter.Agent 0.1.3 to cards-oci"}')
+        $script:LgWork = Join-Path $TestDrive 'ledger'
+        $script:LgPortal = Start-Portal -Port 18200 -Artifacts $LgWork -Tenants $LgTenants
+        $script:LgUrl = $LgPortal.Url
+        $script:LgRun = 'agent:run/2026-10-09T02:50:43.7976027Z'
+        function Mount-AsRoot([string] $Name, [string] $Dir) {
+            $saved = $env:PORTAL_TOKEN
+            try { $env:PORTAL_TOKEN = $LgRoot.Token; Mount-PortalLayer -Name $Name -Path (Join-Path $Fixtures 'layers' $Dir) -Url $LgUrl }
+            finally { $env:PORTAL_TOKEN = $saved }
+        }
+        $null = Mount-AsRoot agent-runs agent-runs
+        $null = Mount-AsRoot ledger ledger
+    }
+    AfterAll { Stop-Portal -Artifacts $LgWork; InModuleScope Portal { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
+
+    It 'Ledger/Entries lists both chains with their counts, the agent chain valid in green; the altered copy is red, broken at 51' {
+        $api = Invoke-RestMethod "$LgUrl/api/tenants/default/ledger"
+        @($api.nodes | ForEach-Object { "$($_.id) $($_.properties.count) $($_.properties.valid)" }) | Should -Be @('ui:ledger:agent 12 True', 'ui:ledger:portal 1 True')
+        $dom = Get-PageDom $LgUrl '/default/ledger'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $dom | Should -Match ('<tr data-source="agent"><td><a href="/default/ledger/agent">agent</a></td><td><span class="pt-valid" data-valid="true">valid</span></td>' +
+            '<td>12</td><td>44</td><td>55</td><td>2026-10-09T02:51:00Z</td><td>layer <a href="/default/layers/ledger">ledger</a></td></tr>')
+        $dom | Should -Match ('<tr data-source="portal"><td><a href="/default/ledger/portal">portal</a></td><td><span class="pt-valid" data-valid="true">valid</span></td>' +
+            '<td>1</td><td>1</td><td>1</td><td>2026-10-11T00:00:00.000Z</td><td>ledger.jsonl · 1 before the chain</td></tr>')
+        $dom | Should -Match '<span class="pt-count">2 chains</span>'
+        $dom | Should -Match 'href="/default/ledger" class="pt-page" data-page="ui:rail:ledger:entries" aria-current="page"'
+        # The ledger service's other pages keep their paths.
+        (Get-PageDom $LgUrl '/default/ledger/verify') | Should -Match '<h1 class="pt-title" id="title"[^>]*>Verify</h1>'
+
+        $null = Mount-AsRoot ledger ledger-broken
+        try {
+            $a = (Invoke-RestMethod "$LgUrl/api/tenants/default/ledger").nodes | Where-Object id -EQ 'ui:ledger:agent'
+            "$($a.properties.valid) $($a.properties.breakAt) $($a.properties.reason) $($a.properties.claimed)" | Should -Be 'False 51 prev-mismatch True'
+            $dom = Get-PageDom $LgUrl '/default/ledger'
+            $dom | Should -Match '<tr data-source="agent"><td><a href="/default/ledger/agent">agent</a></td><td><span class="pt-broken" data-valid="false" title="prev-mismatch">broken at 51</span></td><td>12</td>'
+            $dom | Should -Match '<span class="pt-count">2 chains · 1 broken</span>'
+            $dom = Get-PageDom $LgUrl '/default/ledger/agent'
+            $dom | Should -Match '<span class="pt-badge" id="ledger-stats" data-source="agent">12 entries · <span class="pt-broken" data-valid="false" title="prev-mismatch">broken at 51</span></span>'
+            $dom | Should -Match '<tr data-seq="51" class="pt-break" title="the chain breaks here: prev-mismatch">'
+            # The broken line's colour is the chain's red.
+            (Get-Content -LiteralPath (Join-Path $Repo 'web' 'base.css') -Raw) | Should -Match '\.pt-broken \{ color: var\(--gr-bad\);'
+        }
+        finally { $null = Mount-AsRoot ledger ledger }
+    }
+    It 'a chain''s page lists its entries newest first, each run linking to the runs layer page by id after #; the agent''s run counts its entries' {
+        [int](Invoke-WebRequest "$LgUrl/default/ledger/nope" -SkipHttpErrorCheck).StatusCode | Should -Be 404
+        [int](Invoke-WebRequest "$LgUrl/default/ledger/agent/99" -SkipHttpErrorCheck).StatusCode | Should -Be 404
+        $dom = Get-PageDom $LgUrl '/default/ledger/agent'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $dom | Should -Match '<span class="pt-badge" id="ledger-stats" data-source="agent">12 entries · <span class="pt-valid" data-valid="true">valid</span></span>'
+        @([regex]::Matches($dom, '<tr data-seq="(\d+)"') | ForEach-Object { [int]$_.Groups[1].Value }) | Should -Be (55..44)
+        $step2 = [regex]::Escape([uri]::EscapeDataString("$LgRun/step-2"))
+        $dom | Should -Match ('<tr data-seq="50"><td><a href="/default/ledger/agent/50">50</a></td><td>2026-10-09T02:50:47Z</td><td>policy.pre</td>' +
+            '<td><a href="/default/layers/agent-runs#' + $step2 + '" class="pt-run-link" data-run="' + [regex]::Escape("$LgRun/step-2") + '">' + [regex]::Escape($LgRun) + '</a></td>')
+        $dom | Should -Match '<tr data-seq="44"><td><a href="/default/ledger/agent/44">44</a></td><td>2026-10-09T02:50:41Z</td><td>policy.load</td><td></td>'
+        $dom | Should -Match '<li><a href="/default/ledger">Entries</a></li><li><span aria-current="page">agent</span></li>'
+        # The run link lands on the runs layer's page, its row marked (0.8.0's highlight).
+        $dom = Get-PageDom $LgUrl "/default/layers/agent-runs#$([uri]::EscapeDataString("$LgRun/step-2"))"
+        $dom | Should -Match ('<tr data-id="' + [regex]::Escape("$LgRun/step-2") + '"[^>]*class="pt-target" aria-current="true"')
+        # One entry, linking the one before it.
+        $dom = Get-PageDom $LgUrl '/default/ledger/agent/51'
+        $dom | Should -Match '<dd data-field="seq">51</dd>'
+        $dom | Should -Match '<dd data-field="prev"><span>[0-9a-f]{64} · <a href="/default/ledger/agent/50">entry 50</a></span></dd>'
+        # The agent's page counts the run's entries, linking to them.
+        $runQ = [regex]::Escape([uri]::EscapeDataString($LgRun))
+        $dom = Get-PageDom $LgUrl '/default/agents/root'
+        $dom | Should -Match ('<th>layer</th><th>ledger</th>')
+        $dom | Should -Match ('<td><a href="/default/ledger/agent\?run=' + $runQ + '" class="pt-ledger-count" data-run="' + [regex]::Escape($LgRun) + '">9</a></td></tr>')
+        $dom = Get-PageDom $LgUrl "/default/ledger/agent?run=$([uri]::EscapeDataString($LgRun))"
+        @([regex]::Matches($dom, '<tr data-seq="(\d+)"') | ForEach-Object { [int]$_.Groups[1].Value }) | Should -Be (54..46)
+        $dom | Should -Match ('9 entries · <span class="pt-valid" data-valid="true">valid</span> · run ' + [regex]::Escape($LgRun) + '</span>')
+        # Portal's own chain: the line from before 0.10.0, unchained.
+        $dom = Get-PageDom $LgUrl '/default/ledger/portal'
+        $dom | Should -Match '<tr data-seq="1"><td><a href="/default/ledger/portal/1">1</a></td><td>2026-10-11T00:00:00.000Z</td><td>pushed \(unchained\)</td><td>Emitter.Agent@0.1.3</td><td>root</td>'
     }
 }

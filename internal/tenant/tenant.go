@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -60,6 +61,7 @@ type Tenant struct {
 	principals  []Principal
 	tokens      []token
 	ledger      []LedgerEntry
+	ledgerRaw   [][]byte
 	pushMu      sync.Mutex
 }
 
@@ -147,7 +149,7 @@ func Load(o Options) (*Tenant, error) {
 	if t.Connections, err = loadConnections(filepath.Join(dir, "connections.yaml"), t.principals); err != nil {
 		return nil, err
 	}
-	if t.ledger, err = loadLedger(filepath.Join(dir, LedgerFile)); err != nil {
+	if t.ledger, t.ledgerRaw, err = loadLedger(filepath.Join(dir, LedgerFile)); err != nil {
 		return nil, err
 	}
 	if ps := checkEmitterCards(t.Menu, t.ledger); len(ps) > 0 {
@@ -362,8 +364,9 @@ func clone(v any) any {
 // what it changes: the merged config names the product and has a menu whose
 // every entry has a label and a path that is its parent's path plus its id,
 // ids unique among siblings, no service at layers or agents (the layer and
-// agent pages' routes),
-// and a page that knows what it draws.
+// agent pages' routes), no page of the ledger service with the id of a
+// ledger source (whose entries' route it would take), and a page that knows
+// what it draws.
 func checkMerged(c map[string]any) []string {
 	var out []string
 	product, _ := c["product"].(map[string]any)
@@ -396,6 +399,9 @@ func checkMerged(c map[string]any) []string {
 				out = append(out, fmt.Sprintf("%s/path: %q, want %q (its parent's path and its id)", here, s, want))
 			}
 			kids, _ := item["children"].([]any)
+			if depth == 1 && parent == LedgerService && slices.Contains(LedgerSources, id) {
+				out = append(out, fmt.Sprintf("%s/id: %s is a ledger source, whose entries' route /<tenant>/%s/%s this page would take", here, id, LedgerService, id))
+			}
 			if depth > 0 {
 				view, _ := item["view"].(string)
 				kind, _ := item["kind"].(string)

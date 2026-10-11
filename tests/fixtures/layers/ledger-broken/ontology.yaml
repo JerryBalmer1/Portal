@@ -1,0 +1,28 @@
+module: Portal.Agent
+version: 0.1.0
+kinds:
+  LedgerEntry:
+    description: One line of a Claude.Agent ledger.jsonl (Claude.Agent.Ledger docs/stream-contract.md), under the registered id ledger:<seq>. The envelope's root is the newest entry, which also carries the chain verify.
+    idRule: "ledger:<seq>"
+    properties:
+      - { name: seq, type: integer, required: true, description: "The line's writer seq." }
+      - { name: stamp, type: string, required: true, description: "The line's stamp, UTC ending Z." }
+      - { name: event, type: string, required: true, description: "The line's kind (agent.start, policy.pre, ...)." }
+      - { name: prev, type: string, required: true, description: "The line's prev: the SHA-256 of the line before, 64 lower-case hex." }
+      - { name: hash, type: string, required: true, description: "The SHA-256 of the line itself, 64 lower-case hex; the next entry's prev." }
+      - { name: run, type: string, description: "The Graph.Emitter.Agent Run id the line belongs to, when it belongs to a run." }
+      - { name: valid, type: boolean, description: "Root only: whether every prev is the hash of the entry before and seq has no gap." }
+      - { name: count, type: integer, description: "Root only: entries in the chain." }
+      - { name: first, type: integer, description: "Root only: the lowest seq." }
+      - { name: last, type: integer, description: "Root only: the highest seq." }
+      - { name: break, type: integer, description: "Root only, when not valid: the seq of the first entry whose prev or seq does not follow." }
+    display: { color: "#5F6368", shape: square, size: 1, label: "{name}" }
+edgeKinds:
+  prev:
+    description: An entry to the entry before it in the chain.
+    from: [LedgerEntry]
+    to: [LedgerEntry]
+  records:
+    description: An entry to the Run, or the Step, of the Graph.Emitter.Agent runs layer it belongs to, by that layer's id.
+    from: [LedgerEntry]
+    to: [Run, Step]

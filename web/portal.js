@@ -13,10 +13,12 @@
 // its own page at /<tenant>/layers/<name> (docs/design.md 42), or the
 // agents, principals holding runs, at /<tenant>/agents and each at
 // /<tenant>/agents/<name> (docs/design.md 43), or the emitters, at
-// /<tenant>/emitters and each at /<tenant>/emitters/<name> (docs/design.md 44).
-// The route is the URL, /<tenant>/<service>/<page>[/<id>],
-// /<tenant>/layers/<name>, /<tenant>/agents[/<name>] or
-// /<tenant>/emitters[/<name>], so a deep link survives a refresh. Which service is expanded, whether the rail is
+// /<tenant>/emitters and each at /<tenant>/emitters/<name> (docs/design.md 44),
+// or the ledger chains, at /<tenant>/ledger, each chain's entries at
+// /<tenant>/ledger/<source> and each entry at /<tenant>/ledger/<source>/<seq>
+// (docs/design.md 45). The route is the URL, /<tenant>/<service>/<page>[/<id>],
+// /<tenant>/layers/<name>, /<tenant>/agents[/<name>],
+// /<tenant>/emitters[/<name>] or /<tenant>/ledger[/<source>[/<seq>]], so a deep link survives a refresh. Which service is expanded, whether the rail is
 // collapsed and what the search box holds are the viewer's pointers, like a
 // Canvas selection (docs/design.md 11): never written.
 import { createClient, getToken, setToken } from '/static/client.js';
@@ -29,11 +31,12 @@ import * as feeds from '/static/feeds.js';
 import * as layers from '/static/layers.js';
 import * as agents from '/static/agents.js';
 import * as emitters from '/static/emitters.js';
+import * as ledger from '/static/ledger.js';
 import { icon } from '/static/icons.js';
 import { refusal } from '/static/toast.js';
 
 // Page renderers by a Page's view; screen is drawn by screen.js.
-const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers, emitters };
+const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers, emitters, ledger };
 
 const tenant = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || 'default');
 const client = createClient(tenant);
@@ -72,6 +75,8 @@ function route() {
   if (parts[1] === 'agents' && !parts[3]) return agentRoute(parts[2] || null);
   // A page of the emitters service keeps its path; any other name is an emitter's.
   if (parts[1] === 'emitters' && !parts[3] && !(parts[2] && menu.pages.has(`emitters/${parts[2]}`))) return emitterRoute(parts[2] || null);
+  // So does a page of the ledger service; any other name is a chain's source.
+  if (parts[1] === 'ledger' && !parts[4] && !(parts[2] && menu.pages.has(`ledger/${parts[2]}`))) return ledgerRoute(parts[2] || null, parts[3] || null);
   return { service: parts[1] || '', page: parts[2] || '', id: parts[3] || null, tab: new URLSearchParams(location.search).get('tab') };
 }
 
@@ -116,6 +121,22 @@ function emitterHref(name) {
   return `/${encodeURIComponent(tenant)}/emitters${name ? `/${encodeURIComponent(name)}` : ''}`;
 }
 
+// ledgerRoute places /<tenant>/ledger under the Page whose view is ledger
+// (Ledger/Entries), /<tenant>/ledger/<source> as its item and
+// /<tenant>/ledger/<source>/<seq> below that; ?run= and ?before= filter and
+// page a chain's entries.
+function ledgerRoute(source, seq) {
+  const list = [...menu.pages.values()].find((p) => p.properties.view === 'ledger');
+  const path = list ? list.properties.path : '';
+  const cut = path.indexOf('/');
+  const q = new URLSearchParams(location.search);
+  return { service: path.slice(0, cut), page: path.slice(cut + 1), id: source, source, seq, run: q.get('run'), before: q.get('before'), tab: null };
+}
+
+function ledgerHref(source, seq) {
+  return `/${encodeURIComponent(tenant)}/ledger${source ? `/${encodeURIComponent(source)}` : ''}${seq ? `/${encodeURIComponent(seq)}` : ''}`;
+}
+
 // cardHref is a card's row on the Page whose view is feeds (Artifacts/Feeds),
 // which marks the row its fragment names.
 function cardHref(id) {
@@ -128,6 +149,7 @@ function cardHref(id) {
 function pageHref(page) {
   if (page.properties.view === 'agents') return agentHref(null);
   if (page.properties.view === 'emitters') return emitterHref(null);
+  if (page.properties.view === 'ledger') return ledgerHref(null);
   return href(page.properties.path);
 }
 
@@ -259,6 +281,10 @@ function drawCrumbs(svc, page, r) {
   if (page) parts.push([pageHref(page), page.name]);
   if (r.agent) parts.push([agentHref(r.agent), r.agent]);
   else if (r.emitter) parts.push([emitterHref(r.emitter), r.emitter]);
+  else if (r.source) {
+    parts.push([ledgerHref(r.source), r.source]);
+    if (r.seq) parts.push([ledgerHref(r.source, r.seq), r.seq]);
+  }
   else if (r.id) parts.push([href(page ? page.properties.path : `${r.service}/${r.page}`, r.id), r.id]);
   ui.crumbs.replaceChildren();
   parts.forEach(([to, text], i) => {
@@ -273,7 +299,8 @@ function drawCrumbs(svc, page, r) {
     }
     ui.crumbs.appendChild(li);
   });
-  document.title = `${r.layer || r.agent || r.emitter || (page ? page.name : 'Not found')} · ${config.product.name}`;
+  const named = r.source && (r.seq ? `${r.source} ${r.seq}` : `${r.source} ledger`);
+  document.title = `${r.layer || r.agent || r.emitter || named || (page ? page.name : 'Not found')} · ${config.product.name}`;
 }
 
 function drawWho() {
@@ -535,13 +562,19 @@ function drawPage(svc, page, r) {
   if (r.agent) {
     ui.title.textContent = r.agent;
     ui.title.dataset.page = `agent:${r.agent}`;
-    current = { mod: agents, handle: agents.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.agent, navigate, layerHref }) };
+    current = { mod: agents, handle: agents.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.agent, navigate, layerHref, ledgerHref }) };
     return;
   }
   if (r.emitter) {
     ui.title.textContent = r.emitter;
     ui.title.dataset.page = `emitter:${r.emitter}`;
     current = { mod: emitters, handle: emitters.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.emitter, navigate, layerHref, cardHref }) };
+    return;
+  }
+  if (r.source) {
+    ui.title.textContent = r.seq ? `${r.source} ${r.seq}` : `${r.source} ledger`;
+    ui.title.dataset.page = `ledger:${r.source}${r.seq ? `/${r.seq}` : ''}`;
+    current = { mod: ledger, handle: ledger.open(ui.content, { client, bus, toolbar: ui.toolbar, source: r.source, seq: r.seq, run: r.run, before: r.before, navigate, ledgerHref, layerHref }) };
     return;
   }
   if (!page) {
@@ -569,7 +602,7 @@ function drawPage(svc, page, r) {
 }
 
 function pageCtx(page) {
-  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref, emitterHref, cardHref };
+  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref, emitterHref, cardHref, ledgerHref };
 }
 
 // reauth reads whoami again (a token the portal refuses is dropped) and

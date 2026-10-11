@@ -3,6 +3,8 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -261,7 +263,7 @@ func TestLedgerEntryShape(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("%d ledger lines, want 3:\n%s", len(lines), data)
 	}
-	keys := []string{"at", "principal", "name", "role", "feed", "kind", "card", "version", "type", "hash", "digest", "files", "result", "message"}
+	keys := []string{"at", "principal", "name", "role", "feed", "kind", "card", "version", "type", "hash", "digest", "files", "result", "message", "seq", "prev"}
 	want := []map[string]any{
 		{"principal": "ui:principal:tester", "name": tester, "role": "admin", "feed": "cards-oci", "kind": "oci", "card": "Tool.Git", "version": "0.1.0", "type": "tool", "files": 2.0, "result": "pushed"},
 		{"card": "Tool.Git", "version": "0.1.0", "digest": nil, "result": "duplicate"},
@@ -284,6 +286,16 @@ func TestLedgerEntryShape(t *testing.T) {
 			if m[k] != v {
 				t.Errorf("line %d: %s = %v, want %v", i+1, k, m[k], v)
 			}
+		}
+		// Chained (docs/design.md 45): seq is the line number, prev the
+		// SHA-256 of the line before, 64 zeros for the first.
+		prev := strings.Repeat("0", 64)
+		if i > 0 {
+			sum := sha256.Sum256([]byte(lines[i-1]))
+			prev = hex.EncodeToString(sum[:])
+		}
+		if m["seq"] != float64(i+1) || m["prev"] != prev {
+			t.Errorf("line %d: seq %v prev %v, want %d %s", i+1, m["seq"], m["prev"], i+1, prev)
 		}
 		if i == 0 {
 			if !strings.HasPrefix(m["hash"].(string), "sha256:") || !strings.HasPrefix(m["digest"].(string), "sha256:") {

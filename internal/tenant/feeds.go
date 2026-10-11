@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,6 +32,8 @@ const (
 	// pushed card's.
 	FeedPrefix = "ui:feed:"
 	CardPrefix = "ui:card:"
+	// zeroHash is the prev of the ledger's first line.
+	zeroHash = "0000000000000000000000000000000000000000000000000000000000000000"
 )
 
 // Push results, as the ledger records them.
@@ -55,7 +59,10 @@ var (
 // card at which version with which content hash, and what came of it.
 // Principal is null for a legacy token; Card, Version, Type and Hash are null
 // for a manifest that did not decode that far; Digest is the feed's own
-// name for what it stored, set only when Result is pushed.
+// name for what it stored, set only when Result is pushed. Seq and Prev
+// chain the line (docs/design.md 45): Seq is its position in the file from
+// 1, Prev the SHA-256 of the line before, 64 zeros for the first. A line
+// written before 0.10.0 has neither.
 type LedgerEntry struct {
 	At        string  `json:"at"`
 	Principal *string `json:"principal"`
@@ -71,6 +78,15 @@ type LedgerEntry struct {
 	Files     int     `json:"files"`
 	Result    string  `json:"result"`
 	Message   string  `json:"message"`
+	Seq       int     `json:"seq,omitempty"`
+	Prev      string  `json:"prev,omitempty"`
+}
+
+// LedgerLine is one line of ledger.jsonl with the SHA-256 of its bytes as
+// written (no newline), the hash the next line's Prev names.
+type LedgerLine struct {
+	LedgerEntry
+	Hash string
 }
 
 var envVar = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -112,17 +128,19 @@ func loadFeeds(c map[string]any) ([]feed.Feed, []string) {
 	return out, ps
 }
 
-// loadLedger reads ledger.jsonl; no file is an empty ledger. A line that is
-// not a ledger entry stops the binary, naming the line.
-func loadLedger(path string) ([]LedgerEntry, error) {
+// loadLedger reads ledger.jsonl and the bytes of each line; no file is an
+// empty ledger. A line that is not a ledger entry stops the binary, naming
+// the line. A broken chain does not: GET .../ledger reports it.
+func loadLedger(path string) ([]LedgerEntry, [][]byte, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var out []LedgerEntry
+	var raw [][]byte
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	for n := 1; sc.Scan(); n++ {
@@ -142,11 +160,12 @@ func loadLedger(path string) ([]LedgerEntry, error) {
 			if err != nil {
 				msg += ": " + err.Error()
 			}
-			return nil, &ConfigError{File: path, Problems: []string{fmt.Sprintf("line %d: %s", n, msg)}}
+			return nil, nil, &ConfigError{File: path, Problems: []string{fmt.Sprintf("line %d: %s", n, msg)}}
 		}
 		out = append(out, e)
+		raw = append(raw, bytes.Clone(line))
 	}
-	return out, sc.Err()
+	return out, raw, sc.Err()
 }
 
 // Feed returns the named feed.
@@ -172,6 +191,22 @@ func (t *Tenant) Ledger() []LedgerEntry {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return slices.Clone(t.ledger)
+}
+
+// LedgerLines is every entry with the hash of its line, oldest first.
+func (t *Tenant) LedgerLines() []LedgerLine {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	out := make([]LedgerLine, len(t.ledger))
+	for i, e := range t.ledger {
+		out[i] = LedgerLine{LedgerEntry: e, Hash: lineHash(t.ledgerRaw[i])}
+	}
+	return out
+}
+
+func lineHash(line []byte) string {
+	sum := sha256.Sum256(line)
+	return hex.EncodeToString(sum[:])
 }
 
 // FeedsEnvelope is the tenant's feeds as a graph: one Feed node per feed in
@@ -266,10 +301,18 @@ func (t *Tenant) Push(ctx context.Context, p Pusher, who Principal, feedID strin
 	return t.record(e, nil)
 }
 
-// record appends e to ledger.jsonl (one line, one write, synced) and to the
-// in-memory ledger, and returns e with cause. A ledger that cannot be
-// written is the error, whatever cause was.
+// record chains e to the ledger's last line (seq, prev), appends it to
+// ledger.jsonl (one line, one write, synced) and to the in-memory ledger,
+// and returns e with cause. A ledger that cannot be written is the error,
+// whatever cause was. Pushes are one at a time (pushMu), so no line comes
+// between the one read here and the one written.
 func (t *Tenant) record(e LedgerEntry, cause error) (LedgerEntry, error) {
+	t.mu.RLock()
+	e.Seq, e.Prev = len(t.ledger)+1, zeroHash
+	if n := len(t.ledgerRaw); n > 0 {
+		e.Prev = lineHash(t.ledgerRaw[n-1])
+	}
+	t.mu.RUnlock()
 	line, err := json.Marshal(e)
 	if err != nil {
 		return e, err
@@ -286,6 +329,7 @@ func (t *Tenant) record(e LedgerEntry, cause error) (LedgerEntry, error) {
 	}
 	t.mu.Lock()
 	t.ledger = append(t.ledger, e)
+	t.ledgerRaw = append(t.ledgerRaw, line)
 	t.mu.Unlock()
 	return e, cause
 }

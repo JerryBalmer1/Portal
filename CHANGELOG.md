@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.10.0 — 2026-10-11
+
+- **Ledger chains.** Kinds `Ledger` (`ui:ledger:<source>`: `count`, `valid`, `first`, `last`, `breakAt`, `reason`, `stamp`; `layer` and `claimed` for the agent's, `unchained` for Portal's) and `LedgerEntry` (`seq`, `stamp`, `prev`, `hash`). Edges `has-entry`, `prev`, `records` (an entry to its Run or Step) and `recorded-in`. Run gains optional `ledger`. No new id prefix: the agent's entries keep their layer's `ledger:<seq>` ids, and Portal's are `ui:ledger:portal/<seq>`.
+- **The agent chain** is read from the mounted layer holding LedgerEntry nodes under `ledger:` ids. Portal checks each entry's `prev` against the hash of the entry before it, and that seq has no gap. The layer root's own verify can only make the chain broken, never valid.
+- **Portal's push ledger is a chain.** Each new line of `tenants/<tenant>/ledger.jsonl` carries `seq` (its line number) and `prev` (the SHA-256 of the line before; 64 zeros for the first). Lines from before 0.10.0 are an unchained head. A hand edit breaks the chain at the next line. The boot does not stop for it.
+- **API.** `GET /api/tenants/{tenant}/ledger` (`listLedgers`), `GET .../ledger/{source}` (`getLedger`: newest first, `limit` default 100, `before`, `run`) and `GET .../ledger/{source}/{seq}` (`getLedgerEntry`). 404 for an unknown source or seq. The push's `LedgerEntry` gains `seq` and `prev`.
+- **Pages.** `GET /{tenant}/ledger`, `/{tenant}/ledger/{source}` and `/{tenant}/ledger/{source}/{seq}`.
+  - Ledger/Entries is now `view: ledger` (`web/ledger.js`). Each chain shows valid in green, or broken in red with the seq it breaks at.
+  - A chain's entries link each run to the runs layer's page, with the Run's or Step's id after `#`.
+  - The agent page's runs gain a `ledger` count linking to that run's entries.
+  - Ledger/Verify and Keys keep their paths. A ledger page with the id `agent` or `portal` stops the boot.
+- **Fixtures.** `tests/fixtures/layers/ledger/` (a good chain, seq 44 to 55, recording the agent-runs fixture's run and steps) and `ledger-broken/` (entry 50 altered, so the chain breaks at 51).
+- **Go** 86 to 91: `TestKnownGoodLedgerVerifies`, `TestAlteredLedgerEntryBreaksTheChain`, `TestEveryRecordsEdgeResolvesToTheRunsLayer`, `TestLedgerEntriesNewestFirstInPages`, `TestPortalLedgerChainsItsPushes`. The spec test exercises the six new operations; `TestLedgerEntryShape` checks `seq` and `prev`; the bad-overlay table covers a ledger page named `portal`.
+- **Pester** 103 to 105: the ledger pages in Chrome. The version and ontology pins moved (19 Kinds, 17 edge Kinds), and the Feeds push test checks `seq` and `prev`.
+- **Version.** 0.10.0 in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated. docs/design.md 45.
+
 ## 0.9.0 — 2026-10-11
 
 - **Every layer traces back to its emitter.** An emitter is a card of type `emitter` in one of the tenant's feeds, under the card's own id. It is named by the module its layers' ontology names: the card `Emitter.<X>` is the emitter `Graph.Emitter.<X>`. An emitter a mounted layer names with no card in any feed is Kind `Emitter` (`ui:emitter:<name>`, `unknown`, `layers`). New Kind `Layer` (`ui:layer:<name>`). New edges `produced-by` (Layer to Card or Emitter) and `has-layer` (the reverse). Card gains optional `emitter` and `layers`. No new id prefix.

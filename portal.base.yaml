@@ -17,8 +17,12 @@
 # (cards of type emitter, and every emitter a mounted layer names), each
 # linking to its own page /<tenant>/emitters/<name> (docs/design.md 44; the
 # emitters service's pages keep their paths there, so no emitter card may be
-# named like one). A page's children are the tabs of its item page,
-# /<tenant>/<service>/<page>/<id>.
+# named like one), ledger the ledger chains (the agent's, from a mounted
+# ledger layer, and the tenant's own push ledger), each linking to its
+# entries at /<tenant>/ledger/<source> (docs/design.md 45; the ledger
+# service's pages keep their paths there, so no ledger page may have the id
+# of a source, agent or portal). A page's children are the tabs of its item
+# page, /<tenant>/<service>/<page>/<id>.
 #
 # feeds are where cards (Graph.Node manifest cards: manifest.yaml and the
 # files of its folder) are published: kind oci (an OCI registry; url is the
@@ -135,7 +139,7 @@ menu:
     icon: ledger
     path: ledger
     children:
-      - { id: entries, label: Entries, path: ledger/entries, kind: ledger.entry }
+      - { id: entries, label: Entries, path: ledger/entries, view: ledger }
       - { id: verify, label: Verify, path: ledger/verify, kind: ledger.verification }
       - { id: keys, label: Keys, path: ledger/keys, kind: ledger.key }
 

@@ -438,7 +438,7 @@ Choices made without asking:
   - Each line has `{at, principal, name, role, feed, kind, card, version, type, hash, digest, files, result, message}`. `result` is `pushed`, `duplicate`, `invalid` or `failed`. `principal` is null for a legacy token. A field that does not apply is null, never absent.
   - Each line is appended in one write and synced.
   - At boot the file is read and checked: a line that is not an entry, or a pushed line without its card, stops the binary and names the line.
-  - The lines are not nodes and carry no ids: `ledger:` belongs to Claude.Agent.Alerts. The Card nodes on `GET .../feeds` are derived from the pushed lines. Ledger → Entries still lists Kind `ledger.entry`, which nothing emits.
+  - The lines are not nodes and carry no ids: `ledger:` belongs to Claude.Agent.Alerts. The Card nodes on `GET .../feeds` are derived from the pushed lines. Ledger → Entries still lists Kind `ledger.entry`, which nothing emits. (Since 0.10.0 the lines are chained and served as LedgerEntry nodes `ui:ledger:portal/<seq>`, and Ledger → Entries lists the chains: entry 45.)
 - **`Invoke-Build Feeds`.**
   - FeedsGate refuses in mode prod, before Build, as DevGate refuses outside dev. It also needs `docker` on PATH.
   - Feeds then sets the Compose environment and runs `docker compose -p portal-<tenant> up -d --wait`, which waits for the health checks of the registry (`wget /v2/`) and Postgres (`pg_isready`).
@@ -540,3 +540,66 @@ Choices made without asking:
   - Pester: both pages in Chrome; the counts, the amber unknown row, the card link landing on its marked row, Sources keeping its path, the layer rows, and the produced-by line on both layer pages.
 - **Not added: a PowerShell wrapper** (`Get-PortalEmitter`). The brief asked for routes, pages and tests.
 - **Version 0.9.0:** new operations and Kinds, and Emitters/Catalogue changed what it draws.
+
+## 45. Ledger chains: verified, paged, joined to runs (0.10.0)
+
+The brief: Portal.Agent adds a layer named `ledger`, one LedgerEntry node per ledger entry under `ledger:<seq>` (the registered shape, the same ids as the Alerts layer's), with `seq`, `stamp`, `prev`, `hash` and the run id, edges `prev` and `records`, and the chain's verify on the layer's root node. No new id prefix. Portal's own push ledger is a second chain, served the same way under source `portal`. Three routes, three pages on the existing Ledger menu entry, a ledger count per run on the agent page, a fixture with a good and a broken chain.
+
+Asked, and Jerry chose:
+
+- **Portal's push ledger becomes a chain from now on.** Its lines (entry 40) had no `seq`, `prev` or hash, so there was no chain to verify. Jerry's answer: every new line carries `seq` (its line number from 1) and `prev` (the SHA-256 of the line before as written, without its newline; 64 zeros for the first). This is the agent chain's own rule (Claude.Agent.Ledger's stream contract, as Portal.Emitters' `Read-AgentLedger.ps1` reads it). Lines from before 0.10.0 are an unchained head: counted (`unchained`), never a break. A line without `seq` after the chain began is a break (`unchained`). The options passed over were a chain derived on read (always "valid", so verify would mean nothing) and leaving `portal` out.
+- **Portal's entries are `ui:ledger:portal/<seq>`.** `ledger:` is registered to Claude.Agent.Alerts, so Portal mints no id under it, and `ledger:<seq>` would collide with the agent's entries. The source in the id leaves room for another Portal chain. The chain nodes are `ui:ledger:agent` and `ui:ledger:portal`.
+
+Choices made without asking:
+
+- **The real layer was not read.** CLAUDE.md does not list `../Portal.Agent` among the siblings Portal may read. The fixture is built to the brief's shape: twelve entries, seq 44 to 55, of synthetic stream-contract lines whose `prev` and `hash` are real SHA-256s, so the chain is consistent.
+  - Nine entries (46 to 54) belong to the agent-runs fixture's run. `records` points at that Run, or at its Step for a `policy.pre` or `policy.post` line, by the runs layer's ids.
+  - The fixture's module is `Portal.Agent` 0.1.0, with an ontology beside it declaring LedgerEntry and the two edges.
+  - When the real layer lands, the fixture should be replaced by a copy, as entries 43 and 44 did.
+- **The layer's root node is the newest entry.** A root needs an id, and `ledger:` allows only `ledger:<seq>` and `ledger:line-<n>`; any other node would need a prefix Portal.Agent does not own. So the fixture's envelope `root` is `ledger:55`, which also carries `valid`, `count`, `first`, `last` and, when broken, `break`. Portal reads those from whatever node `root` names, so a separate root node works too.
+- **Which layer is the agent's ledger.** Any mounted layer holding a LedgerEntry node under a `ledger:` id, whatever its name or module; the latest stamp wins when several do (each emit is the whole ledger again). An entry with no integer `seq` (`ledger:line-<n>`) is not a link of the chain and is left out.
+- **Portal verifies, and the layer may overrule.**
+  - An entry follows the one before when its seq is one more and its `prev` is that entry's `hash`. The first entry, when its seq is 1, has `prev` of 64 zeros.
+  - `breakAt` is the seq of the first entry that does not follow. `reason` is `prev-mismatch`, `seq-gap`, `unchained` or `layer`.
+  - The layer's own verdict is served as `claimed`. A layer that says its chain is broken is broken, at the earlier of the two breaks, since it checked lines and keys Portal never sees.
+  - A layer that says valid does not overrule Portal. The broken fixture's root still says valid, as a layer verified before an edit would.
+- **What verify can and cannot see.**
+  - For the agent chain Portal has the hashes, not the lines. A line edited and re-hashed breaks the link to the next entry. In the broken fixture, entry 50's `event` was changed and re-hashed, so 51's `prev` no longer matches and the chain breaks at 51. An edit to an entry's other fields that leaves `hash` alone is invisible to Portal.
+  - For its own ledger Portal hashes the bytes, so any edit to a line breaks the link after it. An edit to the last line is invisible until the next push chains to it.
+  - Neither chain has a MAC check: that needs a key Portal does not hold.
+- **A broken chain does not stop the boot.** A line that is not a ledger entry still does (entry 40). A break is a finding to show, red on the page, and the next push chains to the line as it now is.
+- **Seq is the line number.** A Portal line's `seq` is its position in the file, so its id is stable. A line whose written `seq` differs (an edit by hand) is served with `written` and breaks the chain there (`seq-gap`).
+- **Kinds and edges.**
+  - New Kind `Ledger`, a chain: `source`, `count`, `valid`, `first`, `last`, `breakAt`, `reason`, `stamp`, `layer`, `claimed` and `unchained`; on one chain's page also `entries`, `run` and `next`.
+  - New Kind `LedgerEntry`: `source`, `seq`, `stamp`, `hash` and `prev`; the agent's `event`, `run` and `runLayer`; Portal's `by`, `feed`, `card`, `version`, `result`, `message`, `unchained` and `written`.
+  - New edges `has-entry` (Ledger to LedgerEntry), `prev`, `records` (LedgerEntry to Run or Step) and `recorded-in` (the reverse). `recorded-in` is declared for the layer; Portal serves `records` only.
+  - Run gains optional `ledger`, its count of entries.
+  - The portal check takes `ledger:` ids for LedgerEntry in what the API serves, as it takes `agent:` for Run (entry 43). A Portal entry stays `ui:`.
+- **`records` ends in the runs layer.** Served envelopes do not copy the Run or Step. The edge is cross-layer, a Graph.Node warning resolved at merge, as it is in the ledger layer itself. Each entry instead carries `runLayer`, the mounted layer holding its Run, so the page can link `/<tenant>/layers/<runLayer>#<id>` with the target's row marked (entry 43). The link goes to the Step when the entry records one.
+- **`prev` edges only between served entries.** A page holds 100 entries by default. An edge to an entry off the page would dangle, which is an error for Portal's own `ui:` ids. `getLedgerEntry` serves the entry before too, so its `prev` edge always lands.
+- **API.**
+  - `listLedgers`: the chains, agent first while a ledger layer is mounted, then portal, always.
+  - `getLedger`: one chain's entries newest first. `limit` is 1 to 1000, and absent or 0 means 100. `before` pages by seq (the root's `next` gives it), and `run` keeps one run's entries.
+  - `getLedgerEntry`: one entry with its chain and the entry before.
+  - 404 for an unknown source (agent too, while no ledger layer is mounted) or seq, and 400 for a bad `limit` or a seq that is no integer.
+- **Pages, and the reservation.**
+  - Ledger/Entries becomes the list (`view: ledger`) at `/<tenant>/ledger`, as Emitters/Catalogue did (entry 44). Verify and Keys keep their paths and Kinds.
+  - `/<tenant>/ledger/<source>` lists a chain's entries, and `/<tenant>/ledger/<source>/<seq>` shows one.
+  - The literal routes also serve the shell for a page of the ledger service, and `/<tenant>/ledger/<page>/<id>` for its items, as `getShellItem` would.
+  - The sources are fixed names, so the reservation runs the other way from entry 44's: boot refuses a ledger page with the id `agent` or `portal`.
+  - **The list** has one row per chain: source (linking its entries), verify, entries, first, last, stamp, and the layer or `ledger.jsonl · <n> before the chain`. Verify is `valid` in green, or `broken at <seq>` in red with the reason as its title. The toolbar reads `<n> chains · <b> broken`.
+  - **A chain's entries** have a badge `<n> entries · <verify>`. Each row has seq (linking the entry), stamp, event and run for the agent or result, card and by for Portal, and the hash's first 12 digits. The entry the chain breaks at is marked red, and an `older entries` link pages.
+  - **One entry** shows its fields, its `prev` linking the entry before, and the break when it is there.
+  - The agent page's runs gain a `ledger` column while a ledger layer is mounted, linking `/<tenant>/ledger/agent?run=<id>`.
+- **Proposal for Graph.Node, not made here.** Graph.Node registers `ledger:` to Claude.Agent.Alerts. If Portal.Agent's layer issues `ledger:<seq>` ids as the brief says, the registry needs to say that prefix is shared by the two (or move it), or `graphnode check-id` will name the wrong owner.
+- **Coverage.**
+  - Go:
+    - the six operations against the spec, the shell routes included;
+    - the good fixture: valid, 12 entries, 44 to 55;
+    - the broken copy: broken at 51, `prev-mismatch`, `claimed` true; and a layer's own break overruling;
+    - every `records` edge of both fixtures resolving to an id of the runs fixture;
+    - paging, the run filter, the `prev` and `records` edges, and one entry;
+    - Portal's chain: an unchained head, a hand edit breaking it at the next line, and the next push chaining on;
+    - the run's `ledger` count; the boot refusal of a ledger page named `portal`; the ledger line's shape with `seq` and `prev`.
+  - Pester, in Chrome: the list in green and red; the entries newest first with their run links; the run filter; the layer page marking the Step's row; one entry; and the agent page's count. Also the ledger line's `seq` and `prev` on a push.
+- **Version 0.10.0:** new operations and Kinds, and a field in the push ledger's lines.

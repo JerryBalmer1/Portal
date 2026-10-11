@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.9.0
+  version: 0.10.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -34,6 +34,8 @@ tags:
     description: Agent runs, read from every mounted layer whose module is Graph.Emitter.Agent and grouped by the principal whose token mounted the layer (docs/design.md 43). Read-only.
   - name: emitters
     description: Emitters and the layers they produced (docs/design.md 44). An emitter is a card of type emitter in one of the tenant's feeds, served under the card's own id, or the module a mounted layer's ontology names when no feed holds its card. Read-only.
+  - name: ledger
+    description: Ledger chains and their verify (docs/design.md 45). Source agent is the agent's ledger, read from the mounted layer that holds LedgerEntry nodes under ledger:<seq> ids; source portal is the tenant's own push ledger, tenants/<tenant>/ledger.jsonl, whose lines carry seq and prev since 0.10.0. Read-only.
   - name: feeds
     description: Where the tenant publishes Graph.Node manifest cards (an OCI registry or a NuGet v3 feed), what each holds, and the push. Every push is one line of tenants/<tenant>/ledger.jsonl.
 paths:
@@ -155,6 +157,54 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Tenant"
         - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/ledger:
+    get:
+      operationId: getLedgerPage
+      tags: [page, ledger]
+      summary: The shell page (index.html) listing the tenant's ledger chains, drawn under the menu's Page whose view is ledger (Ledger/Entries). Two segments, so no shell route competes. 404 when tenant is not this process's tenant.
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/ledger/{source}:
+    get:
+      operationId: getLedgerSourcePage
+      tags: [page, ledger]
+      summary: The shell page (index.html) of one chain's entries, newest first. The literal ledger segment wins over getShellPage's service, so this route also serves the shell for every page of the menu's ledger service (ledger/entries, ledger/verify, ledger/keys), which keep their paths; boot refuses a ledger page with the id of a source (docs/design.md 45). 404 when tenant is not this process's tenant, or source is neither such a page nor a chain listLedgers serves.
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+        - { name: source, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/ledger/{source}/{seq}:
+    get:
+      operationId: getLedgerEntryPage
+      tags: [page, ledger]
+      summary: The shell page (index.html) of one entry of a chain. As getShellItem when source is a page of the menu's ledger service, which this literal route also serves. 404 when tenant is not this process's tenant, or source and seq name no page item and no entry (getLedgerEntry).
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+        - { name: source, in: path, required: true, schema: { type: string } }
+        - { name: seq, in: path, required: true, schema: { type: string } }
       responses:
         "200":
           description: index.html
@@ -466,6 +516,60 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/ledger:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listLedgers
+      tags: [ledger]
+      summary: The tenant's ledger chains as an envelope (module Portal) of Ledger nodes, ui:ledger:<source>, agent first when a ledger layer is mounted, then portal, always. Each carries source, count, valid, first and last seq, breakAt and reason when not valid, and stamp; the agent chain also its layer and claimed (its layer root's own valid), the portal chain unchained (lines from before 0.10.0). An entry follows the one before it when its seq is one more and its prev is that entry's hash (64 zeros before seq 1); breakAt is the seq of the first that does not. The agent chain is read from the mounted layer holding LedgerEntry nodes under ledger:<seq> ids, the latest stamp when several do, and is broken also when that layer's root says so.
+      responses:
+        "200":
+          description: The chains (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/ledger/{source}:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+      - { name: source, in: path, required: true, description: "agent or portal.", schema: { type: string } }
+    get:
+      operationId: getLedger
+      tags: [ledger]
+      summary: One chain's entries, newest first, one page, as an envelope (module Portal) rooted at its Ledger node (as listLedgers serves it, with entries, the count matching run, and next, the before of the next page). Each entry is a LedgerEntry node (seq, stamp, prev, hash), joined from the chain by has-entry and to the entry before by prev when both are on the page. An agent entry keeps its layer's id, ledger:<seq>, with event, run, runLayer (the mounted runs layer holding that Run) and its records edge to the Run or Step by the runs layer's id, which ends in that layer; a portal entry is ui:ledger:portal/<seq>, with by, feed, card, version, result and message. 404 for a source listLedgers does not serve.
+      parameters:
+        - { name: limit, in: query, required: false, description: "Entries per page, 1 to 1000; 100 when absent.", schema: { type: integer } }
+        - { name: before, in: query, required: false, description: "Only entries whose seq is lower: the next of the page before.", schema: { type: integer } }
+        - { name: run, in: query, required: false, description: "Only the entries whose run is this Run id (agent:run/<stamp>).", schema: { type: string } }
+      responses:
+        "200":
+          description: The chain and one page of its entries (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/ledger/{source}/{seq}:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+      - { name: source, in: path, required: true, description: "agent or portal.", schema: { type: string } }
+      - { name: seq, in: path, required: true, description: "The entry's seq.", schema: { type: integer } }
+    get:
+      operationId: getLedgerEntry
+      tags: [ledger]
+      summary: One entry as an envelope (module Portal) rooted at it, as getLedger serves it, with its chain (has-entry), the entry before it (prev) and, for an agent entry, its records edge. 404 for a source listLedgers does not serve or a seq the chain lacks.
+      responses:
+        "200":
+          description: The entry, its chain and the entry before it (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/tenants/{tenant}/feeds/{feed}/push:
@@ -975,7 +1079,7 @@ components:
         legacy: { type: boolean }
     LedgerEntry:
       type: object
-      description: One line of tenants/<tenant>/ledger.jsonl, one per push (docs/design.md 40).
+      description: One line of tenants/<tenant>/ledger.jsonl, one per push (docs/design.md 40), chained to the line before by seq and prev (45).
       required: [at, principal, name, role, feed, kind, card, version, type, hash, digest, files, result, message]
       additionalProperties: false
       properties:
@@ -993,6 +1097,8 @@ components:
         files: { type: integer, description: "How many files, manifest.yaml included." }
         result: { type: string, enum: [pushed, duplicate, invalid, failed] }
         message: { type: string }
+        seq: { type: integer, description: "The line's number in the ledger, from 1 (docs/design.md 45). Every push writes it; only a line from before 0.10.0 lacks it." }
+        prev: { type: string, description: "SHA-256 of the line before, 64 lower-case hex; 64 zeros for the first line. Written with seq." }
     Error:
       type: object
       required: [code, message]
