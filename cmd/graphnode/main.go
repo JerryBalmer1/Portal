@@ -4,7 +4,8 @@
 //	graphnode validate <graph.json> [--ontology <ontology.yaml>]  exit 1 if any error
 //	graphnode validate-ontology <ontology.yaml>                   exit 1 if any error
 //	graphnode prefixes                                            print the registered id prefixes as JSON
-//	graphnode check-id <prefix> <id>                              exit 1 if id does not have the prefix's shape
+//	graphnode check-id [--siblings <dir>] <prefix> <id>           exit 1 if id does not have the prefix's format
+//	graphnode id-format [--siblings <dir>] <prefix>               print where the prefix's format comes from, as JSON
 //	graphnode validate-manifest <manifest.yaml>                   exit 1 if any error
 //	graphnode validate-index <index.yaml>                         exit 1 if any error
 //	graphnode index <root>                                        write <root>/index.yaml from every manifest.yaml under root; exit 1, writing nothing, if any card is invalid or two share a name
@@ -16,6 +17,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,7 +26,7 @@ import (
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 )
 
-const version = "0.3.0"
+const version = "0.3.3"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -61,11 +63,32 @@ func main() {
 		os.Stdout.Write(b)
 		fmt.Println()
 	case "check-id":
-		need(4)
-		if err := graph.ValidID(os.Args[2], os.Args[3]); err != nil {
+		siblings, args := siblingsFlag(os.Args[2:])
+		if len(args) != 2 {
+			usage()
+			os.Exit(2)
+		}
+		f, err := graph.ResolveIDFormat(siblings, args[0])
+		if errors.Is(err, graph.ErrUnregisteredPrefix) {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		die(err)
+		if err := f.Check(args[1]); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	case "id-format":
+		siblings, args := siblingsFlag(os.Args[2:])
+		if len(args) != 1 {
+			usage()
+			os.Exit(2)
+		}
+		f, err := graph.ResolveIDFormat(siblings, args[0])
+		die(err)
+		b, _ := json.MarshalIndent(f, "", "  ")
+		os.Stdout.Write(b)
+		fmt.Println()
 	case "validate-manifest":
 		need(3)
 		_, ps, err := graph.LoadManifest(os.Args[2])
@@ -118,6 +141,21 @@ func readYAML(path string) any {
 	return doc
 }
 
+// siblingsFlag takes --siblings <dir> out of args: the folder where an id
+// prefix's owner's ontology.yaml is looked for (design.md 23).
+func siblingsFlag(args []string) (string, []string) {
+	siblings, rest := "", []string{}
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--siblings" && i+1 < len(args) {
+			siblings = args[i+1]
+			i++
+		} else {
+			rest = append(rest, args[i])
+		}
+	}
+	return siblings, rest
+}
+
 func need(n int) {
 	if len(os.Args) < n {
 		usage()
@@ -133,5 +171,5 @@ func die(err error) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: graphnode validate <graph.json> [--ontology <ontology.yaml>] | validate-ontology <ontology.yaml> | prefixes | check-id <prefix> <id> | validate-manifest <manifest.yaml> | validate-index <index.yaml> | index <root> | schema [name] | version")
+	fmt.Fprintln(os.Stderr, "usage: graphnode validate <graph.json> [--ontology <ontology.yaml>] | validate-ontology <ontology.yaml> | prefixes | check-id [--siblings <dir>] <prefix> <id> | id-format [--siblings <dir>] <prefix> | validate-manifest <manifest.yaml> | validate-index <index.yaml> | index <root> | schema [name] | version")
 }

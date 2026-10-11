@@ -107,7 +107,7 @@ function withMenu(t, rows, ctx) {
   t.addEventListener('contextmenu', async (ev) => {
     const row = ev.target.closest('tr[data-id]');
     const r = row && rows.find((x) => x.row === row);
-    if (!r) return;
+    if (!r || !nodemenu.isEnvironment(r.n)) return;
     ev.preventDefault();
     graph ||= ctx.client.getEnvironmentGraph().catch(() => ({ nodes: [], edges: [] }));
     const g = await graph;

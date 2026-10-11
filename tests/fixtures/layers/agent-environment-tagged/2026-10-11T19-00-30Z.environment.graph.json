@@ -1,0 +1,302 @@
+{
+  "schema": "graph/1",
+  "ontology": "ontology.yaml",
+  "module": "Claude.Agent.Orchestrator",
+  "version": "0.3.0",
+  "layer": "2026-10-11T19:00:30Z",
+  "root": "env:compose/claude-agent-dev",
+  "nodes": [
+    {
+      "id": "env:compose/claude-agent-dev",
+      "kind": "environment.instance",
+      "name": "claude-agent-dev (compose on MSI)",
+      "properties": {
+        "kind": "compose",
+        "principal": "ui:principal:dev-bootstrap",
+        "mitmAddress": "http://mitm:8080",
+        "imageDigest": "sha256:80f63c0647d0635f4c59b9e118506aca52319a1041537141ec07f9f821433c31",
+        "host": "MSI",
+        "updated": "2026-10-11T19:00:30Z",
+        "portalBase": "http://127.0.0.1:8200",
+        "env": "dev",
+        "ledgerCopyOut": "artifacts/ledger/ledger.jsonl",
+        "state": "running",
+        "started": "2026-10-11T19:00:20Z",
+        "composeProject": "claude-agent-dev",
+        "group": "stack",
+        "tags": [
+          "agent",
+          "compose"
+        ]
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Orchestrator",
+          "path": "docker inspect (compose project claude-agent-dev)"
+        }
+      ]
+    },
+    {
+      "id": "env:container/claude-agent-dev/agent",
+      "kind": "environment.instance",
+      "name": "agent (claude-agent:dev)",
+      "properties": {
+        "containerId": "17814b0970a5c6286a504195411c6588dd47ae365bfbdffebc56728eebc2dc0f",
+        "networks": [
+          "inside"
+        ],
+        "kind": "container",
+        "service": "agent",
+        "started": "2026-10-11T19:00:20.09395507Z",
+        "updated": "2026-10-11T19:00:30Z",
+        "imageId": "sha256:80f63c0647d0635f4c59b9e118506aca52319a1041537141ec07f9f821433c31",
+        "env": "dev",
+        "image": "claude-agent:dev",
+        "state": "running",
+        "composeProject": "claude-agent-dev",
+        "group": "stack",
+        "tags": [
+          "agent"
+        ]
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Orchestrator",
+          "path": "docker inspect (compose project claude-agent-dev)"
+        }
+      ]
+    },
+    {
+      "id": "env:container/claude-agent-dev/ledger",
+      "kind": "environment.instance",
+      "name": "ledger (claude-agent-ledger:dev)",
+      "properties": {
+        "containerId": "db33bdf8d7c36311b570213c3bd6efd023dc840dbd40d65444a600ca2909ac8e",
+        "networks": [
+          "none"
+        ],
+        "kind": "container",
+        "service": "ledger",
+        "started": "2026-10-11T19:00:14.291923708Z",
+        "updated": "2026-10-11T19:00:30Z",
+        "imageId": "sha256:82d1b05d4c1e7bd07076216e6ad0b23f58a6bba6d817ec97fa253071579cd891",
+        "image": "claude-agent-ledger:dev",
+        "state": "running",
+        "composeProject": "claude-agent-dev"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Orchestrator",
+          "path": "docker inspect (compose project claude-agent-dev)"
+        }
+      ]
+    },
+    {
+      "id": "env:container/claude-agent-dev/mitm",
+      "kind": "environment.instance",
+      "name": "mitm (mitmproxy/mitmproxy:12.2.3)",
+      "properties": {
+        "containerId": "1e12bcfc637e20d1dc1e50e12d2cfc33bba06fe72ef78294abd4565d434ae8a0",
+        "networks": [
+          "inside",
+          "outside"
+        ],
+        "kind": "container",
+        "service": "mitm",
+        "started": "2026-10-11T19:00:14.297487087Z",
+        "updated": "2026-10-11T19:00:30Z",
+        "imageId": "sha256:90d20030c6789da3a4164407a6934ecd30f1b88e7941161e6fe9c703c91d589d",
+        "env": "dev",
+        "image": "mitmproxy/mitmproxy:12.2.3",
+        "state": "running",
+        "composeProject": "claude-agent-dev",
+        "group": "egress",
+        "tags": [
+          "egress"
+        ]
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Orchestrator",
+          "path": "docker inspect (compose project claude-agent-dev)"
+        }
+      ]
+    },
+    {
+      "id": "env:image/claude-agent-ledger:dev",
+      "kind": "environment.image",
+      "name": "claude-agent-ledger:dev",
+      "properties": {
+        "created": "2026-10-10T01:23:48.403125007Z",
+        "imageId": "sha256:82d1b05d4c1e7bd07076216e6ad0b23f58a6bba6d817ec97fa253071579cd891",
+        "digest": "",
+        "tag": "dev",
+        "size": 378116245,
+        "updated": "2026-10-11T19:00:30Z",
+        "env": "dev"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Orchestrator",
+          "path": "docker inspect (compose project claude-agent-dev)"
+        }
+      ]
+    },
+    {
+      "id": "env:image/claude-agent:dev",
+      "kind": "environment.image",
+      "name": "claude-agent:dev",
+      "properties": {
+        "created": "2026-10-10T01:23:51.358228504Z",
+        "imageId": "sha256:80f63c0647d0635f4c59b9e118506aca52319a1041537141ec07f9f821433c31",
+        "digest": "",
+        "tag": "dev",
+        "size": 721659288,
+        "updated": "2026-10-11T19:00:30Z",
+        "env": "dev"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Orchestrator",
+          "path": "docker inspect (compose project claude-agent-dev)"
+        }
+      ]
+    },
+    {
+      "id": "env:image/mitmproxy/mitmproxy:12.2.3",
+      "kind": "environment.image",
+      "name": "mitmproxy/mitmproxy:12.2.3",
+      "properties": {
+        "created": "2026-05-12T13:10:56.168345858Z",
+        "imageId": "sha256:90d20030c6789da3a4164407a6934ecd30f1b88e7941161e6fe9c703c91d589d",
+        "digest": "sha256:00b77b5d8804c8ad18cb6caefbf9d5849e895e8986c5ce011f4ae30f4385962f",
+        "tag": "12.2.3",
+        "size": 254773089,
+        "updated": "2026-10-11T19:00:30Z",
+        "env": "dev"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Orchestrator",
+          "path": "docker inspect (compose project claude-agent-dev)"
+        }
+      ]
+    },
+    {
+      "id": "env:network/claude-agent-dev_inside",
+      "kind": "environment.network",
+      "name": "claude-agent-dev_inside (bridge, internal)",
+      "properties": {
+        "subnet": "172.19.0.0/16",
+        "internal": true,
+        "driver": "bridge",
+        "composeProject": "claude-agent-dev",
+        "updated": "2026-10-11T19:00:30Z",
+        "env": "dev"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Orchestrator",
+          "path": "docker inspect (compose project claude-agent-dev)"
+        }
+      ]
+    },
+    {
+      "id": "env:network/claude-agent-dev_outside",
+      "kind": "environment.network",
+      "name": "claude-agent-dev_outside (bridge)",
+      "properties": {
+        "subnet": "172.18.0.0/16",
+        "internal": false,
+        "driver": "bridge",
+        "composeProject": "claude-agent-dev",
+        "updated": "2026-10-11T19:00:30Z",
+        "env": "dev"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Orchestrator",
+          "path": "docker inspect (compose project claude-agent-dev)"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "env:container/claude-agent-dev/agent|env:compose/claude-agent-dev|member-of",
+      "kind": "member-of",
+      "from": "env:container/claude-agent-dev/agent",
+      "to": "env:compose/claude-agent-dev"
+    },
+    {
+      "id": "env:container/claude-agent-dev/agent|env:image/claude-agent:dev|runs-image",
+      "kind": "runs-image",
+      "from": "env:container/claude-agent-dev/agent",
+      "to": "env:image/claude-agent:dev"
+    },
+    {
+      "id": "env:container/claude-agent-dev/agent|env:network/claude-agent-dev_inside|attached-to",
+      "kind": "attached-to",
+      "from": "env:container/claude-agent-dev/agent",
+      "to": "env:network/claude-agent-dev_inside"
+    },
+    {
+      "id": "env:container/claude-agent-dev/ledger|env:compose/claude-agent-dev|member-of",
+      "kind": "member-of",
+      "from": "env:container/claude-agent-dev/ledger",
+      "to": "env:compose/claude-agent-dev"
+    },
+    {
+      "id": "env:container/claude-agent-dev/ledger|env:image/claude-agent-ledger:dev|runs-image",
+      "kind": "runs-image",
+      "from": "env:container/claude-agent-dev/ledger",
+      "to": "env:image/claude-agent-ledger:dev"
+    },
+    {
+      "id": "env:container/claude-agent-dev/mitm|env:compose/claude-agent-dev|member-of",
+      "kind": "member-of",
+      "from": "env:container/claude-agent-dev/mitm",
+      "to": "env:compose/claude-agent-dev"
+    },
+    {
+      "id": "env:container/claude-agent-dev/mitm|env:image/mitmproxy/mitmproxy:12.2.3|runs-image",
+      "kind": "runs-image",
+      "from": "env:container/claude-agent-dev/mitm",
+      "to": "env:image/mitmproxy/mitmproxy:12.2.3"
+    },
+    {
+      "id": "env:container/claude-agent-dev/mitm|env:network/claude-agent-dev_inside|attached-to",
+      "kind": "attached-to",
+      "from": "env:container/claude-agent-dev/mitm",
+      "to": "env:network/claude-agent-dev_inside"
+    },
+    {
+      "id": "env:container/claude-agent-dev/mitm|env:network/claude-agent-dev_outside|attached-to",
+      "kind": "attached-to",
+      "from": "env:container/claude-agent-dev/mitm",
+      "to": "env:network/claude-agent-dev_outside"
+    },
+    {
+      "id": "env:compose/claude-agent-dev|ui:principal:dev-bootstrap|runs-as",
+      "kind": "runs-as",
+      "from": "env:compose/claude-agent-dev",
+      "to": "ui:principal:dev-bootstrap"
+    },
+    {
+      "id": "env:compose/claude-agent-dev|agent:run/2026-10-09T02:50:43.7976027Z|hosts",
+      "kind": "hosts",
+      "from": "env:compose/claude-agent-dev",
+      "to": "agent:run/2026-10-09T02:50:43.7976027Z"
+    }
+  ],
+  "findings": [],
+  "counts": {
+    "nodes": 9,
+    "edges": 11,
+    "byKind": {
+      "environment.instance": 4,
+      "environment.image": 3,
+      "environment.network": 2
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "schema": "graph/1",
+  "ontology": "ontology.yaml",
+  "module": "Claude.Agent.Orchestrator",
+  "version": "0.3.0",
+  "layer": "2026-10-11T19:00:31Z",
+  "root": "agent:run/2026-10-11T19:00:22.5540487Z",
+  "nodes": [
+    {
+      "id": "alert:e62d4da8120f3a864c3576cd6b3bbb838923641c71b01f9153d41e4973face6c",
+      "kind": "alert",
+      "name": "egress-attempt: the agent's direct route out was blocked (curl exit 6); egress goes through the mitm sidecar",
+      "properties": {
+        "state": "open",
+        "fingerprint": "e62d4da8120f3a864c3576cd6b3bbb838923641c71b01f9153d41e4973face6c",
+        "subject": "ledger:303",
+        "summary": "the agent's direct route out was blocked (curl exit 6); egress goes through the mitm sidecar",
+        "severity": "info",
+        "rule": "egress-attempt",
+        "stamp": "2026-10-11T19:00:22.5540487Z"
+      },
+      "source": [
+        {
+          "tool": "Claude.Agent.Alerts",
+          "path": "New-AgentAlertLayer"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "alert:e62d4da8120f3a864c3576cd6b3bbb838923641c71b01f9153d41e4973face6c|ledger:303|about",
+      "kind": "about",
+      "from": "alert:e62d4da8120f3a864c3576cd6b3bbb838923641c71b01f9153d41e4973face6c",
+      "to": "ledger:303"
+    },
+    {
+      "id": "alert:e62d4da8120f3a864c3576cd6b3bbb838923641c71b01f9153d41e4973face6c|agent:run/2026-10-11T19:00:22.5540487Z|raised-in",
+      "kind": "raised-in",
+      "from": "alert:e62d4da8120f3a864c3576cd6b3bbb838923641c71b01f9153d41e4973face6c",
+      "to": "agent:run/2026-10-11T19:00:22.5540487Z"
+    }
+  ],
+  "findings": [],
+  "counts": {
+    "nodes": 1,
+    "edges": 2,
+    "byKind": {
+      "alert": 1
+    }
+  }
+}

@@ -14,7 +14,7 @@ import (
 )
 
 // Alerts (docs/design.md 47): the alert nodes of the mounted layers,
-// served as Portal's Alert under the layer's own id alert/<fingerprint>,
+// served as Portal's Alert under the layer's own id alert:<fingerprint>,
 // one page under the list node ui:alerts, with each alert's subject (its
 // about edge) and Run (raised-in) as resolver serves them. The envelope
 // names no ontology, as the environments graph's does: a subject keeps

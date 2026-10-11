@@ -1,5 +1,5 @@
 module: Portal
-version: 0.12.0
+version: 0.12.1
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -200,9 +200,9 @@ kinds:
       - { name: severity, type: string, description: "The severity filter, when given; rule, state, run and about likewise." }
   Alert:
     description: "One alert of a mounted alert layer (Portal.Agent's agent-alerts layer; docs/design.md 47), a node of Kind alert under that layer's own id, which Portal never mints and never writes. Joined from Alerts by has-alert, to its subject by about and to its Run by raised-in when Portal serves them. Never on the screen graph."
-    idRule: "alert/<fingerprint>, the layer's id as it is in the layer (plain: no prefix)"
+    idRule: "alert:<fingerprint>, the fingerprint 64 lower-case hex, the layer's id as it is in the layer (alert: is Claude.Agent.Alerts', shared with Claude.Agent.Orchestrator in Graph.Node 0.3.3); any other id is no alert (docs/design.md 48)"
     properties:
-      - { name: fingerprint, type: string, required: true, description: "The id after alert/: its item page is /<tenant>/compliance/alerts/<fingerprint>." }
+      - { name: fingerprint, type: string, required: true, description: "The id after alert:, 64 lower-case hex: its item page is /<tenant>/compliance/alerts/<fingerprint>." }
       - { name: severity, type: string, required: true, description: "critical, warning or info, as the layer gives it." }
       - { name: rule, type: string, required: true, description: "The rule that raised it." }
       - { name: summary, type: string, required: true, description: "What the rule saw." }

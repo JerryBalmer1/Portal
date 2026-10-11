@@ -30,9 +30,8 @@ export const INSTANCE_KINDS = Object.freeze(['compose', 'container', 'kubernetes
 export const EDGE_DISTANCE = Object.freeze({ 'member-of': 90, 'runs-as': 170, hosts: 170 });
 const OTHER_DISTANCE = 130;
 
-export function isEnvironment(n) {
-  return String(n.kind || '').startsWith('environment.');
-}
+// isEnvironment is nodemenu's: an environment.* Kind under an env: id.
+export const isEnvironment = nodemenu.isEnvironment;
 
 // shapeOf is a node's shape by its Kind.
 export function shapeOf(n) {
@@ -158,7 +157,7 @@ function draw(wrap, ctx, g, count, h) {
     const t = document.createElement('h2');
     t.textContent = 'No environments yet';
     const p = document.createElement('p');
-    p.textContent = 'Nothing of an environment.* Kind is in a mounted layer. A layer that emits environment.instance, environment.image or environment.network nodes fills this page.';
+    p.textContent = 'Nothing of an environment.* Kind under an env: id is in a mounted layer. A layer that emits environment.instance, environment.image or environment.network nodes under env:compose/, env:container/, env:image/ or env:network/ ids fills this page.';
     wrap.replaceChildren(t, p);
     return;
   }

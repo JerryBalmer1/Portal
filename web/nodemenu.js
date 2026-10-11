@@ -10,6 +10,18 @@
 
 let openMenu = null;
 
+// ENV_ID is the four env: forms Graph.Node 0.3.3 registers to
+// Claude.Agent.Orchestrator (docs/design.md 48): env:compose/<project>,
+// env:container/<project>/<service>, env:image/<reference>,
+// env:network/<name>.
+const ENV_ID = /^env:(compose\/[^/\\ ]+|container\/[^/\\ ]+\/[^/\\ ]+|image\/[^\\ ]+|network\/[^/\\ ]+)$/;
+
+// isEnvironment is whether n is an environment node, as the API reads one:
+// a Kind starting environment. under an env: id. A bare id is none.
+export function isEnvironment(n) {
+  return String(n.kind || '').startsWith('environment.') && ENV_ID.test(String(n.id || ''));
+}
+
 // detailsHref is where a node is shown, as the API serves it: a Run's or
 // a Decision's row on its runs layer's page (/<tenant>/layers/<layer>#<id>),
 // a principal's agent page when a has-run edge of g says it holds a run, a

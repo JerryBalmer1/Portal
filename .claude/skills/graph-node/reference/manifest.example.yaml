@@ -5,11 +5,11 @@ description: Reads an example source and writes one graph/1 envelope per run.
 tags: [example, network]
 needs:
   - { name: PowerShell, version-range: ">=7.4", os: any }
-  - { name: Graph.Node, version-range: ^0.3.0 }
+  - { name: Graph.Node, version-range: ^0.3.1 }
   - { name: example-cli, version-range: ">=1.2 <2.0", os: windows }
 verbs:
-  - { name: Get-ExampleGraph, description: Read the source and return an envelope., effect: read }
-  - { name: Export-ExampleGraph, description: Write the envelope to a layer folder., effect: write }
-  - { name: Remove-ExampleCache, description: Delete the local cache., effect: destroy }
+  - { name: discover, command: Invoke-ExampleDiscover, description: Walk the source and write one envelope to the output folder., effect: read }
+  - { name: tag, command: Set-ExampleTag, description: Write a tag onto each source item., effect: write }
+  - { name: Remove-ExampleCache, description: Delete the local cache., effect: destroy, os: [windows, linux] }
 pins:
-  Graph.Node: 0.3.0
+  Graph.Node: 0.3.1

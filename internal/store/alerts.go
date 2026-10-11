@@ -1,6 +1,7 @@
 package store
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 
@@ -9,19 +10,36 @@ import (
 
 // Alerts (docs/design.md 47): the alert nodes of the mounted layers, which
 // Portal.Agent's agent-alerts layer emits and Portal only reads. An alert is
-// a node of Kind alert under the plain id alert/<fingerprint>, with severity,
-// rule, summary, stamp, state and fingerprint, an about edge to what it is
-// about (a ledger entry, a Run, a PolicyDecision, an environment instance)
-// and a raised-in edge to the Run it was raised in.
+// a node of Kind alert under the id alert:<fingerprint>, the fingerprint 64
+// lower-case hex (Graph.Node 0.3.3 shares alert: with
+// Claude.Agent.Orchestrator), with severity, rule, summary, stamp, state and
+// fingerprint, an about edge to what it is about (a ledger entry, a Run, a
+// PolicyDecision, an environment instance) and a raised-in edge to the Run it
+// was raised in. Any other id is no alert: the old alert/<fingerprint> and
+// Claude.Agent.Alerts' alert:<rule>:<seq> are not read, and nothing maps them
+// (docs/design.md 48).
 const (
 	// AlertKind is the Kind of an alert in its layer.
 	AlertKind = "alert"
 	// AlertIDPrefix starts every alert's id; the fingerprint follows it.
-	AlertIDPrefix = "alert/"
+	AlertIDPrefix = "alert:"
 	// AlertOpen is the state of an alert no one has acted on. An alert
 	// with no state is open too.
 	AlertOpen = "open"
 )
+
+// alertFingerprint is the fingerprint after AlertIDPrefix: SHA-256, in hex.
+var alertFingerprint = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// AlertFingerprint is the fingerprint of an alert id, alert:<fingerprint>,
+// and whether id is one; nothing else is.
+func AlertFingerprint(id string) (string, bool) {
+	fp, ok := strings.CutPrefix(id, AlertIDPrefix)
+	if !ok || !alertFingerprint.MatchString(fp) {
+		return "", false
+	}
+	return fp, true
+}
 
 // Severities in the order the page sorts them, the most severe first.
 var Severities = []string{"critical", "warning", "info"}
@@ -57,14 +75,13 @@ type Alert struct {
 // Open is whether no one has acted on the alert: state open, or none.
 func (a Alert) Open() bool { return a.State == "" || a.State == AlertOpen }
 
-// IsAlertLayer is whether a layer holds alerts. Its other nodes are copies
-// of what its alerts are about, there so that an about edge does not
-// dangle (an environment instance's id is plain, and ledger:<seq> is
-// Claude.Agent.Alerts' own prefix): Portal reads them as references only,
-// never as the agent's ledger or as environments.
+// IsAlertLayer is whether a layer holds alerts: a node of Kind alert under
+// alert:<fingerprint>. Any other node it holds is a copy of what its alerts
+// are about: Portal reads it as a reference only, never as the agent's
+// ledger, as an environment or on a table page.
 func IsAlertLayer(env *graph.Envelope) bool {
 	for _, n := range env.Nodes {
-		if n.Kind == AlertKind && strings.HasPrefix(n.ID, AlertIDPrefix) {
+		if _, ok := AlertFingerprint(n.ID); ok && n.Kind == AlertKind {
 			return true
 		}
 	}
@@ -75,7 +92,7 @@ func IsAlertLayer(env *graph.Envelope) bool {
 // severe first, then the newest (by stamp), then by fingerprint. An alert
 // is re-emitted when its state changes, so a fingerprint in two layers is
 // kept once, from the layer with the later stamp, the later mount on a tie.
-// A node of Kind alert whose id is not alert/<fingerprint> is skipped; one
+// A node of Kind alert whose id is not alert:<fingerprint> is skipped; one
 // with no stamp gets stamp.layer from its layer.
 func (p *Portal) Alerts() []Alert {
 	byFP := map[string]Alert{}
@@ -97,8 +114,8 @@ func (p *Portal) Alerts() []Alert {
 			}
 		}
 		for _, n := range env.Nodes {
-			fp, ok := strings.CutPrefix(n.ID, AlertIDPrefix)
-			if n.Kind != AlertKind || !ok || fp == "" {
+			fp, ok := AlertFingerprint(n.ID)
+			if n.Kind != AlertKind || !ok {
 				continue
 			}
 			if s, ok := stamp[fp]; ok && s > env.Layer {

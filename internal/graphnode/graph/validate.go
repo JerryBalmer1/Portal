@@ -183,6 +183,7 @@ func ValidateOntology(doc any) []Problem {
 			ps[i].Code = "action"
 		}
 	}
+	ps = append(ps, idPatternProblems(doc)...)
 	return finish(append(ps, ontologyWarnings(doc)...))
 }
 
@@ -245,10 +246,10 @@ func structural(env *Envelope) []Problem {
 			out = append(out, Problem{Code: "edge-id", Path: p, Message: fmt.Sprintf("edge id %q must be %q", e.ID, EdgeID(e.From, e.To, e.Kind))})
 		}
 		if !ids[e.From] {
-			out = append(out, dangling(env.Module, p, "from", e.From))
+			out = append(out, dangling(env.Module, p, "from", e.From, e))
 		}
 		if !ids[e.To] {
-			out = append(out, dangling(env.Module, p, "to", e.To))
+			out = append(out, dangling(env.Module, p, "to", e.To, e))
 		}
 	}
 	if env.Counts != nil {
@@ -264,11 +265,17 @@ func structural(env *Envelope) []Problem {
 
 // dangling reports an edge endpoint missing from the envelope. An endpoint
 // whose registered prefix belongs to another module is a cross-layer edge that
-// a merge resolves, so it is a warning; anything else is an error (design.md 14).
-func dangling(module, path, end, id string) Problem {
+// a merge resolves, so it is a warning; so is the target of an about edge from
+// an alert: id onto any registered prefix, the module's own included, because
+// an alert layer points into every other layer (design.md 26). Anything else is
+// an error (design.md 14).
+func dangling(module, path, end, id string, e Edge) Problem {
 	if p, ok := PrefixOf(id); ok && p.Owner != module {
 		return Problem{Code: "dangling-edge", Path: path, Severity: SeverityWarning,
 			Message: end + " " + id + " is not a node in this envelope; its prefix " + p.Prefix + " belongs to " + p.Owner + ", resolved at merge"}
+	} else if ok && end == "to" && e.Kind == "about" && strings.HasPrefix(e.From, "alert:") {
+		return Problem{Code: "dangling-edge", Path: path, Severity: SeverityWarning,
+			Message: end + " " + id + " is not a node in this envelope; an about edge from an alert: id may point at any registered prefix, " + p.Prefix + " here, resolved at merge"}
 	}
 	return Problem{Code: "dangling-edge", Path: path, Message: end + " " + id + " is not a node in this envelope"}
 }

@@ -9,10 +9,13 @@ import (
 
 // IDPrefix is one registered node id prefix: who issues ids with it and their
 // shape. schemas/ids.md is the prose form of this table (design.md 14).
+// SharedWith names modules that also write ids under the prefix, in their own
+// layers or as edge endpoints; Owner still decides the format.
 type IDPrefix struct {
-	Prefix string `json:"prefix"`
-	Owner  string `json:"owner"`
-	Shape  string `json:"shape"`
+	Prefix     string   `json:"prefix"`
+	Owner      string   `json:"owner"`
+	Shape      string   `json:"shape"`
+	SharedWith []string `json:"sharedWith,omitempty"`
 }
 
 var idPrefixes = []IDPrefix{
@@ -23,18 +26,22 @@ var idPrefixes = []IDPrefix{
 	{Prefix: "decision:", Owner: "Graph.RunReport", Shape: "decision:<n>, n a positive integer"},
 	{Prefix: "notrun:", Owner: "Graph.RunReport", Shape: "notrun:<n>, n a positive integer"},
 	{Prefix: "touched:", Owner: "Graph.RunReport", Shape: "touched:<path relative to the repo>, forward slashes"},
-	{Prefix: "alert:", Owner: "Claude.Agent.Alerts", Shape: "alert:<rule>:<seq>, or alert:<rule>:line-<n> for a ledger line without seq; rule matches ^[a-z][a-z0-9-]*$, seq and n positive integers"},
-	{Prefix: "ledger:", Owner: "Claude.Agent.Alerts", Shape: "ledger:<seq>, or ledger:line-<n> for a ledger line without seq; seq and n positive integers"},
+	{Prefix: "alert:", Owner: "Claude.Agent.Alerts", Shape: "alert:<rule>:<seq>, or alert:<rule>:line-<n> for a ledger line without seq; rule matches ^[a-z][a-z0-9-]*$, seq and n positive integers; or alert:<fingerprint>, 64 lower-case hex (SHA-256 of the rule and the subject id with a newline between)", SharedWith: []string{"Claude.Agent.Orchestrator"}},
+	{Prefix: "ledger:", Owner: "Claude.Agent.Alerts", Shape: "ledger:<seq>, or ledger:line-<n> for a ledger line without seq; seq and n positive integers", SharedWith: []string{"Portal", "Claude.Agent.Orchestrator", "Claude.Agent.Ledger"}},
 	{Prefix: "agent:", Owner: "Graph.Emitter.Agent", Shape: "agent:<path relative to the repo, forward slashes>, then optionally #<heading slug> and /rule-<n>; slug matches ^[a-z0-9_-]+$, n a positive integer"},
 	{Prefix: "runner:", Owner: "Claude.Agent.Runner", Shape: "runner:<plan>, then optionally /<session id> and /step-<n>; plan has no . or /, n a positive integer"},
 	{Prefix: "git:", Owner: "Graph.Emitter.Git.Repository", Shape: "git:commit/<40 lower-case hex sha>, git:branch/<name>, git:tag/<name> or git:author/<email, lower-cased; the name when the email is empty>"},
 	{Prefix: "ref:", Owner: "Graph.Emitter.Reference", Shape: "ref:repo:<folder name>, ref:doc:<Repo>/<path relative to the root>, ref:section:<Repo>/design.md#<n>, ref:skill:<Repo>/<name> or ref:ext:<16 lower-case hex>"},
+	{Prefix: "env:", Owner: "Claude.Agent.Orchestrator", Shape: "env:compose/<project>, env:container/<project>/<service>, env:image/<image reference> or env:network/<name>; project, service and name have no /, backslash or space, the reference no backslash or space"},
 }
 
 // IDPrefixes returns the registered id prefixes, in registry order.
 func IDPrefixes() []IDPrefix {
 	out := make([]IDPrefix, len(idPrefixes))
 	copy(out, idPrefixes)
+	for i := range out {
+		out[i].SharedWith = append([]string(nil), out[i].SharedWith...)
+	}
 	return out
 }
 
@@ -52,7 +59,8 @@ var (
 	positiveInt = regexp.MustCompile(`^[1-9][0-9]*$`)
 	runRest     = regexp.MustCompile(`^[^:/\\]+:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$`)
 	ledgerRest  = regexp.MustCompile(`^(line-)?[1-9][0-9]*$`)
-	alertRest   = regexp.MustCompile(`^[a-z][a-z0-9-]*:(line-)?[1-9][0-9]*$`)
+	alertRest   = regexp.MustCompile(`^([a-z][a-z0-9-]*:(line-)?[1-9][0-9]*|[0-9a-f]{64})$`)
+	envRest     = regexp.MustCompile(`^(compose/[^/\\ ]+|container/[^/\\ ]+/[^/\\ ]+|image/[^\\ ]+|network/[^/\\ ]+)$`)
 	agentAnchor = regexp.MustCompile(`^[a-z0-9_-]+(/rule-[1-9][0-9]*)?$`)
 	runnerRest  = regexp.MustCompile(`^[^./\\]+(/[^/\\]+(/step-[1-9][0-9]*)?)?$`)
 	gitRest     = regexp.MustCompile(`^(commit/[0-9a-f]{40}|(branch|tag)/[^\\]+|author/.+)$`)
@@ -95,7 +103,7 @@ func ValidID(prefix, id string) error {
 		}
 	case "alert:":
 		if !alertRest.MatchString(rest) {
-			return errors.New("must be alert:<rule>:<seq> or alert:<rule>:line-<n>")
+			return errors.New("must be alert:<rule>:<seq>, alert:<rule>:line-<n> or alert:<64 lower-case hex fingerprint>")
 		}
 	case "ledger:":
 		if !ledgerRest.MatchString(rest) {
@@ -124,6 +132,10 @@ func ValidID(prefix, id string) error {
 		if doc, ok := strings.CutPrefix(rest, "doc:"); ok {
 			_, path, _ := strings.Cut(doc, "/")
 			return relativePath(path, false)
+		}
+	case "env:":
+		if !envRest.MatchString(rest) {
+			return errors.New("must be env:compose/<project>, env:container/<project>/<service>, env:image/<reference> or env:network/<name>")
 		}
 	case "finding:", "decision:", "notrun:":
 		if !positiveInt.MatchString(rest) {

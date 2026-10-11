@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.12.0
+  version: 0.12.1
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -37,9 +37,9 @@ tags:
   - name: ledger
     description: Ledger chains and their verify (docs/design.md 45). Source agent is the agent's ledger, read from the mounted layer that holds LedgerEntry nodes under ledger:<seq> ids; source portal is the tenant's own push ledger, tenants/<tenant>/ledger.jsonl, whose lines carry seq and prev since 0.10.0. Read-only.
   - name: environments
-    description: The environments graph (docs/design.md 46). Every node of an environment.* Kind in the mounted layers, as their layers emit them, with every edge of a mounted layer that touches one and the node at its other end. Read-only; Portal reads env, tags and group from the nodes and infers none.
+    description: The environments graph (docs/design.md 46). Every node of an environment.* Kind under an env:compose/, env:container/, env:image/ or env:network/ id in the mounted layers, as their layers emit them, with every edge of a mounted layer that touches one and the node at its other end. Read-only; Portal reads env, tags and group from the nodes and infers none.
   - name: alerts
-    description: Alerts (docs/design.md 47), read from every mounted layer holding nodes of Kind alert under the plain id alert/<fingerprint> (Portal.Agent's agent-alerts layer), each with an about edge to its subject and a raised-in edge to its Run. A fingerprint in two layers is served from the later stamp. Read-only; Portal never writes an alert.
+    description: Alerts (docs/design.md 47), read from every mounted layer holding nodes of Kind alert under the id alert:<fingerprint>, 64 lower-case hex (Portal.Agent's alert layer); any other id is no alert, and nothing maps one (docs/design.md 48), each with an about edge to its subject and a raised-in edge to its Run. A fingerprint in two layers is served from the later stamp. Read-only; Portal never writes an alert.
   - name: feeds
     description: Where the tenant publishes Graph.Node manifest cards (an OCI registry or a NuGet v3 feed), what each holds, and the push. Every push is one line of tenants/<tenant>/ledger.jsonl.
 paths:
@@ -584,8 +584,9 @@ paths:
       tags: [environments]
       summary: >-
         The environments graph as an envelope (module Portal, no ontology of its own: its nodes keep their layers' Kinds).
-        Every node of a Kind starting environment. (environment.instance, environment.image, environment.network, ...) in
-        the mounted layers, under its layer's id and with its layer's properties, the first id wins in mount order, and a
+        Every node of a Kind starting environment. (environment.instance, environment.image, environment.network, ...) under
+        an env: id (env:compose/<project>, env:container/<project>/<service>, env:image/<reference>, env:network/<name>;
+        a bare id is no environment, docs/design.md 48) in the mounted layers, under its layer's id and with its layer's properties, the first id wins in mount order, and a
         node with no stamp gets stamp.layer from its layer, as listNodes serves them. Then every edge of a mounted layer
         with an environment node at one end, its kind kept (member-of, runs-as, hosts, ...), and the node at the other end,
         one hop and no further: a Run (agent:run/<stamp>) as listAgents serves it, with its layer and ledger count; a
@@ -614,7 +615,7 @@ paths:
         info always, and any other severity a layer gives; an alert with no state is open), rules and states (every value
         the alerts carry, for the page's chips), the filters given, and next (the after of the next page) when more match.
         Alerts are sorted critical first, then warning, then info, then any other severity, then newest stamp first, then
-        by fingerprint. Each Alert keeps its layer's id, alert/<fingerprint>, with fingerprint, severity, rule, summary,
+        by fingerprint. Each Alert keeps its layer's id, alert:<fingerprint>, with fingerprint, severity, rule, summary,
         stamp, state, open, layer (the mounted layer it was read from), about (its about edge's end) and run (its raised-in
         edge's end). Its subject and its Run are served one hop away and joined by about and raised-in, as Portal resolves
         them: a Run (agent:run/<stamp>) as listAgents serves it, a Decision (a PolicyDecision of a runs layer) as
@@ -642,7 +643,7 @@ paths:
   /api/tenants/{tenant}/alerts/{fingerprint}:
     parameters:
       - $ref: "#/components/parameters/Tenant"
-      - { name: fingerprint, in: path, required: true, description: "The alert's fingerprint, its id after alert/.", schema: { type: string } }
+      - { name: fingerprint, in: path, required: true, description: "The alert's fingerprint, its id after alert:, 64 lower-case hex.", schema: { type: string } }
     get:
       operationId: getAlert
       tags: [alerts]

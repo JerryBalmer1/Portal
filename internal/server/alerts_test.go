@@ -10,34 +10,92 @@ import (
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 )
 
-// The alert fixture (docs/design.md 47) is hand-made in the shape the brief
-// gives Portal.Agent's agent-alerts layer, until the real one lands: five
-// alerts, all raised in the agent-runs fixture's run, about a decision
-// (step 3's pre deny), two entries of the ledger fixture (46 and 52), the
-// run and the environment fixture's compose node. It carries copies of
-// ledger:46, ledger:52 and claude-agent-dev, so its about edges do not
-// dangle; Portal never serves those copies.
+// The alert fixture (docs/design.md 47, 48) is Portal.Agent's alert layer
+// from Up on 2026-10-11 (agent/Orchestrator/artifacts/alert-layers), byte
+// for byte: one alert under alert:<fingerprint>, info, egress-attempt, open,
+// about ledger:303 and raised in a run, neither of which a fixture holds.
 const (
-	alertsDir      = "../../tests/fixtures/layers/agent-alerts"
-	alertsLayer    = "agent-alerts"
-	alertDecision  = "3f9c2a7e5b1d4c08" // critical, open, about step 3's pre deny
-	alertLedger52  = "07e3d9a5c1f86b42" // critical, resolved, about ledger:52
-	alertRunDenied = "5d27e8f1a9c3b604" // warning, acknowledged, about the run
-	alertLedger46  = "a41e09b7c2d85f36" // warning, open, about ledger:46
-	alertEnv       = "c8b6f4d2e0a17935" // info, open, about claude-agent-dev
+	alertsDir    = "../../tests/fixtures/layers/agent-alerts"
+	alertsLayer  = "agent-alerts"
+	realAlert    = "e62d4da8120f3a864c3576cd6b3bbb838923641c71b01f9153d41e4973face6c"
+	realAlertRun = "agent:run/2026-10-11T19:00:22.5540487Z"
 )
 
-// alertOrder is the fixture's alerts as listAlerts sorts them: critical
+// The varied alerts, a layer the tests mount inline (variedAlerts), since
+// the real layer holds one alert: five alerts under alert:<fingerprint>, the
+// fingerprint SHA-256 of the rule and the subject with a newline between,
+// all raised in the agent-runs fixture's run. It carries copies of ledger:46,
+// ledger:52 and env:compose/claude-agent-dev, which Portal never serves.
+const (
+	variedLayer    = "agent-alerts-varied"
+	alertDecision  = "b9885880ee651752e2b1dfa400d8238803c67f927ff74e8fd774ca0f19fa5027" // critical, open, about step 3's pre deny
+	alertLedger52  = "5af632474080efde717583489cc8334ed38b593f90ef18bba42f684edcf92118" // critical, resolved, about ledger:52
+	alertRunDenied = "f433234ac4a8ea943e4769832fdb4d8ecd194cfac4920e5c5e71006a259f66ee" // warning, acknowledged, about the run
+	alertLedger46  = "ad50168288b7cacc483d2e3d7e56611506c8e51f11d4530d646f87f0586b46f2" // warning, open, about ledger:46
+	alertEnv       = "a133d7bec5d0ce29d8fef760b9eea4894a0dc073f170420468d55cd29c33779d" // info, open, about env:compose/claude-agent-dev
+)
+
+// alertOrder is the varied alerts as listAlerts sorts them: critical
 // first, newest first, then by fingerprint (the two criticals share a
 // stamp).
 var alertOrder = []string{alertLedger52, alertDecision, alertRunDenied, alertLedger46, alertEnv}
 
-// alertsPortal is a portal with the runs, ledger, tagged environment and
-// alert fixtures mounted, in that order.
+// alertID is an alert's id in its layer.
+func alertID(fp string) string { return "alert:" + fp }
+
+// alertLayer is the body of a mount by envelope: layer name, module
+// Claude.Agent.Orchestrator, the given nodes and edges.
+func alertLayer(t *testing.T, name, stamp string, nodes []map[string]any, edges [][3]string) string {
+	t.Helper()
+	var es []map[string]any
+	for _, e := range edges {
+		es = append(es, map[string]any{"id": graph.EdgeID(e[0], e[1], e[2]), "kind": e[2], "from": e[0], "to": e[1]})
+	}
+	if es == nil {
+		es = []map[string]any{}
+	}
+	b, err := json.Marshal(map[string]any{"name": name, "envelope": map[string]any{"schema": "graph/1", "module": "Claude.Agent.Orchestrator",
+		"version": "0.3.0", "layer": stamp, "nodes": nodes, "edges": es}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// alertNodeOf is a node of Kind alert under id.
+func alertNodeOf(id, severity, rule, summary, stamp, state, fp string) map[string]any {
+	return map[string]any{"id": id, "kind": "alert", "name": rule + " " + fp[:8], "properties": map[string]any{
+		"severity": severity, "rule": rule, "summary": summary, "stamp": stamp, "state": state, "fingerprint": fp}}
+}
+
+// variedAlerts is the varied alerts' layer (see alertDecision).
+func variedAlerts(t *testing.T) string {
+	t.Helper()
+	nodes := []map[string]any{
+		alertNodeOf(alertID(alertDecision), "critical", "policy-deny", "Step 3's pre hook denied the action the agent asked for.", "2026-10-09T02:50:49Z", "open", alertDecision),
+		alertNodeOf(alertID(alertLedger52), "critical", "policy-deny", "Ledger entry 52 records a denied pre decision.", "2026-10-09T02:50:49Z", "resolved", alertLedger52),
+		alertNodeOf(alertID(alertLedger46), "warning", "egress-check", "The egress check ran before the run's first step.", "2026-10-09T02:50:44Z", "open", alertLedger46),
+		alertNodeOf(alertID(alertRunDenied), "warning", "run-denied", "The run stopped with a denied step.", "2026-10-09T02:50:52Z", "acknowledged", alertRunDenied),
+		alertNodeOf(alertID(alertEnv), "info", "image-by-tag", "The compose stack runs the agent image by tag, not by digest.", "2026-10-09T02:50:43Z", "open", alertEnv),
+		{"id": "ledger:46", "kind": "LedgerEntry", "name": "46 agent.egress-check", "properties": map[string]any{"seq": 46, "stamp": "2026-10-09T02:50:43Z", "event": "agent.egress-check", "run": fixtureRun}},
+		{"id": "ledger:52", "kind": "LedgerEntry", "name": "52 policy.pre", "properties": map[string]any{"seq": 52, "stamp": "2026-10-09T02:50:49Z", "event": "policy.pre", "run": fixtureRun}},
+		{"id": envCompose, "kind": "environment.instance", "name": "claude-agent-dev (compose on MSI)", "properties": map[string]any{"kind": "compose", "state": "running", "composeProject": "claude-agent-dev", "env": "dev"}},
+	}
+	about := map[string]string{alertDecision: fixtureRun + "/step-3/pre", alertLedger52: "ledger:52", alertLedger46: "ledger:46", alertRunDenied: fixtureRun, alertEnv: envCompose}
+	var edges [][3]string
+	for _, fp := range []string{alertDecision, alertLedger52, alertLedger46, alertRunDenied, alertEnv} {
+		edges = append(edges, [3]string{alertID(fp), about[fp], "about"}, [3]string{alertID(fp), fixtureRun, "raised-in"})
+	}
+	return alertLayer(t, variedLayer, "2026-10-09T02:51:05Z", nodes, edges)
+}
+
+// alertsPortal is a portal with the runs, ledger and tagged environment
+// fixtures mounted, in that order, and the varied alerts after them.
 func alertsPortal(t *testing.T, h *harness) string {
 	t.Helper()
-	return envPortal(t, h, [2]string{fixtureRunLayer, runsDir}, [2]string{"ledger", ledgerDir},
-		[2]string{"agent-environment", envTaggedDir}, [2]string{alertsLayer, alertsDir})
+	base := envPortal(t, h, [2]string{fixtureRunLayer, runsDir}, [2]string{"ledger", ledgerDir}, [2]string{"agent-environment", envTaggedDir})
+	h.do(t, base, "POST", "/api/tenants/default/layers", variedAlerts(t), 201)
+	return base
 }
 
 // alertsOf decodes an alerts envelope, which must pass Graph.Node.
@@ -88,10 +146,38 @@ func TestAlertsAreEmptyWithoutAnAlertLayer(t *testing.T) {
 	}
 }
 
-// The fixture: five alerts in order, the root's counts and chip values,
+// The real layer alone with the runs and ledger fixtures: its one alert as
+// the layer has it. Neither ledger:303 nor its run is in a mounted layer, so
+// about and run name them and no edge leads there.
+func TestAlertsOfTheRealLayer(t *testing.T) {
+	h := newHarness(t)
+	base := envPortal(t, h, [2]string{fixtureRunLayer, runsDir}, [2]string{"ledger", ledgerDir}, [2]string{alertsLayer, alertsDir})
+	env := listAlerts(t, h, base, "")
+	if got := page(env); !slices.Equal(got, []string{realAlert}) {
+		t.Fatalf("alerts %v, want the real layer's one", got)
+	}
+	root := props(env, alertsID)
+	if num(root["count"]) != 1 || num(root["open"].(map[string]any)["info"]) != 1 {
+		t.Errorf("root %v", root)
+	}
+	a := props(env, alertID(realAlert))
+	if a["severity"] != "info" || a["rule"] != "egress-attempt" || a["state"] != "open" || a["open"] != true || a["layer"] != alertsLayer ||
+		a["about"] != "ledger:303" || a["run"] != realAlertRun || a["stamp"] != "2026-10-11T19:00:22.5540487Z" {
+		t.Errorf("alert %v", a)
+	}
+	if got := edgeKinds(env); !slices.Equal(got, []string{"has-alert " + alertsID + " -> " + alertID(realAlert)}) {
+		t.Errorf("edges %v: about and raised-in lead nowhere Portal serves", got)
+	}
+	one := alertsOf(t, h.do(t, base, "GET", "/api/tenants/default/alerts/"+realAlert, "", 200))
+	if one.Root != alertID(realAlert) || len(one.Nodes) != 1 {
+		t.Errorf("getAlert root %q, %d nodes", one.Root, len(one.Nodes))
+	}
+}
+
+// The varied alerts: five in order, the root's counts and chip values,
 // and each alert's subject and run as Portal serves them, from the layers
 // that hold them and never from the alert layer's copies.
-func TestAlertsOfTheFixture(t *testing.T) {
+func TestAlertsOfTheVariedLayer(t *testing.T) {
 	h := newHarness(t)
 	base := alertsPortal(t, h)
 	env := listAlerts(t, h, base, "")
@@ -112,21 +198,21 @@ func TestAlertsOfTheFixture(t *testing.T) {
 	if b, _ := json.Marshal([]any{root["rules"], root["states"]}); string(b) != `[["egress-check","image-by-tag","policy-deny","run-denied"],["acknowledged","open","resolved"]]` {
 		t.Errorf("rules and states %s", b)
 	}
-	a := props(env, "alert/"+alertDecision)
-	if a["severity"] != "critical" || a["rule"] != "policy-deny" || a["state"] != "open" || a["open"] != true || a["layer"] != alertsLayer ||
+	a := props(env, alertID(alertDecision))
+	if a["severity"] != "critical" || a["rule"] != "policy-deny" || a["state"] != "open" || a["open"] != true || a["layer"] != variedLayer ||
 		a["about"] != fixtureRun+"/step-3/pre" || a["run"] != fixtureRun || !strings.HasPrefix(a["summary"].(string), "Step 3's pre hook") {
 		t.Errorf("alert %v", a)
 	}
 	var want []string
 	for _, fp := range alertOrder {
-		want = append(want, "has-alert "+alertsID+" -> alert/"+fp, "raised-in alert/"+fp+" -> "+fixtureRun)
+		want = append(want, "has-alert "+alertsID+" -> "+alertID(fp), "raised-in "+alertID(fp)+" -> "+fixtureRun)
 	}
 	want = append(want,
-		"about alert/"+alertDecision+" -> "+fixtureRun+"/step-3/pre",
-		"about alert/"+alertLedger52+" -> ledger:52",
-		"about alert/"+alertRunDenied+" -> "+fixtureRun,
-		"about alert/"+alertLedger46+" -> ledger:46",
-		"about alert/"+alertEnv+" -> "+envCompose)
+		"about "+alertID(alertDecision)+" -> "+fixtureRun+"/step-3/pre",
+		"about "+alertID(alertLedger52)+" -> ledger:52",
+		"about "+alertID(alertRunDenied)+" -> "+fixtureRun,
+		"about "+alertID(alertLedger46)+" -> ledger:46",
+		"about "+alertID(alertEnv)+" -> "+envCompose)
 	slices.Sort(want)
 	if got := edgeKinds(env); !slices.Equal(got, want) {
 		t.Errorf("edges\n%v\nwant\n%v", got, want)
@@ -146,7 +232,7 @@ func TestAlertsOfTheFixture(t *testing.T) {
 		t.Errorf("entry %v", e)
 	}
 	// The compose node as the environment layer emits it, with its tags.
-	if c := props(env, envCompose); kind(envCompose) != "environment.instance" || c["env"] != "dev" || c["host"] != "MSI" {
+	if c := props(env, envCompose); kind(envCompose) != "environment.instance" || c["group"] != "stack" || c["host"] != "MSI" {
 		t.Errorf("compose %v", c)
 	}
 	if n := len(env.Nodes); n != 1+5+5 {
@@ -159,10 +245,10 @@ func TestGetAlert(t *testing.T) {
 	h := newHarness(t)
 	base := alertsPortal(t, h)
 	env := alertsOf(t, h.do(t, base, "GET", "/api/tenants/default/alerts/"+alertLedger46, "", 200))
-	if env.Root != "alert/"+alertLedger46 {
+	if env.Root != alertID(alertLedger46) {
 		t.Errorf("root %q", env.Root)
 	}
-	want := []string{"about alert/" + alertLedger46 + " -> ledger:46", "raised-in alert/" + alertLedger46 + " -> " + fixtureRun}
+	want := []string{"about " + alertID(alertLedger46) + " -> ledger:46", "raised-in " + alertID(alertLedger46) + " -> " + fixtureRun}
 	if got := edgeKinds(env); !slices.Equal(got, want) {
 		t.Errorf("edges %v", got)
 	}
@@ -170,7 +256,7 @@ func TestGetAlert(t *testing.T) {
 		t.Errorf("entry %v", e)
 	}
 	body := h.do(t, base, "GET", "/api/tenants/default/alerts/nope", "", 404)
-	if !strings.Contains(string(body), "no alert alert/nope in tenant default; its mounted layers hold 5") {
+	if !strings.Contains(string(body), "no alert alert:nope in tenant default; its mounted layers hold 5") {
 		t.Errorf("404 %s", body)
 	}
 }
@@ -232,7 +318,8 @@ func TestAlertsFiltersAndPages(t *testing.T) {
 // still names it.
 func TestAlertLayerIsNotTheLedgerNorAnEnvironment(t *testing.T) {
 	h := newHarness(t)
-	base := envPortal(t, h, [2]string{fixtureRunLayer, runsDir}, [2]string{"ledger", ledgerDir}, [2]string{alertsLayer, alertsDir})
+	base := envPortal(t, h, [2]string{fixtureRunLayer, runsDir}, [2]string{"ledger", ledgerDir})
+	h.do(t, base, "POST", "/api/tenants/default/layers", variedAlerts(t), 201)
 	ledgers := served(t, h.do(t, base, "GET", "/api/tenants/default/ledger", "", 200))
 	if a := props(ledgers, "ui:ledger:agent"); a["layer"] != "ledger" || num(a["count"]) != 12 || a["valid"] != true {
 		t.Errorf("agent chain %v; want the ledger layer's twelve entries", a)
@@ -251,7 +338,7 @@ func TestAlertLayerIsNotTheLedgerNorAnEnvironment(t *testing.T) {
 		t.Errorf("a page of Kind alert lists %d, want the five alerts (%v)", len(nodes.Nodes), err)
 	}
 	env := alertsOf(t, h.do(t, base, "GET", "/api/tenants/default/alerts/"+alertEnv, "", 200))
-	if a := props(env, "alert/"+alertEnv); a["about"] != envCompose || len(env.Nodes) != 2 {
+	if a := props(env, alertID(alertEnv)); a["about"] != envCompose || len(env.Nodes) != 2 {
 		t.Errorf("alert %v, %d nodes: want about named and only the alert and its run served", a, len(env.Nodes))
 	}
 }
@@ -261,14 +348,14 @@ func TestAlertLayerIsNotTheLedgerNorAnEnvironment(t *testing.T) {
 func TestAlertReEmitWins(t *testing.T) {
 	h := newHarness(t)
 	base := alertsPortal(t, h)
-	later := `{"name":"agent-alerts-later","envelope":{"schema":"graph/1","module":"Claude.Agent.Alerts","version":"0.2.0","layer":"2026-10-09T03:00:00Z","nodes":[` +
-		`{"id":"alert/` + alertLedger46 + `","kind":"alert","properties":{"severity":"warning","rule":"egress-check","summary":"resolved","stamp":"2026-10-09T02:50:44Z","state":"resolved","fingerprint":"` + alertLedger46 + `"}}],"edges":[]}}`
+	later := alertLayer(t, "agent-alerts-later", "2026-10-09T03:00:00Z",
+		[]map[string]any{alertNodeOf(alertID(alertLedger46), "warning", "egress-check", "resolved", "2026-10-09T02:50:44Z", "resolved", alertLedger46)}, nil)
 	h.do(t, base, "POST", "/api/tenants/default/layers", later, 201)
 	env := listAlerts(t, h, base, "")
 	if got := page(env); !slices.Equal(got, alertOrder) {
 		t.Errorf("order %v", got)
 	}
-	a := props(env, "alert/"+alertLedger46)
+	a := props(env, alertID(alertLedger46))
 	if a["state"] != "resolved" || a["open"] != false || a["layer"] != "agent-alerts-later" || a["about"] != nil {
 		t.Errorf("re-emitted alert %v", a)
 	}
@@ -284,5 +371,41 @@ func TestAgentRunsCountTheirAlerts(t *testing.T) {
 	env := served(t, h.do(t, base, "GET", "/api/tenants/default/agents/"+tester+"/runs", "", 200))
 	if r := props(env, fixtureRun); num(r["alerts"]) != 5 || num(r["ledger"]) != fixtureLedgerRun {
 		t.Errorf("run %v", r)
+	}
+}
+
+// The old form is ignored, not half-read (docs/design.md 48): a layer whose
+// alert nodes sit under alert/<fingerprint> mounts, a plain id being no
+// prefix's, and Portal shows no alert from it: none listed, none open for
+// the badge, no alert page, no alerts row on its subject and no count on its
+// run. A fingerprint of 64 hex under alert/ is no alert either.
+func TestOldAlertIDsAreIgnored(t *testing.T) {
+	h := newHarness(t)
+	base := envPortal(t, h, [2]string{fixtureRunLayer, runsDir})
+	old := alertLayer(t, "agent-alerts-old", "2026-10-09T02:51:05Z", []map[string]any{
+		alertNodeOf("alert/3f9c2a7e5b1d4c08", "critical", "policy-deny", "Step 3's pre hook denied the action the agent asked for.", "2026-10-09T02:50:49Z", "open", "3f9c2a7e5b1d4c08"),
+		alertNodeOf("alert/"+alertDecision, "critical", "policy-deny", "The same, its fingerprint full length.", "2026-10-09T02:50:49Z", "open", alertDecision),
+	}, [][3]string{
+		{"alert/3f9c2a7e5b1d4c08", fixtureRun + "/step-3/pre", "about"}, {"alert/3f9c2a7e5b1d4c08", fixtureRun, "raised-in"},
+		{"alert/" + alertDecision, fixtureRun + "/step-3/pre", "about"}, {"alert/" + alertDecision, fixtureRun, "raised-in"},
+	})
+	h.do(t, base, "POST", "/api/tenants/default/layers", old, 201)
+	env := listAlerts(t, h, base, "")
+	root := props(env, alertsID)
+	if len(env.Nodes) != 1 || num(root["count"]) != 0 || num(root["alerts"]) != 0 {
+		t.Errorf("alerts %+v; want none from alert/ ids", env.Nodes)
+	}
+	if open := root["open"].(map[string]any); num(open["critical"]) != 0 {
+		t.Errorf("open %v; the badge would count an old alert", open)
+	}
+	for _, fp := range []string{"3f9c2a7e5b1d4c08", alertDecision} {
+		h.do(t, base, "GET", "/api/tenants/default/alerts/"+fp, "", 404)
+	}
+	if got := page(listAlerts(t, h, base, "?about="+url.QueryEscape(fixtureRun+"/step-3/pre"))); len(got) != 0 {
+		t.Errorf("the decision's alerts row would show %v", got)
+	}
+	agents := served(t, h.do(t, base, "GET", "/api/tenants/default/agents", "", 200))
+	if _, ok := props(agents, fixtureRun)["alerts"]; ok {
+		t.Errorf("run %s counts alerts from alert/ ids", fixtureRun)
 	}
 }

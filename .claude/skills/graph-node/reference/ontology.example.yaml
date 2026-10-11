@@ -4,6 +4,7 @@ kinds:
   VNet:
     description: A virtual network.
     idRule: "vnet:<name>"
+    idPattern: "vnet:[a-z0-9-]+"
     properties: [cidr]
     display: { color: "#4a90e2", shape: square, size: 3 }
   Subnet:

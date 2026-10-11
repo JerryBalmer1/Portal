@@ -11,8 +11,22 @@ import (
 // other a layer emits (docs/design.md 46).
 const EnvironmentKindPrefix = "environment."
 
+// EnvironmentIDPrefix starts every environment node's id: env:compose/<project>,
+// env:container/<project>/<service>, env:image/<reference> or
+// env:network/<name>, registered to Claude.Agent.Orchestrator in Graph.Node
+// 0.3.3 (docs/design.md 48).
+const EnvironmentIDPrefix = "env:"
+
+// IsEnvironment is whether n is an environment node: a Kind starting
+// environment. under an id of one of the four env: forms Graph.Node accepts.
+// A bare id (claude-agent-dev, claude-agent-dev/mitm) is no environment,
+// whatever its Kind, and nothing maps it to an env: id.
+func IsEnvironment(n graph.Node) bool {
+	return strings.HasPrefix(n.Kind, EnvironmentKindPrefix) && graph.ValidID(EnvironmentIDPrefix, n.ID) == nil
+}
+
 // EnvironmentGraph is what the mounted layers say about environments: every
-// node of an environment.* Kind, every edge with one of them at an end, and,
+// environment node (IsEnvironment), every edge with one of them at an end, and,
 // for each such edge, the node at its other end when a mounted layer holds
 // it. Ends lists every other end, held or not, in the order the edges name
 // them, so the caller can serve the ones Portal owns (a Principal) itself.
@@ -40,7 +54,7 @@ func (p *Portal) EnvironmentGraph() EnvironmentGraph {
 	env := map[string]bool{}
 	for _, l := range layers {
 		for _, n := range l.Env.Nodes {
-			if !strings.HasPrefix(n.Kind, EnvironmentKindPrefix) || env[n.ID] {
+			if !IsEnvironment(n) || env[n.ID] {
 				continue
 			}
 			env[n.ID] = true

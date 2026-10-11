@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://graphnode.jerrybalmer.dev/schemas/manifest.schema.json",
   "title": "GraphNode Manifest",
-  "description": "The card one packaged thing (an emitter, skill, tool or rule) carries as manifest.yaml in its folder. YAML on disk; validated as its JSON equivalent (design.md 21).",
+  "description": "The card one packaged thing (an emitter, skill, tool, rule or workflow) carries as manifest.yaml in its folder. YAML on disk; validated as its JSON equivalent (design.md 21, 22).",
   "type": "object",
   "required": ["name", "version", "type", "description"],
   "properties": {
@@ -25,6 +25,16 @@
       "description": "What the thing does, each with the strongest effect it can have.",
       "items": { "$ref": "#/$defs/verb" }
     },
+    "extends": {
+      "$ref": "#/$defs/name",
+      "description": "The name of the card this one builds on (an overlay on its base, a policy on the vocabulary it governs). Checked as a well-formed name only; it need not resolve to a card in the same repo. Distinct from needs, which is what the thing needs to run."
+    },
+    "files": {
+      "type": "array",
+      "description": "The files the card ships, relative to the card's folder, forward slashes, e.g. vocabulary.yaml, steps.yaml. Never absolute, never a . or .. segment, no backslash or colon.",
+      "items": { "$ref": "#/$defs/relativePath" },
+      "uniqueItems": true
+    },
     "pins": {
       "type": "object",
       "description": "Exact versions of other packaged things this one was built against, name -> semver, e.g. {\"Graph.Node\": \"0.3.0\"}.",
@@ -46,7 +56,16 @@
     },
     "type": {
       "type": "string",
-      "enum": ["emitter", "skill", "tool", "rule"]
+      "enum": ["emitter", "skill", "tool", "rule", "workflow"]
+    },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^([^/\\\\:.][^/\\\\:]*|[.][^/\\\\:.][^/\\\\:]*|[.][.][^/\\\\:]+)(/([^/\\\\:.][^/\\\\:]*|[.][^/\\\\:.][^/\\\\:]*|[.][.][^/\\\\:]+))*$",
+      "description": "A path relative to the card's folder: segments joined by /, none empty, . or .., no backslash or colon."
+    },
+    "os": {
+      "type": "string",
+      "enum": ["windows", "linux", "macos"]
     },
     "need": {
       "type": "object",
@@ -63,8 +82,23 @@
       "required": ["name", "effect"],
       "properties": {
         "name":        { "type": "string", "minLength": 1 },
-        "description": { "type": "string" },
-        "effect":      { "type": "string", "enum": ["read", "write", "destroy"], "description": "the strongest thing the verb can do: read only, write or change, or delete" }
+        "description": { "type": "string", "description": "what the verb does, in words; the cmdlet or executable that runs it goes in command, not here" },
+        "command":     { "type": "string", "minLength": 1, "description": "the cmdlet or executable that runs the verb, e.g. Invoke-FileSystemDiscover, git fetch; absent when the verb is the command's own name" },
+        "effect":      { "type": "string", "enum": ["read", "write", "destroy"], "description": "the strongest thing the verb can do outside its own output: read (changes nothing), write (creates or changes something), destroy (can delete). Writing the verb's own output (the envelope or report it was asked for), local refs, the plan file and ledger lines is not an effect; discover, plan, run, report and fetch verbs are read unless they change something outside their own output" },
+        "os": {
+          "type": "array",
+          "description": "where the verb runs; absent means all",
+          "items": { "$ref": "#/$defs/os" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "targets": {
+          "type": "array",
+          "description": "the names of the cards the verb applies to, e.g. an overlay's apply or a policy's evaluate naming Base.Infrastructure; checked as well-formed names only",
+          "items": { "$ref": "#/$defs/name" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
       },
       "additionalProperties": false
     }

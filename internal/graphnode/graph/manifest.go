@@ -20,16 +20,18 @@ const (
 	IndexFile    = "index.yaml"
 )
 
-// Manifest is one card: what a packaged emitter, skill, tool or rule is, what
-// it needs and what it does (manifest.schema.json).
+// Manifest is one card: what a packaged emitter, skill, tool, rule or workflow
+// is, what it needs and what it does (manifest.schema.json).
 type Manifest struct {
 	Name        string            `json:"name" yaml:"name"`
 	Version     string            `json:"version" yaml:"version"`
-	Type        string            `json:"type" yaml:"type"` // emitter | skill | tool | rule
+	Type        string            `json:"type" yaml:"type"` // emitter | skill | tool | rule | workflow
 	Description string            `json:"description" yaml:"description"`
 	Tags        []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Needs       []ManifestNeed    `json:"needs,omitempty" yaml:"needs,omitempty"`
 	Verbs       []ManifestVerb    `json:"verbs,omitempty" yaml:"verbs,omitempty"`
+	Extends     string            `json:"extends,omitempty" yaml:"extends,omitempty"` // a card name; not resolved
+	Files       []string          `json:"files,omitempty" yaml:"files,omitempty"`     // relative to the card's folder
 	Pins        map[string]string `json:"pins,omitempty" yaml:"pins,omitempty"`
 }
 
@@ -40,11 +42,15 @@ type ManifestNeed struct {
 	OS           string `json:"os,omitempty" yaml:"os,omitempty"` // windows | linux | any
 }
 
-// ManifestVerb is one thing a card does, with the strongest effect it can have.
+// ManifestVerb is one thing a card does, with the strongest effect it can have
+// outside its own output.
 type ManifestVerb struct {
-	Name        string `json:"name" yaml:"name"`
-	Description string `json:"description,omitempty" yaml:"description,omitempty"`
-	Effect      string `json:"effect" yaml:"effect"` // read | write | destroy
+	Name        string   `json:"name" yaml:"name"`
+	Description string   `json:"description,omitempty" yaml:"description,omitempty"`
+	Command     string   `json:"command,omitempty" yaml:"command,omitempty"` // the cmdlet or executable that runs it
+	Effect      string   `json:"effect" yaml:"effect"`                       // read | write | destroy
+	OS          []string `json:"os,omitempty" yaml:"os,omitempty"`           // windows | linux | macos; absent means all
+	Targets     []string `json:"targets,omitempty" yaml:"targets,omitempty"` // card names the verb applies to; not resolved
 }
 
 // Index is a repo's index.yaml, derived from its cards (index.schema.json).

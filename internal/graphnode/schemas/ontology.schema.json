@@ -30,6 +30,7 @@
       "properties": {
         "description": { "type": "string" },
         "idRule":      { "type": "string", "description": "how this Kind's id is built, in prose or a template" },
+        "idPattern":   { "type": "string", "minLength": 1, "description": "the format of this Kind's ids as a regular expression the whole id must match (anchored by the checker), starting with the literal id prefix it applies to, e.g. fs:[^/]+(/[^/]+)*; RE2 syntax, no lookaround or backreferences. For an owned prefix, the owner's idPatterns replace the registry's shape when the owner's ontology.yaml is reachable (design.md 23)" },
         "properties":  { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/property" } ] } },
         "display":     { "$ref": "#/$defs/display" },
         "actions":     { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/action" } ] } }

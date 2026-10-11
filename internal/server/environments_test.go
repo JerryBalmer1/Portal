@@ -11,21 +11,29 @@ import (
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 )
 
-// The environment fixtures (docs/design.md 46). agent-environment is
-// Portal.Agent's agent-environment layer from Up on 2026-10-11, byte for
-// byte: a compose node, its three containers (member-of), the principal it
-// ran as (runs-as) and the run it hosted (hosts), which no fixture holds.
-// agent-environment-tagged is the same with env, group and tags on three of
-// its four nodes and hosts pointing at the agent-runs fixture's run.
+// The environment fixtures (docs/design.md 46, 48). agent-environment is
+// Portal.Agent's environment layer from Up on 2026-10-11
+// (agent/Orchestrator/artifacts/environment-layers), byte for byte, every
+// node under env: and every node carrying env dev: a compose node, its three
+// containers (member-of), three images (runs-image), two networks
+// (attached-to), the principal it ran as (runs-as) and the run it hosted
+// (hosts), which no fixture holds. agent-environment-tagged is the same with
+// group and tags on three of its instances, no env on the ledger keeper and
+// hosts pointing at the agent-runs fixture's run.
 const (
 	envDir       = "../../tests/fixtures/layers/agent-environment"
 	envTaggedDir = "../../tests/fixtures/layers/agent-environment-tagged"
-	envCompose   = "claude-agent-dev"
-	envRealRun   = "agent:run/2026-10-11T10:08:49.8679152Z"
+	envCompose   = "env:compose/claude-agent-dev"
+	envLedger    = "env:container/claude-agent-dev/ledger"
+	envRealRun   = "agent:run/2026-10-11T19:00:22.5540487Z"
 	devPrincipal = "ui:principal:dev-bootstrap"
 )
 
-var envContainers = []string{"claude-agent-dev/agent", "claude-agent-dev/ledger", "claude-agent-dev/mitm"}
+var (
+	envContainers = []string{"env:container/claude-agent-dev/agent", envLedger, "env:container/claude-agent-dev/mitm"}
+	envImages     = []string{"env:image/claude-agent-ledger:dev", "env:image/claude-agent:dev", "env:image/mitmproxy/mitmproxy:12.2.3"}
+	envNetworks   = []string{"env:network/claude-agent-dev_inside", "env:network/claude-agent-dev_outside"}
+)
 
 // envPortal is a portal with the FileSystem fixture and the named layers
 // mounted by path, in that order.
@@ -69,9 +77,9 @@ func TestEnvironmentGraphIsEmptyWithoutAnEnvironmentLayer(t *testing.T) {
 	}
 }
 
-// The real layer alone: its four environment.instance nodes as the layer
-// has them, the principal one runs-as edge away, and no hosts edge, since
-// no mounted layer holds the run it names.
+// The real layer alone: its nine environment nodes as the layer has them,
+// the principal one runs-as edge away, and no hosts edge, since no mounted
+// layer holds the run it names.
 func TestEnvironmentGraphOfTheRealLayer(t *testing.T) {
 	h := newHarness(t)
 	base := envPortal(t, h, [2]string{"agent-environment", envDir})
@@ -87,13 +95,19 @@ func TestEnvironmentGraphOfTheRealLayer(t *testing.T) {
 	for _, c := range envContainers {
 		want = append(want, "environment.instance "+c)
 	}
+	for _, i := range envImages {
+		want = append(want, "environment.image "+i)
+	}
+	for _, n := range envNetworks {
+		want = append(want, "environment.network "+n)
+	}
 	want = append(want, "Principal "+devPrincipal)
 	if !slices.Equal(ids, want) {
 		t.Errorf("nodes\n%v\nwant\n%v", ids, want)
 	}
 	idx := env.NodeIndex()
 	compose := env.Nodes[idx[envCompose]]
-	if compose.Properties["kind"] != "compose" || compose.Properties["state"] != "running" || compose.Stamp == nil || compose.Stamp.Layer != "2026-10-11T10:08:56Z" {
+	if compose.Properties["kind"] != "compose" || compose.Properties["state"] != "running" || compose.Stamp == nil || compose.Stamp.Layer != "2026-10-11T19:00:30Z" {
 		t.Errorf("compose node %+v: its layer's properties and stamp.layer", compose)
 	}
 	for _, c := range envContainers {
@@ -102,10 +116,16 @@ func TestEnvironmentGraphOfTheRealLayer(t *testing.T) {
 		}
 	}
 	wantEdges := []string{
-		"member-of claude-agent-dev/agent -> " + envCompose,
-		"member-of claude-agent-dev/ledger -> " + envCompose,
-		"member-of claude-agent-dev/mitm -> " + envCompose,
+		"attached-to env:container/claude-agent-dev/agent -> env:network/claude-agent-dev_inside",
+		"attached-to env:container/claude-agent-dev/mitm -> env:network/claude-agent-dev_inside",
+		"attached-to env:container/claude-agent-dev/mitm -> env:network/claude-agent-dev_outside",
+		"member-of env:container/claude-agent-dev/agent -> " + envCompose,
+		"member-of env:container/claude-agent-dev/ledger -> " + envCompose,
+		"member-of env:container/claude-agent-dev/mitm -> " + envCompose,
 		"runs-as " + envCompose + " -> " + devPrincipal,
+		"runs-image env:container/claude-agent-dev/agent -> env:image/claude-agent:dev",
+		"runs-image env:container/claude-agent-dev/ledger -> env:image/claude-agent-ledger:dev",
+		"runs-image env:container/claude-agent-dev/mitm -> env:image/mitmproxy/mitmproxy:12.2.3",
 	}
 	if got := edgeKinds(env); !slices.Equal(got, wantEdges) {
 		t.Errorf("edges\n%v\nwant\n%v", got, wantEdges)
@@ -130,12 +150,12 @@ func TestEnvironmentGraphOneHopNeighbours(t *testing.T) {
 	if ps := graph.ValidateBytes(data); graph.HasErrors(ps) {
 		t.Fatalf("not a valid envelope: %v", ps)
 	}
-	if len(env.Nodes) != 6 {
+	if len(env.Nodes) != 11 {
 		var ids []string
 		for _, n := range env.Nodes {
 			ids = append(ids, n.ID)
 		}
-		t.Fatalf("nodes %v, want the four instances, the principal and the run", ids)
+		t.Fatalf("nodes %v, want the nine environment nodes, the principal and the run", ids)
 	}
 	idx := env.NodeIndex()
 	run, ok := idx[fixtureRun]
@@ -155,8 +175,8 @@ func TestEnvironmentGraphOneHopNeighbours(t *testing.T) {
 	for _, e := range env.Edges {
 		kinds[e.Kind]++
 	}
-	if kinds["member-of"] != 3 || kinds["runs-as"] != 1 || kinds["hosts"] != 1 || len(kinds) != 3 {
-		t.Errorf("edge kinds %v, want member-of 3, runs-as 1, hosts 1", kinds)
+	if kinds["member-of"] != 3 || kinds["runs-image"] != 3 || kinds["attached-to"] != 3 || kinds["runs-as"] != 1 || kinds["hosts"] != 1 || len(kinds) != 5 {
+		t.Errorf("edge kinds %v, want member-of 3, runs-image 3, attached-to 3, runs-as 1, hosts 1", kinds)
 	}
 	if got := edgeKinds(env); !slices.Contains(got, "hosts "+envCompose+" -> "+fixtureRun) {
 		t.Errorf("edges %v lack hosts to the run", got)
@@ -165,7 +185,7 @@ func TestEnvironmentGraphOneHopNeighbours(t *testing.T) {
 	if c["env"] != "dev" || c["group"] != "stack" || len(c["tags"].([]any)) != 2 {
 		t.Errorf("compose fields %v: env dev, group stack, two tags", c)
 	}
-	if l := env.Nodes[idx["claude-agent-dev/ledger"]].Properties; l["env"] != nil || l["tags"] != nil {
+	if l := env.Nodes[idx[envLedger]].Properties; l["env"] != nil || l["tags"] != nil {
 		t.Errorf("ledger keeper %v: carries no env or tags, and Portal infers none", l)
 	}
 }
@@ -177,8 +197,8 @@ func TestEnvironmentGraphFirstLayerWins(t *testing.T) {
 	base := envPortal(t, h, [2]string{"agent-environment", envDir}, [2]string{"agent-environment-tagged", envTaggedDir})
 	env, _ := environmentGraph(t, h, base)
 	idx := env.NodeIndex()
-	if v := env.Nodes[idx[envCompose]].Properties["env"]; v != nil {
-		t.Errorf("compose env %v: the first mount, the real layer, carries none", v)
+	if v := env.Nodes[idx[envCompose]].Properties["group"]; v != nil {
+		t.Errorf("compose group %v: the first mount, the real layer, carries none", v)
 	}
 	seen := map[string]bool{}
 	for _, e := range env.Edges {
@@ -208,7 +228,23 @@ func TestEnvironmentGraphJoinsThePrincipalToTheRunsItHolds(t *testing.T) {
 	if got := edgeKinds(env); !slices.Contains(got, "has-run "+devPrincipal+" -> "+fixtureRun) {
 		t.Errorf("edges %v lack has-run from dev-bootstrap to the run", got)
 	}
-	if len(env.Nodes) != 6 {
-		t.Errorf("%d nodes, want 6: has-run adds none", len(env.Nodes))
+	if len(env.Nodes) != 11 {
+		t.Errorf("%d nodes, want 11: has-run adds none", len(env.Nodes))
+	}
+}
+
+// Only env: ids are environments (docs/design.md 48): a layer of the old
+// shape, environment.instance nodes under bare ids, mounts and adds nothing
+// to the graph, and nothing maps its ids to env: ones.
+func TestEnvironmentGraphIgnoresBareIDs(t *testing.T) {
+	h := newHarness(t)
+	base := envPortal(t, h)
+	bare := `{"name":"agent-environment-old","envelope":{"schema":"graph/1","module":"Claude.Agent.Orchestrator","version":"0.1.0","layer":"2026-10-11T10:08:56Z","nodes":[` +
+		`{"id":"claude-agent-dev","kind":"environment.instance","properties":{"kind":"compose","state":"running","composeProject":"claude-agent-dev"}},` +
+		`{"id":"claude-agent-dev/agent","kind":"environment.instance","properties":{"kind":"container","state":"running","composeProject":"claude-agent-dev"}}],` +
+		`"edges":[{"id":"claude-agent-dev/agent|claude-agent-dev|member-of","kind":"member-of","from":"claude-agent-dev/agent","to":"claude-agent-dev"}]}}`
+	h.do(t, base, "POST", "/api/tenants/default/layers", bare, 201)
+	if env, _ := environmentGraph(t, h, base); len(env.Nodes) != 0 || len(env.Edges) != 0 {
+		t.Errorf("graph %d nodes, %d edges from bare ids; want none", len(env.Nodes), len(env.Edges))
 	}
 }

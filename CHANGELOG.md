@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.12.1 — 2026-10-11
+
+- **New prefixes only, no mapping.** Alerts and environments read the `env:` and `alert:` prefixes only (docs/design.md 48).
+  - **Alerts:** a node of Kind `alert` under `alert:<fingerprint>`, 64 lower-case hex (`store.AlertFingerprint`). This covers the reader, the item, the badge's open counts, `?about=` behind the reverse rows, the run's `alerts`, and the copies-only guard `IsAlertLayer`.
+  - **Environments:** an `environment.*` Kind under `env:compose/`, `env:container/`, `env:image/` or `env:network/`, checked by the lifted registry (`store.IsEnvironment`). On the page, `nodemenu.isEnvironment` decides which graph nodes are the page's own and which table rows open the node menu.
+  - **Dropped:** `alert/<fingerprint>`, `alert:<rule>:<seq>` and bare environment ids are ignored, with no fallback.
+- **Lift at Graph.Node v0.3.3.** `internal/graphnode`, `cmd/graphnode`, `.claude/skills/graph-node` (0.3.3) and `tests/fixtures/invalid.graph.json` are recopied from v0.3.3. That release registers `env:` to Claude.Agent.Orchestrator, accepts `alert:<fingerprint>`, shares `alert:` and `ledger:`, and lets an alert's `about` edge dangle as a warning. Pester's pin is `v0.3.3`.
+- **Fixtures are real.**
+  - `agent-environment/` and `agent-alerts/` are Portal.Agent's environment and alert layers from the Up of 2026-10-11 19:00, byte for byte: nine `env:` nodes, and one info alert about `ledger:303`.
+  - `agent-environment-tagged/` is rebuilt from the new layer (group and tags on three instances, no env on the ledger keeper, hosts onto the agent-runs run).
+  - The old files are deleted. Go and Pester mount five varied alerts inline in the new form.
+- **Go** 103 to 106:
+  - New: `TestAlertsOfTheRealLayer`, `TestOldAlertIDsAreIgnored` (an `alert/<fp>` layer mounts and shows zero alerts) and `TestEnvironmentGraphIgnoresBareIDs`.
+  - `TestAlertsOfTheFixture` is now `TestAlertsOfTheVariedLayer`.
+  - The environment and spec tests use the `env:` ids and the real alert.
+- **Pester** 115 to 116:
+  - The Environments graph and Alerts blocks use the new ids and counts.
+  - New: an It mounting the real alert layer by path.
+  - The version pins and the Graph.Node tag moved.
+- **Docs.**
+  - The spec's text, `ontology.yaml`'s Alert idRule, ONTOLOGY.md, README, CLAUDE.md's pinned tag, and manual checks 1.21, 1.22, 2.14 and 2.15.
+  - The envgraph empty state names the `env:` forms.
+- **Version.** 0.12.1 in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated. docs/design.md 48.
+
 ## 0.12.0 — 2026-10-11
 
 - **Alerts.** `GET /api/tenants/{tenant}/alerts` (`listAlerts`) serves the alerts of every mounted layer: nodes of Kind `alert` under `alert/<fingerprint>`, from Portal.Agent's agent-alerts layer. They come as Kind `Alert`, critical first, newest first, 100 a page (`after`), under `ui:alerts` (Kind `Alerts`: `count`, `open` by severity, `rules`, `states`, `next`). Filters are `severity`, `rule`, `state`, `run` and `about`. `GET .../alerts/{fingerprint}` (`getAlert`) serves one alert. An alert's subject (`about`) and Run (`raised-in`) are served as Portal serves them. The later stamp wins on a fingerprint.

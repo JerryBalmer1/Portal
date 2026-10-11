@@ -23,7 +23,7 @@ BeforeAll {
     [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
     # The Graph.Node version the lift and the graph-node skill are pinned to (docs/design.md 4, 40).
-    $script:GraphNodeTag = 'v0.3.0'
+    $script:GraphNodeTag = 'v0.3.3'
     # Edits the lift carries, file => (upstream text, Portal's text). Up to v0.2.1 the ui: row of the id prefix
     # registry was one (docs/design.md 4, 31); since v0.2.3 Graph.Node registers ui: to Portal itself, so the lift is
     # upstream's but for the import path (docs/design.md 34). A new edit goes here and in design.md.
@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.12.0 and needs PowerShell 7.4' {
+    It 'is version 0.12.1 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.12.0'
+        $m.ModuleVersion | Should -Be '0.12.1'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,10 +302,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.12.0, the twenty-one Kinds, the twenty edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.12.1, the twenty-one Kinds, the twenty edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.12\.0$'
+        $text | Should -Match '(?m)^version: 0\.12\.1$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry', 'Alerts', 'Alert') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in', 'has-alert', 'about', 'raised-in') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.12.0'
+        $s.version | Should -Be '0.12.1'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -1662,10 +1662,10 @@ Describe 'Ledger' {
 }
 
 Describe 'Environments graph' {
-    # docs/design.md 46. A tenant of its own (admin root, -Bootstrap). root mounts the agent-runs and ledger fixtures, then
-    # agent-environment: first the real layer from Portal.Agent's Up (no env, no tags; its hosts edge names a run no
-    # fixture holds), later the tagged copy (env dev on three nodes, groups stack and egress, hosts onto the runs fixture's
-    # run) under the same name.
+    # docs/design.md 46, 48. A tenant of its own (admin root, -Bootstrap). root mounts the agent-runs and ledger fixtures,
+    # then agent-environment: first the real layer from Portal.Agent's Up (nine nodes under env:, every one env dev, no
+    # tags; its hosts edge names a run no fixture holds), later the tagged copy (groups stack and egress and tags on three
+    # instances, no env on the ledger keeper, hosts onto the runs fixture's run) under the same name.
     BeforeAll {
         $script:EgTenants = Join-Path $TestDrive 'eg-tenants'
         $td = Join-Path $EgTenants 'default'
@@ -1691,29 +1691,35 @@ Describe 'Environments graph' {
     }
     AfterAll { Stop-Portal -Artifacts $EgWork; InModuleScope Portal { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
 
-    It 'Environments/Graph sits first under Environments and draws the real layer: four instances, dev-bootstrap one runs-as edge away, every node a link to graph#id' {
+    It 'Environments/Graph sits first under Environments and draws the real layer: nine env: nodes, dev-bootstrap one runs-as edge away, every node a link to graph#id' {
         $api = Invoke-RestMethod "$EgUrl/api/tenants/default/environments/graph"
-        @($api.nodes | ForEach-Object { "$($_.kind) $($_.id)" }) | Should -Be @('environment.instance claude-agent-dev', 'environment.instance claude-agent-dev/agent',
-            'environment.instance claude-agent-dev/ledger', 'environment.instance claude-agent-dev/mitm', 'Principal ui:principal:dev-bootstrap')
-        @($api.edges.kind | Sort-Object) | Should -Be @('member-of', 'member-of', 'member-of', 'runs-as')
+        @($api.nodes | ForEach-Object { "$($_.kind) $($_.id)" }) | Should -Be @('environment.instance env:compose/claude-agent-dev', 'environment.instance env:container/claude-agent-dev/agent',
+            'environment.instance env:container/claude-agent-dev/ledger', 'environment.instance env:container/claude-agent-dev/mitm', 'environment.image env:image/claude-agent-ledger:dev',
+            'environment.image env:image/claude-agent:dev', 'environment.image env:image/mitmproxy/mitmproxy:12.2.3', 'environment.network env:network/claude-agent-dev_inside',
+            'environment.network env:network/claude-agent-dev_outside', 'Principal ui:principal:dev-bootstrap')
+        @($api.edges.kind | Sort-Object) | Should -Be @('attached-to', 'attached-to', 'attached-to', 'member-of', 'member-of', 'member-of', 'runs-as', 'runs-image', 'runs-image', 'runs-image')
         $dom = Get-PageDom $EgUrl '/default/environments/graph'
         if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
         $dom | Should -Match ('<a href="/default/environments/graph" class="pt-page" data-page="ui:rail:environments:graph" aria-current="page">Graph</a></li>' +
             '<li><a href="/default/environments/instances" class="pt-page" data-page="ui:rail:environments:instances">Instances</a>')
-        $dom | Should -Match '<a href="/default/environments/graph#claude-agent-dev" class="pt-eg-node" data-id="claude-agent-dev" data-kind="environment.instance" data-shape="circle" data-ikind="compose" data-env="unset"'
-        $dom | Should -Match '<a href="/default/environments/graph#claude-agent-dev%2Fmitm" class="pt-eg-node" data-id="claude-agent-dev/mitm" data-kind="environment.instance" data-shape="circle" data-ikind="container" data-env="unset"'
+        $dom | Should -Match '<a href="/default/environments/graph#env%3Acompose%2Fclaude-agent-dev" class="pt-eg-node" data-id="env:compose/claude-agent-dev" data-kind="environment.instance" data-shape="circle" data-ikind="compose" data-env="dev"'
+        $dom | Should -Match '<a href="/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fmitm" class="pt-eg-node" data-id="env:container/claude-agent-dev/mitm" data-kind="environment.instance" data-shape="circle" data-ikind="container" data-env="dev"'
+        $dom | Should -Match '<a href="/default/environments/graph#env%3Aimage%2Fclaude-agent%3Adev" class="pt-eg-node" data-id="env:image/claude-agent:dev" data-kind="environment.image" data-shape="square"'
+        $dom | Should -Match '<a href="/default/environments/graph#env%3Anetwork%2Fclaude-agent-dev_inside" class="pt-eg-node" data-id="env:network/claude-agent-dev_inside" data-kind="environment.network" data-shape="diamond"'
         $dom | Should -Match '<a href="/default/environments/graph#ui%3Aprincipal%3Adev-bootstrap" class="pt-eg-node pt-eg-neighbour" data-id="ui:principal:dev-bootstrap" data-kind="Principal" data-shape="hexagon"'
-        [regex]::Matches($dom, '<a href="[^"]*" class="pt-eg-node').Count | Should -Be 5
+        [regex]::Matches($dom, '<a href="[^"]*" class="pt-eg-node').Count | Should -Be 10
         [regex]::Matches($dom, '<line class="pt-eg-edge" data-kind="member-of"').Count | Should -Be 3
+        [regex]::Matches($dom, '<line class="pt-eg-edge" data-kind="runs-image"').Count | Should -Be 3
+        [regex]::Matches($dom, '<line class="pt-eg-edge" data-kind="attached-to"').Count | Should -Be 3
         [regex]::Matches($dom, '<line class="pt-eg-edge" data-kind="runs-as"').Count | Should -Be 1
         $dom | Should -Not -Match 'data-kind="hosts" data-from'
-        $dom | Should -Match '<span class="pt-count" data-unset="4">4 nodes · 1 one edge away · 4 edges · 4 without env</span>'
-        # The env chips are Instances' chips; every node lands in unset, so the page shows the gap.
+        $dom | Should -Match '<span class="pt-count" data-unset="0">9 nodes · 1 one edge away · 10 edges</span>'
+        # The env chips are Instances' chips; every node carries env dev, and unset is offered all the same.
         $dom | Should -Match ('<div class="pt-chips" role="group" aria-label="filter by env" data-chips="env"><button type="button" class="pt-chip" data-value="" aria-pressed="true">all</button>' +
             '<button type="button" class="pt-chip" data-value="dev" aria-pressed="false">dev</button><button type="button" class="pt-chip" data-value="qa" aria-pressed="false">qa</button>' +
             '<button type="button" class="pt-chip" data-value="prod" aria-pressed="false">prod</button><button type="button" class="pt-chip" data-value="unset" aria-pressed="false">unset</button></div>')
         $dom | Should -Match '<span class="pt-muted" data-chips="tags">no tags</span>'
-        @([regex]::Matches($dom, '<g class="pt-eg-hull[^"]*" data-env="([^"]+)"') | ForEach-Object { $_.Groups[1].Value }) | Should -Be @('unset')
+        @([regex]::Matches($dom, '<g class="pt-eg-hull[^"]*" data-env="([^"]+)"') | ForEach-Object { $_.Groups[1].Value }) | Should -Be @('dev')
         $dom | Should -Match '<svg [^>]*data-settled="true"'
         # Line styles by edge kind, colour by the instance's kind.
         $css = Get-Content -LiteralPath (Join-Path $Repo 'web' 'base.css') -Raw
@@ -1732,38 +1738,38 @@ Describe 'Environments graph' {
         $api = Invoke-RestMethod "$EgUrl/api/tenants/default/environments/graph"
         $run = $api.nodes | Where-Object id -EQ $EgRun
         "$($run.kind) $($run.properties.layer) $($run.properties.ledger)" | Should -Be 'Run agent-runs 9'
-        @($api.edges | Where-Object kind -EQ 'hosts' | ForEach-Object { "$($_.from) $($_.to)" }) | Should -Be @("claude-agent-dev $EgRun")
-        $dom = Get-PageDom $EgUrl '/default/environments/graph#claude-agent-dev'
+        @($api.edges | Where-Object kind -EQ 'hosts' | ForEach-Object { "$($_.from) $($_.to)" }) | Should -Be @("env:compose/claude-agent-dev $EgRun")
+        $dom = Get-PageDom $EgUrl '/default/environments/graph#env%3Acompose%2Fclaude-agent-dev'
         if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
-        $dom | Should -Match '<span class="pt-count" data-unset="1">4 nodes · 2 one edge away · 5 edges · 1 without env</span>'
-        $dom | Should -Match 'data-id="claude-agent-dev" data-kind="environment.instance" data-shape="circle" data-ikind="compose" data-env="dev" data-group="stack" data-tags="agent compose"'
-        $dom | Should -Match 'data-id="claude-agent-dev/ledger" data-kind="environment.instance" data-shape="circle" data-ikind="container" data-env="unset"'
+        $dom | Should -Match '<span class="pt-count" data-unset="1">9 nodes · 2 one edge away · 11 edges · 1 without env</span>'
+        $dom | Should -Match 'data-id="env:compose/claude-agent-dev" data-kind="environment.instance" data-shape="circle" data-ikind="compose" data-env="dev" data-group="stack" data-tags="agent compose"'
+        $dom | Should -Match 'data-id="env:container/claude-agent-dev/ledger" data-kind="environment.instance" data-shape="circle" data-ikind="container" data-env="unset"'
         $hulls = [regex]::Matches($dom, '<g class="(pt-eg-hull[^"]*)" data-env="([^"]+)"(?: data-group="([^"]+)")?>') | ForEach-Object { "$($_.Groups[2].Value)/$($_.Groups[3].Value)" }
         @($hulls | Sort-Object) | Should -Be @('dev/', 'dev/egress', 'dev/stack', 'unset/')
         $dom | Should -Match ('aria-label="filter by tag" data-chips="tags"><button type="button" class="pt-chip" data-value="" aria-pressed="true">all</button>' +
             '<button type="button" class="pt-chip" data-value="agent" aria-pressed="false">agent</button><button type="button" class="pt-chip" data-value="compose" aria-pressed="false">compose</button>' +
             '<button type="button" class="pt-chip" data-value="egress" aria-pressed="false">egress</button></div>')
         $dom | Should -Match '<svg [^>]*data-settled="true"'
-        $dom | Should -Match '<svg [^>]*data-selected="claude-agent-dev"'
-        $dom | Should -Match 'data-id="claude-agent-dev"[^>]*aria-current="true"'
+        $dom | Should -Match '<svg [^>]*data-selected="env:compose/claude-agent-dev"'
+        $dom | Should -Match 'data-id="env:compose/claude-agent-dev"[^>]*aria-current="true"'
         # Selected and pinned: the compose node and its five neighbours (three containers, dev-bootstrap, the run).
         @([regex]::Matches($dom, '<a [^>]*data-id="([^"]+)"[^>]*data-pinned="true"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object) |
-            Should -Be (@('claude-agent-dev', 'claude-agent-dev/agent', 'claude-agent-dev/ledger', 'claude-agent-dev/mitm', $EgRun, 'ui:principal:dev-bootstrap') | Sort-Object)
-        $dom | Should -Match '<span class="pt-eg-status" aria-live="polite">selected claude-agent-dev · 5 neighbours pinned</span>'
-        # A pasted item route becomes the graph with the node after #; the dev chip hides the unset keeper and its edge.
-        $r = Invoke-PageScript $EgUrl "/default/environments/graph/$([uri]::EscapeDataString('claude-agent-dev/mitm'))" '' ("(async () => { $EgWait " +
+            Should -Be (@('env:compose/claude-agent-dev', 'env:container/claude-agent-dev/agent', 'env:container/claude-agent-dev/ledger', 'env:container/claude-agent-dev/mitm', $EgRun, 'ui:principal:dev-bootstrap') | Sort-Object)
+        $dom | Should -Match '<span class="pt-eg-status" aria-live="polite">selected env:compose/claude-agent-dev · 5 neighbours pinned</span>'
+        # A pasted item route becomes the graph with the node after #; the dev chip hides the unset keeper and its edges.
+        $r = Invoke-PageScript $EgUrl "/default/environments/graph/$([uri]::EscapeDataString('env:container/claude-agent-dev/mitm'))" '' ("(async () => { $EgWait " +
             'const svg = await wait(() => document.querySelector("svg.pt-eg[data-settled=true]")); const at = location.pathname + location.hash; ' +
             'document.querySelector("[data-chips=env] button[data-value=dev]").click(); ' +
-            'const keeper = document.querySelector("a.pt-eg-node[data-id=\"claude-agent-dev/ledger\"]").hasAttribute("hidden"); ' +
-            'const edge = document.querySelector("line[data-from=\"claude-agent-dev/ledger\"]").hasAttribute("hidden"); ' +
+            'const keeper = document.querySelector("a.pt-eg-node[data-id=\"env:container/claude-agent-dev/ledger\"]").hasAttribute("hidden"); ' +
+            'const edge = document.querySelector("line[data-from=\"env:container/claude-agent-dev/ledger\"]").hasAttribute("hidden"); ' +
             'return [at, svg.dataset.selected, svg.dataset.shown, keeper, edge].join(" "); })()')
-        $r | Should -Be '/default/environments/graph#claude-agent-dev%2Fmitm claude-agent-dev/mitm 3 true true'
+        $r | Should -Be '/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fmitm env:container/claude-agent-dev/mitm 8 true true'
     }
 
     It 'a drag pins a node and a double-click releases it' {
         $r = Invoke-PageScript $EgUrl '/default/environments/graph' '' ("(async () => { $EgWait " +
             'const svg = await wait(() => document.querySelector("svg.pt-eg[data-settled=true]")); ' +
-            'const a = document.querySelector("a.pt-eg-node[data-id=\"claude-agent-dev/agent\"]"); const b = a.getBoundingClientRect(); ' +
+            'const a = document.querySelector("a.pt-eg-node[data-id=\"env:container/claude-agent-dev/agent\"]"); const b = a.getBoundingClientRect(); ' +
             'const x = b.x + b.width / 2; const y = b.y + b.height / 2; const o = { bubbles: true, pointerId: 7, button: 0, isPrimary: true }; ' +
             'a.querySelector(".pt-eg-shape").dispatchEvent(new PointerEvent("pointerdown", { ...o, clientX: x, clientY: y })); ' +
             'svg.dispatchEvent(new PointerEvent("pointermove", { ...o, clientX: x + 60, clientY: y + 30 })); ' +
@@ -1781,13 +1787,13 @@ Describe 'Environments graph' {
         $r = Invoke-PageScript $EgUrl '/default/environments/graph' '' ("(async () => { $EgWait $EgItems " +
             'const svg = await wait(() => document.querySelector("svg.pt-eg[data-settled=true]")); const out = {}; ' +
             'const node = (id) => document.querySelector(`a.pt-eg-node[data-id="${id}"]`); ' +
-            'const c = node("claude-agent-dev"); const b = c.getBoundingClientRect(); ' +
+            'const c = node("env:compose/claude-agent-dev"); const b = c.getBoundingClientRect(); ' +
             'c.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: b.x + 4, clientY: b.y + 4 })); ' +
             'let m = await wait(() => document.querySelector(".pt-nodemenu")); out.compose = items(m); out.first = document.activeElement.textContent; ' +
             'm.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); out.second = document.activeElement.textContent; ' +
             'm.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })); out.last = document.activeElement.textContent; ' +
             'm.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); out.closed = !document.querySelector(".pt-nodemenu"); out.back = document.activeElement.dataset.id; ' +
-            'const k = node("claude-agent-dev/mitm"); k.focus(); k.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 0, clientY: 0 })); ' +
+            'const k = node("env:container/claude-agent-dev/mitm"); k.focus(); k.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 0, clientY: 0 })); ' +
             'm = await wait(() => document.querySelector(".pt-nodemenu")); out.mitm = items(m); out.titles = [...m.querySelectorAll("[aria-disabled]")].map((x) => x.title); ' +
             'm.querySelector("[data-item=show-graph]").click(); out.selected = await wait(() => svg.dataset.selected); out.hash = location.hash; out.path = location.pathname; ' +
             'node("ui:principal:dev-bootstrap").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 9, clientY: 9 })); ' +
@@ -1797,36 +1803,37 @@ Describe 'Environments graph' {
             'return JSON.stringify(out); })()')
         if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
         $o = $r | ConvertFrom-Json
-        $o.compose | Should -Be @('Details|/default/environments/instances/claude-agent-dev|', 'Show graph|/default/environments/graph#claude-agent-dev|',
+        $o.compose | Should -Be @('Details|/default/environments/instances/env%3Acompose%2Fclaude-agent-dev|', 'Show graph|/default/environments/graph#env%3Acompose%2Fclaude-agent-dev|',
             "Runs|/default/layers/agent-runs#$runQ|", "Ledger|/default/ledger/agent?run=$runQ|")
-        "$($o.first) / $($o.second) / $($o.last) / $($o.closed) / $($o.back)" | Should -Be 'Details / Show graph / Ledger / True / claude-agent-dev'
-        $o.mitm | Should -Be @('Details|/default/environments/instances/claude-agent-dev%2Fmitm|', 'Show graph|/default/environments/graph#claude-agent-dev%2Fmitm|', 'Runs||true', 'Ledger||true')
+        "$($o.first) / $($o.second) / $($o.last) / $($o.closed) / $($o.back)" | Should -Be 'Details / Show graph / Ledger / True / env:compose/claude-agent-dev'
+        $o.mitm | Should -Be @('Details|/default/environments/instances/env%3Acontainer%2Fclaude-agent-dev%2Fmitm|', 'Show graph|/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fmitm|', 'Runs||true', 'Ledger||true')
         $o.titles | Should -Be @('no hosts edge to a mounted run', 'no hosts edge to a mounted run')
-        "$($o.path)$($o.hash) $($o.selected)" | Should -Be '/default/environments/graph#claude-agent-dev%2Fmitm claude-agent-dev/mitm'
+        "$($o.path)$($o.hash) $($o.selected)" | Should -Be '/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fmitm env:container/claude-agent-dev/mitm'
         # dev-bootstrap holds no run here (root mounted them): no has-run edge, so its pages are greyed.
         $o.principal | Should -Be @('Details||true', 'Show graph|/default/environments/graph#ui%3Aprincipal%3Adev-bootstrap|', 'Runs||true', 'Ledger||true')
         $o.run | Should -Be @("Details|/default/layers/agent-runs#$runQ|", "Show graph|/default/environments/graph#$runQ|", "Runs|/default/layers/agent-runs#$runQ|", "Ledger|/default/ledger/agent?run=$runQ|")
 
         # The Instances row: the same menu; Show graph opens the graph with that node selected.
         $r = Invoke-PageScript $EgUrl '/default/environments/instances' '' ("(async () => { $EgWait $EgItems " +
-            'const row = await wait(() => document.querySelector("tr[data-id=\"claude-agent-dev/agent\"]")); const out = {}; const b = row.getBoundingClientRect(); ' +
+            'const row = await wait(() => document.querySelector("tr[data-id=\"env:container/claude-agent-dev/agent\"]")); const out = {}; const b = row.getBoundingClientRect(); ' +
             'row.cells[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: b.x + 30, clientY: b.y + 4 })); ' +
             'const m = await wait(() => document.querySelector(".pt-nodemenu")); out.agent = items(m); out.label = m.getAttribute("aria-label"); ' +
             'm.querySelector("[data-item=show-graph]").click(); ' +
             'const svg = await wait(() => document.querySelector("svg.pt-eg[data-settled=true]")); out.at = location.pathname + location.hash; out.selected = svg.dataset.selected; ' +
             'out.title = document.getElementById("title").textContent; return JSON.stringify(out); })()')
         $o = $r | ConvertFrom-Json
-        $o.agent | Should -Be @('Details|/default/environments/instances/claude-agent-dev%2Fagent|', 'Show graph|/default/environments/graph#claude-agent-dev%2Fagent|', 'Runs||true', 'Ledger||true')
+        $o.agent | Should -Be @('Details|/default/environments/instances/env%3Acontainer%2Fclaude-agent-dev%2Fagent|', 'Show graph|/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fagent|', 'Runs||true', 'Ledger||true')
         $o.label | Should -Be 'agent (claude-agent:dev) (environment.instance)'
-        "$($o.at) $($o.selected) $($o.title)" | Should -Be '/default/environments/graph#claude-agent-dev%2Fagent claude-agent-dev/agent Graph'
+        "$($o.at) $($o.selected) $($o.title)" | Should -Be '/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fagent env:container/claude-agent-dev/agent Graph'
     }
 }
 
 Describe 'Alerts' {
-    # docs/design.md 47. A tenant of its own (admin root, -Bootstrap). root mounts the agent-runs, ledger and tagged
-    # environment fixtures, then the hand-made alert fixture: five alerts raised in the runs fixture's run, about step 3's
-    # pre deny (critical, open), ledger entry 52 (critical, resolved), the run (warning, acknowledged), ledger entry 46
-    # (warning, open) and the compose node (info, open).
+    # docs/design.md 47, 48. A tenant of its own (admin root, -Bootstrap). root mounts the agent-runs, ledger and tagged
+    # environment fixtures, then the varied alerts inline (the real alert layer holds one, so they are Go's variedAlerts):
+    # five alerts under alert:<fingerprint> raised in the runs fixture's run, about step 3's pre deny (critical, open),
+    # ledger entry 52 (critical, resolved), the run (warning, acknowledged), ledger entry 46 (warning, open) and the
+    # compose node (info, open). The real alert layer is mounted by path last.
     BeforeAll {
         $script:AlTenants = Join-Path $TestDrive 'al-tenants'
         $td = Join-Path $AlTenants 'default'
@@ -1837,7 +1844,13 @@ Describe 'Alerts' {
         $script:AlPortal = Start-Portal -Port 18200 -Artifacts $AlWork -Tenants $AlTenants
         $script:AlUrl = $AlPortal.Url
         $script:AlRun = 'agent:run/2026-10-09T02:50:43.7976027Z'
-        $script:AlOrder = @('07e3d9a5c1f86b42', '3f9c2a7e5b1d4c08', '5d27e8f1a9c3b604', 'a41e09b7c2d85f36', 'c8b6f4d2e0a17935')
+        # Each fingerprint is SHA-256 of the rule and the subject id with a newline between, as Graph.Node 0.3.3 registers it.
+        $script:AlFp = @{ Decision = 'b9885880ee651752e2b1dfa400d8238803c67f927ff74e8fd774ca0f19fa5027'; Ledger52 = '5af632474080efde717583489cc8334ed38b593f90ef18bba42f684edcf92118'
+            RunDenied = 'f433234ac4a8ea943e4769832fdb4d8ecd194cfac4920e5c5e71006a259f66ee'; Ledger46 = 'ad50168288b7cacc483d2e3d7e56611506c8e51f11d4530d646f87f0586b46f2'
+            Env = 'a133d7bec5d0ce29d8fef760b9eea4894a0dc073f170420468d55cd29c33779d' }
+        $script:AlOrder = @($AlFp.Ledger52, $AlFp.Decision, $AlFp.RunDenied, $AlFp.Ledger46, $AlFp.Env)
+        $script:AlCompose = 'env:compose/claude-agent-dev'
+        $script:AlComposeQ = [uri]::EscapeDataString($AlCompose)
         function Mount-AlAsRoot([string] $Name, [string] $Dir) {
             $saved = $env:PORTAL_TOKEN
             try { $env:PORTAL_TOKEN = $AlRoot.Token; Mount-PortalLayer -Name $Name -Path (Join-Path $Fixtures 'layers' $Dir) -Url $AlUrl }
@@ -1846,7 +1859,28 @@ Describe 'Alerts' {
         $null = Mount-AlAsRoot agent-runs agent-runs
         $null = Mount-AlAsRoot ledger ledger
         $null = Mount-AlAsRoot agent-environment agent-environment-tagged
-        $null = Mount-AlAsRoot agent-alerts agent-alerts
+        function New-AlAlert([string] $Fp, [string] $Severity, [string] $Rule, [string] $Summary, [string] $Stamp, [string] $State) {
+            [ordered]@{ id = "alert:$Fp"; kind = 'alert'; name = "$Rule $($Fp.Substring(0, 8))"
+                properties = [ordered]@{ severity = $Severity; rule = $Rule; summary = $Summary; stamp = $Stamp; state = $State; fingerprint = $Fp } }
+        }
+        # A mount by envelope, module Claude.Agent.Orchestrator; each edge is from, to, kind.
+        function Mount-AlEnvelope([string] $Name, [string] $Stamp, [object[]] $Nodes, [object[]] $Edges) {
+            $es = @($Edges | ForEach-Object { [ordered]@{ id = "$($_[0])|$($_[1])|$($_[2])"; kind = $_[2]; from = $_[0]; to = $_[1] } })
+            $body = [ordered]@{ name = $Name; envelope = [ordered]@{ schema = 'graph/1'; module = 'Claude.Agent.Orchestrator'; version = '0.3.0'; layer = $Stamp; nodes = @($Nodes); edges = $es } } |
+                ConvertTo-Json -Depth 8 -Compress
+            $null = Invoke-RestMethod "$AlUrl/api/tenants/default/layers" -Method Post -ContentType 'application/json' -Body $body -Headers @{ Authorization = "Bearer $($AlRoot.Token)" }
+        }
+        $about = [ordered]@{ $AlFp.Decision = "$AlRun/step-3/pre"; $AlFp.Ledger52 = 'ledger:52'; $AlFp.Ledger46 = 'ledger:46'; $AlFp.RunDenied = $AlRun; $AlFp.Env = $AlCompose }
+        Mount-AlEnvelope agent-alerts-varied '2026-10-09T02:51:05Z' @(
+            New-AlAlert $AlFp.Decision critical policy-deny 'Step 3''s pre hook denied the action the agent asked for.' '2026-10-09T02:50:49Z' open
+            New-AlAlert $AlFp.Ledger52 critical policy-deny 'Ledger entry 52 records a denied pre decision.' '2026-10-09T02:50:49Z' resolved
+            New-AlAlert $AlFp.Ledger46 warning egress-check 'The egress check ran before the run''s first step.' '2026-10-09T02:50:44Z' open
+            New-AlAlert $AlFp.RunDenied warning run-denied 'The run stopped with a denied step.' '2026-10-09T02:50:52Z' acknowledged
+            New-AlAlert $AlFp.Env info image-by-tag 'The compose stack runs the agent image by tag, not by digest.' '2026-10-09T02:50:43Z' open
+            [ordered]@{ id = 'ledger:46'; kind = 'LedgerEntry'; name = '46 agent.egress-check'; properties = [ordered]@{ seq = 46; stamp = '2026-10-09T02:50:43Z'; event = 'agent.egress-check'; run = $AlRun } }
+            [ordered]@{ id = 'ledger:52'; kind = 'LedgerEntry'; name = '52 policy.pre'; properties = [ordered]@{ seq = 52; stamp = '2026-10-09T02:50:49Z'; event = 'policy.pre'; run = $AlRun } }
+            [ordered]@{ id = $AlCompose; kind = 'environment.instance'; name = 'claude-agent-dev (compose on MSI)'; properties = [ordered]@{ kind = 'compose'; state = 'running'; composeProject = 'claude-agent-dev'; env = 'dev' } }
+        ) @($about.Keys | ForEach-Object { , @("alert:$_", $about[$_], 'about'); , @("alert:$_", $AlRun, 'raised-in') })
         $script:AlWait = 'const wait = async (f) => { for (let t = 0; t < 120; t++) { const v = f(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); } throw new Error("timed out: " + f); };'
         $script:AlItems = 'const items = (m) => [...m.querySelectorAll("[role=menuitem]")].map((x) => `${x.textContent}|${x.getAttribute("href") || ""}|${x.getAttribute("aria-disabled") || ""}`);'
     }
@@ -1861,17 +1895,17 @@ Describe 'Alerts' {
         if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
         $dom | Should -Match ('<a href="/default/compliance/alerts" class="pt-page" data-page="ui:rail:compliance:alerts" aria-current="page">Alerts</a></li>' +
             '<li><a href="/default/compliance/rules" class="pt-page" data-page="ui:rail:compliance:rules">Rules</a>')
-        @([regex]::Matches($dom, '<tr data-id="alert/([0-9a-f]+)"') | ForEach-Object { $_.Groups[1].Value }) | Should -Be $AlOrder
+        @([regex]::Matches($dom, '<tr data-id="alert:([0-9a-f]{64})"') | ForEach-Object { $_.Groups[1].Value }) | Should -Be $AlOrder
         $runQ = [regex]::Escape([uri]::EscapeDataString($AlRun))
-        $dom | Should -Match ('<tr data-id="alert/3f9c2a7e5b1d4c08" data-severity="critical"><td><span class="pt-sev" data-severity="critical">critical</span></td><td>policy-deny</td>' +
-            '<td><a href="/default/compliance/alerts/3f9c2a7e5b1d4c08">Step 3''s pre hook denied the action the agent asked for\.</a></td>' +
+        $dom | Should -Match ('<tr data-id="alert:' + $AlFp.Decision + '" data-severity="critical"><td><span class="pt-sev" data-severity="critical">critical</span></td><td>policy-deny</td>' +
+            '<td><a href="/default/compliance/alerts/' + $AlFp.Decision + '">Step 3''s pre hook denied the action the agent asked for\.</a></td>' +
             '<td><a href="/default/layers/agent-runs#' + [regex]::Escape([uri]::EscapeDataString("$AlRun/step-3/pre")) + '" class="pt-subject-link" data-id="' + [regex]::Escape("$AlRun/step-3/pre") + '" title="Decision [^"]+">deny rules\[2\] \(pre\)</a></td>' +
             '<td><a href="/default/layers/agent-runs#' + $runQ + '" class="pt-run-link" data-id="' + [regex]::Escape($AlRun) + '" title="Run [^"]+">[^<]+</a></td><td>2026-10-09T02:50:49Z</td></tr>')
         # The ledger entry, from the ledger layer (never the alert layer's copy), and the compose node, from the environment layer.
         $dom | Should -Match '<td><a href="/default/ledger/agent/52" class="pt-subject-link" data-id="ledger:52" title="LedgerEntry ledger:52">52 policy.pre</a></td>'
-        $dom | Should -Match '<td><a href="/default/environments/instances/claude-agent-dev" class="pt-subject-link" data-id="claude-agent-dev" title="environment.instance claude-agent-dev">claude-agent-dev \(compose on MSI\)</a></td>'
+        $dom | Should -Match ('<td><a href="/default/environments/instances/' + $AlComposeQ + '" class="pt-subject-link" data-id="' + $AlCompose + '" title="environment.instance ' + $AlCompose + '">claude-agent-dev \(compose on MSI\)</a></td>')
         # An alert no longer open is dimmed.
-        $dom | Should -Match '<tr data-id="alert/07e3d9a5c1f86b42" data-severity="critical" class="pt-closed">'
+        $dom | Should -Match ('<tr data-id="alert:' + $AlFp.Ledger52 + '" data-severity="critical" class="pt-closed">')
         $dom | Should -Match '<span class="pt-count">5 alerts</span>'
         $css = Get-Content -LiteralPath (Join-Path $Repo 'web' 'base.css') -Raw
         $css | Should -Match '\.pt-sev\[data-severity="critical"\], \.pt-alert-link\[data-severity="critical"\] \{ color: var\(--gr-bad\); \}'
@@ -1881,7 +1915,7 @@ Describe 'Alerts' {
     It 'severity, rule and state chips filter through the URL; an alert''s page shows its fields and its two edges as links' {
         $dom = Get-PageDom $AlUrl '/default/compliance/alerts?severity=critical'
         if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
-        @([regex]::Matches($dom, '<tr data-id="alert/([0-9a-f]+)"') | ForEach-Object { $_.Groups[1].Value }) | Should -Be @('07e3d9a5c1f86b42', '3f9c2a7e5b1d4c08')
+        @([regex]::Matches($dom, '<tr data-id="alert:([0-9a-f]{64})"') | ForEach-Object { $_.Groups[1].Value }) | Should -Be @($AlFp.Ledger52, $AlFp.Decision)
         $dom | Should -Match '<span class="pt-count">2 alerts · 5 in all</span>'
         $dom | Should -Match 'data-chips="severity"><button type="button" class="pt-chip" data-value="" aria-pressed="false">all</button><button type="button" class="pt-chip" data-value="critical" aria-pressed="true">critical</button>'
         $dom | Should -Match ('aria-label="filter by state" data-chips="state"><button type="button" class="pt-chip" data-value="" aria-pressed="true">all</button>' +
@@ -1892,15 +1926,15 @@ Describe 'Alerts' {
             '(await wait(() => document.querySelector("[data-chips=state] button[data-value=open]"))).click(); ' +
             'await wait(() => location.search.includes("state") && document.querySelectorAll("tr[data-id]").length === 1); ' +
             'return location.search + " " + document.querySelector("tr[data-id]").dataset.id; })()')
-        $r | Should -Be '?severity=warning&state=open alert/a41e09b7c2d85f36'
-        $dom = Get-PageDom $AlUrl '/default/compliance/alerts/3f9c2a7e5b1d4c08'
-        $dom | Should -Match '<h1 class="pt-title" id="title" data-page="ui:rail:compliance:alerts">3f9c2a7e5b1d4c08</h1>'
-        $dom | Should -Match '<dd data-field="id">alert/3f9c2a7e5b1d4c08</dd><dt>severity</dt><dd data-field="severity"><span class="pt-sev" data-severity="critical">critical</span></dd><dt>rule</dt><dd data-field="rule">policy-deny</dd>'
-        $dom | Should -Match '<dd data-field="state">open</dd><dt>stamp</dt><dd data-field="stamp">2026-10-09T02:50:49Z</dd><dt>fingerprint</dt><dd data-field="fingerprint">3f9c2a7e5b1d4c08</dd><dt>layer</dt><dd data-field="layer"><a href="/default/layers/agent-alerts">agent-alerts</a></dd>'
+        $r | Should -Be "?severity=warning&state=open alert:$($AlFp.Ledger46)"
+        $dom = Get-PageDom $AlUrl "/default/compliance/alerts/$($AlFp.Decision)"
+        $dom | Should -Match ('<h1 class="pt-title" id="title" data-page="ui:rail:compliance:alerts">' + $AlFp.Decision + '</h1>')
+        $dom | Should -Match ('<dd data-field="id">alert:' + $AlFp.Decision + '</dd><dt>severity</dt><dd data-field="severity"><span class="pt-sev" data-severity="critical">critical</span></dd><dt>rule</dt><dd data-field="rule">policy-deny</dd>')
+        $dom | Should -Match ('<dd data-field="state">open</dd><dt>stamp</dt><dd data-field="stamp">2026-10-09T02:50:49Z</dd><dt>fingerprint</dt><dd data-field="fingerprint">' + $AlFp.Decision + '</dd><dt>layer</dt><dd data-field="layer"><a href="/default/layers/agent-alerts-varied">agent-alerts-varied</a></dd>')
         $dom | Should -Match ('<dd data-field="about"><a href="/default/layers/agent-runs#' + [regex]::Escape([uri]::EscapeDataString("$AlRun/step-3/pre")) + '" class="pt-subject-link"')
         $dom | Should -Match ('<dd data-field="raised-in"><a href="/default/layers/agent-runs#' + [regex]::Escape([uri]::EscapeDataString($AlRun)) + '" class="pt-run-link"')
-        $dom | Should -Match '<li><a href="/default/compliance/alerts">Alerts</a></li><li><span aria-current="page">3f9c2a7e5b1d4c08</span></li>'
-        (Get-PageDom $AlUrl '/default/compliance/alerts/nope') | Should -Match 'not_found: no alert alert/nope in tenant default; its mounted layers hold 5'
+        $dom | Should -Match ('<li><a href="/default/compliance/alerts">Alerts</a></li><li><span aria-current="page">' + $AlFp.Decision + '</span></li>')
+        (Get-PageDom $AlUrl '/default/compliance/alerts/nope') | Should -Match 'not_found: no alert alert:nope in tenant default; its mounted layers hold 5'
     }
 
     It 'the banner badge beside the mode counts the open alerts at their top severity: red for critical, amber for warning, none for info only' {
@@ -1919,16 +1953,16 @@ Describe 'Alerts' {
     It 'a ledger entry, a run, a decision and an environment instance show an alerts row linking back; the agent page counts a run''s alerts beside its ledger count' {
         $dom = Get-PageDom $AlUrl '/default/ledger/agent/52'
         if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
-        $dom | Should -Match ('<dd data-field="alerts"><span class="pt-alerts-about" data-about="ledger:52"><a href="/default/compliance/alerts/07e3d9a5c1f86b42" class="pt-alert-link" data-severity="critical" ' +
+        $dom | Should -Match ('<dd data-field="alerts"><span class="pt-alerts-about" data-about="ledger:52"><a href="/default/compliance/alerts/' + $AlFp.Ledger52 + '" class="pt-alert-link" data-severity="critical" ' +
             'title="[^"]*">critical policy-deny \(resolved\)</a></span></dd>')
         (Get-PageDom $AlUrl '/default/ledger/agent/50') | Should -Not -Match 'data-field="alerts"'
         $dom = Get-PageDom $AlUrl "/default/layers/agent-runs#$([uri]::EscapeDataString("$AlRun/step-3/pre"))"
         $dom | Should -Match ('<tr class="pt-alerts-row" data-alerts-of="' + [regex]::Escape("$AlRun/step-3/pre") + '"><td colspan="4">alerts: <span class="pt-alerts-about"[^>]*>' +
-            '<a href="/default/compliance/alerts/3f9c2a7e5b1d4c08" class="pt-alert-link" data-severity="critical"[^>]*>critical policy-deny</a></span></td></tr>')
+            '<a href="/default/compliance/alerts/' + $AlFp.Decision + '" class="pt-alert-link" data-severity="critical"[^>]*>critical policy-deny</a></span></td></tr>')
         $dom = Get-PageDom $AlUrl "/default/layers/agent-runs#$([uri]::EscapeDataString($AlRun))"
-        $dom | Should -Match ('data-alerts-of="' + [regex]::Escape($AlRun) + '"><td colspan="4">alerts: <span class="pt-alerts-about"[^>]*><a href="/default/compliance/alerts/5d27e8f1a9c3b604" class="pt-alert-link" data-severity="warning"[^>]*>warning run-denied \(acknowledged\)</a>')
-        $dom = Get-PageDom $AlUrl '/default/environments/instances/claude-agent-dev'
-        $dom | Should -Match '<dt>alerts</dt><dd data-field="alerts"><span class="pt-alerts-about" data-about="claude-agent-dev"><a href="/default/compliance/alerts/c8b6f4d2e0a17935" class="pt-alert-link" data-severity="info"[^>]*>info image-by-tag</a>'
+        $dom | Should -Match ('data-alerts-of="' + [regex]::Escape($AlRun) + '"><td colspan="4">alerts: <span class="pt-alerts-about"[^>]*><a href="/default/compliance/alerts/' + $AlFp.RunDenied + '" class="pt-alert-link" data-severity="warning"[^>]*>warning run-denied \(acknowledged\)</a>')
+        $dom = Get-PageDom $AlUrl "/default/environments/instances/$AlComposeQ"
+        $dom | Should -Match ('<dt>alerts</dt><dd data-field="alerts"><span class="pt-alerts-about" data-about="' + $AlCompose + '"><a href="/default/compliance/alerts/' + $AlFp.Env + '" class="pt-alert-link" data-severity="info"[^>]*>info image-by-tag</a>')
         $dom = Get-PageDom $AlUrl '/default/agents/root'
         $runQ = [regex]::Escape([uri]::EscapeDataString($AlRun))
         $dom | Should -Match '<th>layer</th><th>ledger</th><th>alerts</th>'
@@ -1938,37 +1972,48 @@ Describe 'Alerts' {
     It 'right-click on an alert row opens Details, Subject, Run and Ledger as links, greyed with why where no edge leads, keyboard too' {
         $runQ = [uri]::EscapeDataString($AlRun)
         $r = Invoke-PageScript $AlUrl '/default/compliance/alerts' '' ("(async () => { $AlWait $AlItems " +
-            'const row = await wait(() => document.querySelector("tr[data-id=\"alert/3f9c2a7e5b1d4c08\"]")); const out = {}; const b = row.getBoundingClientRect(); ' +
+            'const row = await wait(() => document.querySelector("tr[data-id=\"alert:' + $AlFp.Decision + '\"]")); const out = {}; const b = row.getBoundingClientRect(); ' +
             'row.cells[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: b.x + 30, clientY: b.y + 4 })); ' +
             'let m = await wait(() => document.querySelector(".pt-nodemenu")); out.items = items(m); out.first = document.activeElement.textContent; ' +
             'm.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); out.second = document.activeElement.textContent; ' +
             'm.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); out.closed = !document.querySelector(".pt-nodemenu"); out.back = document.activeElement.getAttribute("href"); ' +
-            'const env = row.parentElement.querySelector("tr[data-id=\"alert/c8b6f4d2e0a17935\"] a"); env.focus(); env.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 0, clientY: 0 })); ' +
+            'const env = row.parentElement.querySelector("tr[data-id=\"alert:' + $AlFp.Env + '\"] a"); env.focus(); env.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 0, clientY: 0 })); ' +
             'm = await wait(() => document.querySelector(".pt-nodemenu")); out.env = items(m); ' +
             'm.querySelector("[data-item=subject]").click(); await wait(() => location.pathname.includes("instances")); out.path = location.pathname; ' +
             'return JSON.stringify(out); })()')
         if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
         $o = $r | ConvertFrom-Json
-        $o.items | Should -Be @('Details|/default/compliance/alerts/3f9c2a7e5b1d4c08|', "Subject|/default/layers/agent-runs#$([uri]::EscapeDataString("$AlRun/step-3/pre"))|",
+        $o.items | Should -Be @("Details|/default/compliance/alerts/$($AlFp.Decision)|", "Subject|/default/layers/agent-runs#$([uri]::EscapeDataString("$AlRun/step-3/pre"))|",
             "Run|/default/layers/agent-runs#$runQ|", "Ledger|/default/ledger/agent?run=$runQ|")
-        "$($o.first) / $($o.second) / $($o.closed) / $($o.back)" | Should -Be 'Details / Subject / True / /default/compliance/alerts/3f9c2a7e5b1d4c08'
-        $o.env[1] | Should -Be 'Subject|/default/environments/instances/claude-agent-dev|'
-        $o.path | Should -Be '/default/environments/instances/claude-agent-dev'
+        "$($o.first) / $($o.second) / $($o.closed) / $($o.back)" | Should -Be "Details / Subject / True / /default/compliance/alerts/$($AlFp.Decision)"
+        $o.env[1] | Should -Be "Subject|/default/environments/instances/$AlComposeQ|"
+        $o.path | Should -Be "/default/environments/instances/$AlComposeQ"
 
         # An alert with no about edge, raised in a run no layer holds: Subject, Run and Ledger greyed, each saying why.
-        $orphan = '{"name":"agent-alerts-orphan","envelope":{"schema":"graph/1","module":"Claude.Agent.Alerts","version":"0.2.0","layer":"2026-10-09T03:00:00Z","nodes":[' +
-            '{"id":"alert/00000000deadbeef","kind":"alert","properties":{"severity":"info","rule":"orphan","summary":"An alert raised in a run no layer holds.","stamp":"2026-10-09T03:00:00Z","state":"open","fingerprint":"00000000deadbeef"}}],' +
-            '"edges":[{"id":"alert/00000000deadbeef|agent:run/2026-01-01T00:00:00Z|raised-in","kind":"raised-in","from":"alert/00000000deadbeef","to":"agent:run/2026-01-01T00:00:00Z"}]}}'
-        $null = Invoke-RestMethod "$AlUrl/api/tenants/default/layers" -Method Post -ContentType 'application/json' -Body $orphan -Headers @{ Authorization = "Bearer $($AlRoot.Token)" }
+        $orphan = '00000000000000000000000000000000000000000000000000000000deadbeef'
+        Mount-AlEnvelope agent-alerts-orphan '2026-10-09T03:00:00Z' @(New-AlAlert $orphan info orphan 'An alert raised in a run no layer holds.' '2026-10-09T03:00:00Z' open) @(
+            , @("alert:$orphan", 'agent:run/2026-01-01T00:00:00Z', 'raised-in'))
         $r = Invoke-PageScript $AlUrl '/default/compliance/alerts?rule=orphan' '' ("(async () => { $AlWait $AlItems " +
-            'const row = await wait(() => document.querySelector("tr[data-id=\"alert/00000000deadbeef\"]")); const b = row.getBoundingClientRect(); ' +
+            'const row = await wait(() => document.querySelector("tr[data-id=\"alert:' + $orphan + '\"]")); const b = row.getBoundingClientRect(); ' +
             'row.cells[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: b.x + 4, clientY: b.y + 4 })); ' +
             'const m = await wait(() => document.querySelector(".pt-nodemenu")); ' +
             'return JSON.stringify({ items: items(m), titles: [...m.querySelectorAll("[aria-disabled]")].map((x) => x.title), run: row.cells[4].innerHTML }); })()')
         $o = $r | ConvertFrom-Json
-        $o.items | Should -Be @('Details|/default/compliance/alerts/00000000deadbeef|', 'Subject||true', 'Run||true', 'Ledger||true')
+        $o.items | Should -Be @("Details|/default/compliance/alerts/$orphan|", 'Subject||true', 'Run||true', 'Ledger||true')
         $o.titles | Should -Be @('no about edge', 'no mounted runs layer holds agent:run/2026-01-01T00:00:00Z', 'no raised-in edge to a mounted run')
         $o.run | Should -Be '<span class="pt-muted" title="no mounted layer Portal reads holds it">agent:run/2026-01-01T00:00:00Z</span>'
+    }
+
+    It 'the real alert layer from Portal.Agent mounts by path and shows its one alert, its id alert: and the fingerprint' {
+        $null = Mount-AlAsRoot agent-alerts agent-alerts
+        $api = Invoke-RestMethod "$AlUrl/api/tenants/default/alerts?rule=egress-attempt"
+        $a = @($api.nodes | Where-Object kind -EQ 'Alert')
+        @($a.id) | Should -Be @('alert:e62d4da8120f3a864c3576cd6b3bbb838923641c71b01f9153d41e4973face6c')
+        "$($a.properties.severity) $($a.properties.state) $($a.properties.about) $($a.properties.run) $($a.properties.layer)" |
+            Should -Be 'info open ledger:303 agent:run/2026-10-11T19:00:22.5540487Z agent-alerts'
+        $dom = Get-PageDom $AlUrl '/default/compliance/alerts?rule=egress-attempt'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $dom | Should -Match '<tr data-id="alert:e62d4da8120f3a864c3576cd6b3bbb838923641c71b01f9153d41e4973face6c" data-severity="info">'
     }
 
     It 'a Compliance page alerts with any other view stops the boot' {
