@@ -9,7 +9,9 @@
 # and Page nodes, has-page edges, icons in State nodes). A page lists the
 # nodes of its kind (GET /api/tenants/<tenant>/nodes?kind=) unless its view
 # says otherwise: screen draws a screen node, connections lists the tenant's
-# service connections. A page's children are the tabs of its item page,
+# service connections, users and agents its principals of that type (users
+# with an admin's Add), tokens its bearer tokens (with an admin's Revoke;
+# docs/design.md 38). A page's children are the tabs of its item page,
 # /<tenant>/<service>/<page>/<id>.
 #
 # theme is the shell's own settings, not a node's display (that is State and
@@ -120,8 +122,8 @@ menu:
     icon: identity
     path: identity
     children:
-      - { id: users, label: Users, path: identity/users, kind: identity.user }
-      - { id: agents, label: Agents, path: identity/agents, kind: identity.agent }
+      - { id: users, label: Users, path: identity/users, view: users }
+      - { id: agents, label: Agents, path: identity/agents, view: agents }
       - { id: marker-holders, label: Marker holders, path: identity/marker-holders, kind: identity.marker }
 
   - id: artifacts
@@ -148,5 +150,5 @@ menu:
     dock: bottom
     children:
       - { id: tenants, label: Tenants, path: settings/tenants, kind: portal.tenant }
-      - { id: tokens, label: Tokens, path: settings/tokens, kind: portal.token }
+      - { id: tokens, label: Tokens, path: settings/tokens, view: tokens }
       - { id: service-connections, label: Service connections, path: settings/service-connections, view: connections }

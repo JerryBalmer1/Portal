@@ -221,6 +221,12 @@ body.pt-rail-collapsed { --pt-rail-w: 52px; }
 .pt-account p { margin: 0 0 10px; color: var(--gr-text-muted); }
 .pt-token-form { display: flex; gap: 8px; }
 .pt-token-form input { flex: 1; min-width: 0; }
+.pt-stack { display: flex; flex-direction: column; gap: 14px; }
+.pt-add-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; }
+.pt-add-form h3 { margin: 0 8px 0 0; font-size: 13px; font-weight: 600; }
+.pt-add-form input { width: 200px; }
+.pt-add-form .pt-status { font-size: 12px; color: var(--gr-text-muted); }
+.pt-table code { font-size: 12px; color: var(--gr-text-muted); }
 
 .pt-rail-wrap {
   grid-area: rail;

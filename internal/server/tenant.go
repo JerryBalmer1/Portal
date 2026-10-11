@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -18,8 +20,11 @@ import (
 type principalKey struct{}
 
 // auth reads the bearer token before any route: no token reads only, a
-// token the tenant holds may write, any other token is refused (401), on a
-// read too, so a mistyped token never passes as anonymous.
+// token the tenant holds is its principal, any other token is refused
+// (401), on a read too, so a mistyped token never passes as anonymous. A
+// write needs a principal (401) whose role writes (403: a reader reads
+// only). Identity writes check admin and attenuation in their handlers
+// (docs/design.md 38).
 func (s *Server) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		who, err := s.t.Authenticate(r.Header.Get("Authorization"))
@@ -27,9 +32,15 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			unauthorized(w, "the bearer token is not one tenant "+s.t.Name+" holds (tenants/"+s.t.Name+"/tokens.yaml)")
 			return
 		}
-		if who.Anonymous && !safeMethod(r.Method) {
-			unauthorized(w, r.Method+" writes, and a write needs a bearer token; without one the portal reads only")
-			return
+		if !safeMethod(r.Method) {
+			if who.Anonymous {
+				unauthorized(w, r.Method+" writes, and a write needs a bearer token; without one the portal reads only")
+				return
+			}
+			if !who.Writes() {
+				forbidden(w, fmt.Sprintf("%s writes, and %s's role %s reads only", r.Method, who.Name, who.Role))
+				return
+			}
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, who)))
 	})
@@ -44,6 +55,10 @@ func principal(r *http.Request) tenant.Principal {
 		return who
 	}
 	return tenant.Anonymous
+}
+
+func forbidden(w http.ResponseWriter, msg string) {
+	writeError(w, http.StatusForbidden, "forbidden", msg, nil)
 }
 
 func unauthorized(w http.ResponseWriter, msg string) {
@@ -142,12 +157,107 @@ func (s *Server) GetWhoami(w http.ResponseWriter, r *http.Request, name api.Tena
 	}
 	who := principal(r)
 	writeJSON(w, http.StatusOK, struct {
-		Name      string  `json:"name"`
-		Anonymous bool    `json:"anonymous"`
-		Writes    bool    `json:"writes"`
-		Tenant    string  `json:"tenant"`
-		Marker    *string `json:"marker"`
-	}{who.Name, who.Anonymous, !who.Anonymous, s.t.Name, nil})
+		ID          *string `json:"id"`
+		Name        string  `json:"name"`
+		Type        *string `json:"type"`
+		Role        *string `json:"role"`
+		Anonymous   bool    `json:"anonymous"`
+		Legacy      bool    `json:"legacy"`
+		Writes      bool    `json:"writes"`
+		Administers bool    `json:"administers"`
+		Tenant      string  `json:"tenant"`
+		Marker      *string `json:"marker"`
+	}{orNull(who.ID), who.Name, orNull(who.Type), orNull(who.Role), who.Anonymous, who.Legacy, who.Writes(), who.Administers(), s.t.Name, nil})
+}
+
+// orNull is s, or JSON null when s is empty.
+func orNull(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func (s *Server) ListPrincipals(w http.ResponseWriter, r *http.Request, name api.Tenant) {
+	if s.tenantOK(w, name) {
+		writeJSON(w, http.StatusOK, s.t.PrincipalsEnvelope(time.Now().UTC().Format(store.StampLayout)))
+	}
+}
+
+func (s *Server) PostPrincipal(w http.ResponseWriter, r *http.Request, name api.Tenant) {
+	if !s.tenantOK(w, name) {
+		return
+	}
+	body, ok := readBody(w, r)
+	if !ok {
+		return
+	}
+	var req api.PrincipalRequest
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request", "principal body is {name, role, type?}: "+err.Error(), nil)
+		return
+	}
+	p, err := s.t.AddPrincipal(principal(r), req.Name, req.Type, req.Role)
+	if err != nil {
+		writeIdentityError(w, err)
+		return
+	}
+	env := s.t.PrincipalsEnvelope(time.Now().UTC().Format(store.StampLayout))
+	writeJSON(w, http.StatusCreated, env.Nodes[env.NodeIndex()[p.ID]])
+}
+
+// tokenJSON is a TokenSummary with its nullable fields as JSON null.
+type tokenJSON struct {
+	ID        string  `json:"id"`
+	Principal *string `json:"principal"`
+	Name      string  `json:"name"`
+	Created   *string `json:"created"`
+	Legacy    bool    `json:"legacy"`
+}
+
+func tokenOut(k tenant.TokenSummary) tokenJSON {
+	return tokenJSON{k.ID, orNull(k.Principal), k.Name, orNull(k.Created), k.Legacy}
+}
+
+func (s *Server) ListTokens(w http.ResponseWriter, r *http.Request, name api.Tenant) {
+	if !s.tenantOK(w, name) {
+		return
+	}
+	out := []tokenJSON{}
+	for _, k := range s.t.TokenList() {
+		out = append(out, tokenOut(k))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) RevokeToken(w http.ResponseWriter, r *http.Request, name api.Tenant, id string) {
+	if !s.tenantOK(w, name) {
+		return
+	}
+	k, err := s.t.RevokeToken(principal(r), id)
+	if err != nil {
+		writeIdentityError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tokenOut(k))
+}
+
+// writeIdentityError maps tenant identity errors onto the spec's responses.
+func writeIdentityError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, tenant.ErrForbidden):
+		forbidden(w, err.Error())
+	case errors.Is(err, tenant.ErrExists):
+		writeError(w, http.StatusConflict, "conflict", err.Error(), nil)
+	case errors.Is(err, tenant.ErrInvalid):
+		writeError(w, http.StatusUnprocessableEntity, "invalid", err.Error(), nil)
+	case errors.Is(err, tenant.ErrNoSuchToken):
+		writeError(w, http.StatusNotFound, "not_found", err.Error(), nil)
+	default:
+		writeError(w, http.StatusInternalServerError, "internal", err.Error(), nil)
+	}
 }
 
 func (s *Server) ListConnections(w http.ResponseWriter, r *http.Request, name api.Tenant) {
@@ -158,9 +268,15 @@ func (s *Server) ListConnections(w http.ResponseWriter, r *http.Request, name ap
 	if getenv == nil {
 		getenv = os.Getenv
 	}
-	out := []api.ConnectionSummary{}
+	// The generated ConnectionSummary cannot carry createdBy as null.
+	type summary struct {
+		api.ConnectionSummary
+		CreatedBy *string `json:"createdBy"`
+	}
+	out := []summary{}
 	for _, c := range s.t.Connections {
-		out = append(out, api.ConnectionSummary{Name: c.Name, Type: api.ConnectionSummaryType(c.Type), Url: c.URL, TokenEnv: c.TokenEnv, TokenSet: getenv(c.TokenEnv) != ""})
+		out = append(out, summary{api.ConnectionSummary{Name: c.Name, Type: api.ConnectionSummaryType(c.Type), Url: c.URL, TokenEnv: c.TokenEnv,
+			TokenSet: getenv(c.TokenEnv) != ""}, orNull(c.CreatedBy)})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

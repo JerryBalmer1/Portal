@@ -85,13 +85,29 @@ func (h *harness) specOps() map[string]string {
 	return out
 }
 
-// testToken is the bearer token the test tenant holds, named "tester";
-// do sends it unless told otherwise.
+// testToken is the bearer token of the test tenant's first admin,
+// "tester"; do sends it unless told otherwise. The tenant also holds one
+// token per other role and a legacy token from before 0.5.0, which names
+// no principal (docs/design.md 38).
 const (
-	testToken = "pt-test-token"
-	tester    = "tester"
-	ghSecret  = "gh-secret"
+	testToken    = "pt-test-token"
+	tester       = "tester"
+	contribToken = "pt-contrib-token"
+	readerToken  = "pt-reader-token"
+	legacyToken  = "pt-legacy-token"
+	ghSecret     = "gh-secret"
 )
+
+// testPrincipals is the test tenant's principals.yaml: tester (admin, the
+// first, createdBy null), contrib (contributor) and reed (reader).
+const testPrincipals = `principals:
+  - { id: 'ui:principal:tester', name: tester, type: user, role: admin, created: '2026-10-10T00:00:00.000Z', createdBy: null }
+  - { id: 'ui:principal:contrib', name: contrib, type: user, role: contributor, created: '2026-10-10T00:00:01.000Z', createdBy: 'ui:principal:tester' }
+  - { id: 'ui:principal:reed', name: reed, type: user, role: reader, created: '2026-10-10T00:00:02.000Z', createdBy: 'ui:principal:tester' }
+`
+
+// tokenID is how the API names a token: its hash's first 12 digits.
+func tokenID(token string) string { return tenant.HashToken(token)[:tenant.TokenIDLength] }
 
 // testEnv is the environment the GitHub caller reads: one connection's
 // token is set, one is not.
@@ -126,9 +142,16 @@ func fakeGitHub(t *testing.T) *httptest.Server {
 	return s
 }
 
-// newTenant writes a tenant directory (empty overlay, the test token, three
-// github connections onto gh) and loads it.
+// newTenant writes a tenant directory (empty overlay, the test principals
+// and their tokens, three github connections onto gh) and loads it.
 func newTenant(t *testing.T, p *store.Portal, gh string) *tenant.Tenant {
+	t.Helper()
+	tt, _ := newTenantDir(t, p, gh)
+	return tt
+}
+
+// newTenantDir is newTenant, also returning the tenant's directory.
+func newTenantDir(t *testing.T, p *store.Portal, gh string) (*tenant.Tenant, string) {
 	t.Helper()
 	dir := t.TempDir()
 	td := filepath.Join(dir, "default")
@@ -136,10 +159,15 @@ func newTenant(t *testing.T, p *store.Portal, gh string) *tenant.Tenant {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"portal.yaml": "{}\n",
-		"tokens.yaml": "tokens:\n  - name: " + tester + "\n    sha256: " + tenant.HashToken(testToken) + "\n",
+		"portal.yaml":     "{}\n",
+		"principals.yaml": testPrincipals,
+		"tokens.yaml": "tokens:\n" +
+			"  - { principal: 'ui:principal:tester', sha256: " + tenant.HashToken(testToken) + ", created: '2026-10-10T00:00:00.000Z' }\n" +
+			"  - { principal: 'ui:principal:contrib', sha256: " + tenant.HashToken(contribToken) + ", created: '2026-10-10T00:00:01.000Z' }\n" +
+			"  - { principal: 'ui:principal:reed', sha256: " + tenant.HashToken(readerToken) + ", created: '2026-10-10T00:00:02.000Z' }\n" +
+			"  - { name: old, sha256: " + tenant.HashToken(legacyToken) + " }\n",
 		"connections.yaml": "connections:\n" +
-			"  - { name: gh, type: github, url: " + gh + ", token_env: PT_GH }\n" +
+			"  - { name: gh, type: github, url: " + gh + ", token_env: PT_GH, created_by: 'ui:principal:tester' }\n" +
 			"  - { name: gh-unset, type: github, url: " + gh + ", token_env: PT_GH_UNSET }\n" +
 			"  - { name: gh-bad, type: github, url: " + gh + ", token_env: PT_GH_BAD }\n",
 	}
@@ -153,7 +181,7 @@ func newTenant(t *testing.T, p *store.Portal, gh string) *tenant.Tenant {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tt
+	return tt, td
 }
 
 // serve wraps p for the test tenant, with the fake GitHub and testEnv.
@@ -298,6 +326,18 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 		{"GET", "/api/tenants/default/connections/gh-unset/repos", "", 422},
 		{"GET", "/api/tenants/default/connections/gh-bad/repos", "", 502},
 		{"GET", "/api/tenants/default/connections/nope/repos", "", 404},
+		{"GET", "/api/tenants/default/principals", "", 200},
+		{"GET", "/api/tenants/other/principals", "", 404},
+		{"POST", "/api/tenants/default/principals", `{"name":"newbie","role":"reader"}`, 201},
+		{"POST", "/api/tenants/default/principals", `{"name":"newbie","role":"reader"}`, 409},
+		{"POST", "/api/tenants/default/principals", `{"name":"x","role":"owner"}`, 422},
+		{"POST", "/api/tenants/default/principals", `{"name":"bot","role":"reader","type":"agent"}`, 422},
+		{"POST", "/api/tenants/default/principals", `{"name":"x","role":"reader","extra":1}`, 400},
+		{"POST", "/api/tenants/other/principals", `{"name":"x","role":"reader"}`, 404},
+		{"GET", "/api/tenants/default/tokens", "", 200},
+		{"GET", "/api/tenants/other/tokens", "", 404},
+		{"DELETE", "/api/tenants/default/tokens/" + tokenID(legacyToken), "", 200},
+		{"DELETE", "/api/tenants/default/tokens/" + tokenID(legacyToken), "", 404},
 		{"GET", "/api/tenants/default/nodes?kind=Category", "", 200},
 		{"GET", "/api/tenants/default/nodes", "", 400},
 		{"GET", "/api/tenants/other/nodes?kind=Category", "", 404},

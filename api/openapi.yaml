@@ -1,15 +1,17 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.4.1
+  version: 0.5.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
     displays, has-state, themed-by and opens edges (ontology.yaml, module Portal); the shell's menu is an envelope
     too, of Service and Page nodes. Every API path names the tenant (/api/tenants/{tenant}/...); one process serves
     the one tenant PORTAL_TENANT names, and any other tenant is 404. A request without a bearer token reads only;
-    a write needs a token the tenant's tokens.yaml holds, and a token it does not hold is refused on any request
-    (401). Data layers are mounted read-only and queried; nothing here ever writes to a data layer. Source of
+    a write needs a token the tenant's tokens.yaml holds (401 without one), and a token it does not hold is refused
+    on any request (401). A token belongs to a principal (principals.yaml) whose role decides what it may do: reader
+    reads only, contributor writes everything but identity and settings, admin writes all; a write the role does not
+    allow is 403. A principal creates principals of a role equal to or below its own (attenuation). Data layers are mounted read-only and queried; nothing here ever writes to a data layer. Source of
     truth for the API surface: the Go server (cmd/portal) is generated from this file by oapi-codegen v2.8.0 and
     the JS client in web/client.js is checked against it by the Go spec tests.
 security:
@@ -26,6 +28,8 @@ tags:
     description: The shell page, its routes and its assets.
   - name: tenant
     description: The tenant's merged config, its menu, who is calling, and its service connections.
+  - name: identity
+    description: The tenant's principals and their bearer tokens. Reads are open, as every read is; writes are admin only.
 paths:
   /:
     get:
@@ -151,7 +155,7 @@ paths:
     get:
       operationId: getWhoami
       tags: [tenant]
-      summary: Who the request is. No Authorization header is anonymous and reads only; a bearer token the tenant holds is that token's name and may write. A token it does not hold is 401.
+      summary: Who the request is. No Authorization header is anonymous and reads only; a bearer token the tenant holds is its principal, with that principal's role (a token from before 0.5.0 that names no principal is legacy, an admin named after the token). A token it does not hold is 401.
       responses:
         "200":
           description: The principal.
@@ -159,6 +163,80 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Principal" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/principals:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listPrincipals
+      tags: [identity]
+      summary: The tenant's principals (tenants/<tenant>/principals.yaml) as an envelope of Principal nodes, id ui:principal:<name>, in file order. properties.createdBy is the creator's id, absent only on the first admin.
+      responses:
+        "200":
+          description: The principals (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      operationId: postPrincipal
+      tags: [identity]
+      summary: Create a principal of type user, recorded in principals.yaml with createdBy the caller's id. By attenuation, never of a role above the caller's (403); and identity, so admin only (403). A token from before 0.5.0 has no principal to record and is refused (403). Issue the new principal's token with New-PortalToken -Name <name>.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PrincipalRequest" }
+      responses:
+        "201":
+          description: The principal, as stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Node" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/tenants/{tenant}/tokens:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listTokens
+      tags: [identity]
+      summary: The tenant's bearer tokens (tenants/<tenant>/tokens.yaml), in file order, by owner and the first 12 hex digits of the token's SHA-256. Never a token, never a whole hash.
+      responses:
+        "200":
+          description: One summary per token.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TokenSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/tokens/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+      - name: id
+        in: path
+        required: true
+        description: A TokenSummary id, the first 12 hex digits of the token's SHA-256.
+        schema: { type: string }
+    delete:
+      operationId: revokeToken
+      tags: [identity]
+      summary: Revoke a token, removing it from tokens.yaml; it is refused from the next request on. Admin only (403).
+      responses:
+        "200":
+          description: The token revoked.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/tenants/{tenant}/connections:
     parameters:
@@ -235,6 +313,7 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Invalid" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/tenants/{tenant}/nodes/{id}:
     parameters:
@@ -260,6 +339,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Invalid" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     delete:
       operationId: deleteNode
       tags: [screen]
@@ -274,6 +354,7 @@ paths:
               schema: { $ref: "#/components/schemas/DeleteResult" }
         "404": { $ref: "#/components/responses/NotFound" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/tenants/{tenant}/edges:
     parameters:
       - $ref: "#/components/parameters/Tenant"
@@ -296,6 +377,7 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Invalid" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/tenants/{tenant}/layers:
     parameters:
@@ -333,6 +415,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Invalid" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/layers:
     post:
       operationId: mountLayerUnscoped
@@ -352,6 +435,7 @@ paths:
               schema: { $ref: "#/components/schemas/LayerSummary" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Invalid" }
   /api/tenants/{tenant}/layers/{name}/nodes:
@@ -403,6 +487,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "500": { $ref: "#/components/responses/InternalError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/tenants/{tenant}/diff:
     parameters:
@@ -449,7 +534,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: A token whose SHA-256 is in tenants/<tenant>/tokens.yaml. Needed to write; optional to read.
+      description: A token whose SHA-256 is in tenants/<tenant>/tokens.yaml, belonging to a principal in principals.yaml. Needed to write; optional to read. The principal's role decides which writes.
   parameters:
     Tenant:
       name: tenant
@@ -493,6 +578,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: The principal's role does not allow this. A reader writes nothing; a contributor writes no identity or settings; no principal creates one of a role above its own (attenuation).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     BadGateway:
       description: The service a connection names failed or answered with an error; message carries its status and message.
       content:
@@ -533,15 +623,33 @@ components:
           items: { type: object, additionalProperties: true }
     Principal:
       type: object
-      required: [name, anonymous, writes, tenant]
+      required: [id, name, type, role, anonymous, legacy, writes, administers, tenant]
       properties:
+        id:
+          type: string
+          nullable: true
+          description: ui:principal:<name>; null for anonymous and for a legacy token.
         name:
           type: string
-          description: The token's name in tokens.yaml, or anonymous.
+          description: The principal's name, a legacy token's name in tokens.yaml, or anonymous.
+        type:
+          type: string
+          nullable: true
+          description: user or agent; null for anonymous and for a legacy token.
+        role:
+          type: string
+          nullable: true
+          description: reader, contributor or admin; null for anonymous, admin for a legacy token.
         anonymous: { type: boolean }
+        legacy:
+          type: boolean
+          description: A token from before 0.5.0 that names no principal; it acts as admin until rotated.
         writes:
           type: boolean
-          description: Whether this principal may write (any but anonymous).
+          description: Whether this principal may write at all (contributor or admin).
+        administers:
+          type: boolean
+          description: Whether this principal may write identity and settings (admin).
         tenant: { type: string }
         marker:
           type: string
@@ -549,7 +657,7 @@ components:
           description: Who holds the tenant's marker. Nothing issues markers yet, so always null.
     ConnectionSummary:
       type: object
-      required: [name, type, url, token_env, tokenSet]
+      required: [name, type, url, token_env, tokenSet, createdBy]
       properties:
         name: { type: string }
         type: { type: string, enum: [github] }
@@ -560,6 +668,43 @@ components:
         tokenSet:
           type: boolean
           description: Whether that variable is set in the portal's environment.
+        createdBy:
+          type: string
+          nullable: true
+          description: The id of the principal who made the connection (connections.yaml created_by); null in a file from before 0.5.0.
+    PrincipalRequest:
+      type: object
+      required: [name, role]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Lower-case letters, digits, dot, underscore and dash, starting with a letter or digit, at most 64; the id is ui:principal:<name>.
+        role:
+          type: string
+          description: reader, contributor or admin; at most the caller's.
+        type:
+          type: string
+          description: user, the default and the only type created here (agents are minted via Marker, later).
+    TokenSummary:
+      type: object
+      required: [id, principal, name, created, legacy]
+      properties:
+        id:
+          type: string
+          description: The first 12 hex digits of the token's SHA-256.
+        principal:
+          type: string
+          nullable: true
+          description: The owner's id; null for a legacy token.
+        name:
+          type: string
+          description: The owner's name, or a legacy token's own.
+        created:
+          type: string
+          nullable: true
+          description: When New-PortalToken minted it; null for a legacy token.
+        legacy: { type: boolean }
     Error:
       type: object
       required: [code, message]

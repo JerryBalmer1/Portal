@@ -4,8 +4,11 @@
 # type github: url is the API root (https://api.github.com, or a GitHub
 # Enterprise /api/v3 root); GET /api/tenants/<tenant>/connections/<name>/repos
 # lists the repositories the token can see.
+# created_by is the id of the principal who made the connection
+# (principals.yaml); optional, and absent in a file from before 0.5.0.
 connections:
   - name: github
     type: github
     url: https://api.github.com
     token_env: GITHUB_TOKEN
+    created_by: ui:principal:example

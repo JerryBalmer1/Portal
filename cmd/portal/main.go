@@ -84,7 +84,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("portal: %v", err)
 	}
-	fmt.Printf("tenant %s from %s (%d menu nodes, %d tokens, %d connections)\n", t.Name, *tenants, len(t.Menu.Nodes), t.Tokens(), len(t.Connections))
+	fmt.Printf("tenant %s from %s (%d menu nodes, %d principals, %d tokens, %d connections)\n", t.Name, *tenants, len(t.Menu.Nodes), len(t.Principals()), t.Tokens(), len(t.Connections))
+	// A token from before 0.5.0 names no principal and acts as admin until
+	// it is rotated (docs/design.md 38).
+	if legacy := t.LegacyTokens(); len(legacy) > 0 {
+		fmt.Fprintf(os.Stderr, "portal: warning: tokens.yaml entries without a principal act as admin until rotated: %s\n", strings.Join(legacy, ", "))
+	}
 	// The screen's Mount nodes first, so a flag naming the same layer wins
 	// (docs/design.md 33). A recorded layer that cannot be read is reported
 	// and left unmounted; it never stops the boot.

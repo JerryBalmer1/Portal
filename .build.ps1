@@ -7,7 +7,7 @@
 #                           Invoke-Build Down         (stop it)
 #                           Invoke-Build Generate     (regenerate internal/gen from api/openapi.yaml)
 #                           Invoke-Build Screenshot   (docs/screenshots/: summary.png, service-connections.png,
-#                                                      explore.png)
+#                                                      explore.png, identity-users.png)
 param(
     # Up's port; absent means PORTAL_PORT from .env, else the environment, else 8200. 0 is refused.
     [int] $Port,
@@ -89,7 +89,8 @@ task Down {
 }
 
 # The approve-and-reboot loop on a fresh artifacts/smoke over the FileSystem fixture, on port 18200, as tenant default
-# from artifacts/smoke/tenants with one token, "smoke" (New-PortalToken): boot from the seed, check an anonymous write
+# from artifacts/smoke/tenants with one principal and token, "smoke" (New-PortalToken -Bootstrap, so an admin): boot
+# from the seed, check an anonymous write
 # is refused, add a menu entry through the existing POSTs, approve, change the seed Theme's opacity, approve, restart,
 # and assert the restart booted from the second stamp with that opacity and the menu entry, that the shell's rail draws
 # the tenant menu's services (Chrome's --dump-dom; skipped and said so without Chrome), that the Canvas on Graph/Explore
@@ -108,7 +109,7 @@ task Smoke Build, {
     $savedEnv = @{ PORTAL_TOKEN = $env:PORTAL_TOKEN; PORTAL_TENANT = $env:PORTAL_TENANT; PORTAL_TENANTS = $env:PORTAL_TENANTS }
     $env:PORTAL_TENANT = $null
     $env:PORTAL_TENANTS = $tenants
-    $env:PORTAL_TOKEN = (New-PortalToken -Name smoke -Tenants $tenants).Token
+    $env:PORTAL_TOKEN = (New-PortalToken -Name smoke -Bootstrap -Tenants $tenants).Token
     $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
     $api = '/api/tenants/default'
     try {
@@ -122,7 +123,9 @@ task Smoke Build, {
         $report.checks.seed = [ordered]@{ boot = $p.Boot; nodes = $screen.nodes.Count; edges = $screen.edges.Count }
         $anon = Invoke-WebRequest -Method Post -Uri "$($p.Url)$api/snap" -SkipHttpErrorCheck
         if ([int]$anon.StatusCode -ne 401) { throw "an anonymous POST /snap answered $([int]$anon.StatusCode), not 401" }
-        $report.checks.auth = [ordered]@{ anonymousWrite = [int]$anon.StatusCode; principal = (Invoke-RestMethod "$($p.Url)$api/auth/whoami" -Headers $auth).name }
+        $me = Invoke-RestMethod "$($p.Url)$api/auth/whoami" -Headers $auth
+        if ($me.role -ne 'admin' -or $me.id -ne 'ui:principal:smoke') { throw "the bootstrap token is $($me.id) $($me.role), not ui:principal:smoke admin" }
+        $report.checks.auth = [ordered]@{ anonymousWrite = [int]$anon.StatusCode; principal = $me.name; role = $me.role }
         $layers = Invoke-RestMethod "$($p.Url)$api/layers"
         $layer = $layers | Where-Object name -EQ 'filesystem'
         if (-not $layer -or -not $layer.hasOntology) { throw 'layer filesystem not mounted with its ontology' }
@@ -188,8 +191,9 @@ task Pester Build, {
 
 # Headless captures of the shell at 1400x900 with reduced motion, over the newest FileSystem layer (the fixture when the
 # sibling has none) and, when Claude.Agent has one, its newest agent-runs layer (docs/design.md 35): Overview/Summary,
-# Settings/Service connections (the tenant holds connections.example.yaml's github connection) and Graph/Explore. The
-# tenant is a temporary copy of tenants/default, so the repo's own tokens.yaml and connections.yaml are never read.
+# Settings/Service connections (the tenant holds connections.example.yaml's github connection), Graph/Explore and
+# Identity/Users (principals.example.yaml's admin). The tenant is a temporary copy of tenants/default, so the repo's own
+# principals.yaml, tokens.yaml and connections.yaml are never read.
 # Also prints how many Canvas nodes took a colour from the layer ontology (data-coloured).
 task Screenshot Build, {
     $browser = Find-HeadlessBrowser
@@ -204,6 +208,7 @@ task Screenshot Build, {
     $null = New-Item -ItemType Directory -Force -Path (Join-Path $tenants 'default')
     Copy-Item -LiteralPath (Join-Path $repo 'tenants' 'default' 'portal.yaml') -Destination (Join-Path $tenants 'default')
     Copy-Item -LiteralPath (Join-Path $repo 'tenants' 'default' 'connections.example.yaml') -Destination (Join-Path $tenants 'default' 'connections.yaml')
+    Copy-Item -LiteralPath (Join-Path $repo 'tenants' 'default' 'principals.example.yaml') -Destination (Join-Path $tenants 'default' 'principals.yaml')
     try {
         $runs = 'C:\__Code\Claude.Agent\artifacts\layers'
         $mount = if (Test-Path -LiteralPath $runs) { @{ 'agent-runs' = $runs } } else { @{} }
@@ -212,7 +217,8 @@ task Screenshot Build, {
         foreach ($shot in @(
                 @{ Name = 'summary.png'; Route = '/default/overview/summary' }
                 @{ Name = 'service-connections.png'; Route = '/default/settings/service-connections' }
-                @{ Name = 'explore.png'; Route = '/default/graph/explore' })) {
+                @{ Name = 'explore.png'; Route = '/default/graph/explore' }
+                @{ Name = 'identity-users.png'; Route = '/default/identity/users' })) {
             $png = Join-Path $outDir $shot.Name
             Remove-Item -LiteralPath $png -ErrorAction SilentlyContinue
             $null = Start-Process -FilePath $browser -ArgumentList ($common + @("--screenshot=$png", '--window-size=1400,900', '--hide-scrollbars', "$($p.Url)$($shot.Route)")) -Wait -NoNewWindow -PassThru `

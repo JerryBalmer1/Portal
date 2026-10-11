@@ -44,15 +44,16 @@ BeforeAll {
     function Get-GraphNodeAtTag([string] $RelativePath) { Get-SiblingAt 'Graph.Node' $GraphNodeTag $RelativePath }
     function Get-Lf([string] $Path) { (Get-Content -LiteralPath $Path -Raw -Encoding utf8) -replace "`r`n", "`n" }
     # A tenant directory for every portal the tests start (PORTAL_TENANTS, which Start-Portal reads): the committed
-    # empty overlay and one token, "pester", whose text is PORTAL_TOKEN, which the module's calls send. Outside the
-    # repo, so the repo's own gitignored tokens.yaml is never touched.
+    # empty overlay and one principal, "pester", the first admin (New-PortalToken -Bootstrap), whose token is
+    # PORTAL_TOKEN, which the module's calls send. Outside the repo, so the repo's own gitignored principals.yaml and
+    # tokens.yaml are never touched.
     $script:TenantsDir = Join-Path ([IO.Path]::GetTempPath()) "Portal-tenants-$([guid]::NewGuid())"
     $null = New-Item -ItemType Directory -Force -Path (Join-Path $TenantsDir 'default')
     Copy-Item -LiteralPath (Join-Path $Repo 'tenants' 'default' 'portal.yaml') -Destination (Join-Path $TenantsDir 'default')
     $script:Saved = @{ PORTAL_TENANTS = $env:PORTAL_TENANTS; PORTAL_TOKEN = $env:PORTAL_TOKEN; PORTAL_TENANT = $env:PORTAL_TENANT }
     $env:PORTAL_TENANTS = $TenantsDir
     $env:PORTAL_TENANT = $null
-    $env:PORTAL_TOKEN = (New-PortalToken -Name pester).Token
+    $env:PORTAL_TOKEN = (New-PortalToken -Name pester -Bootstrap).Token
     $script:Auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 
     # One raw call with the test token: status, headers and parsed body, never a throw.
@@ -83,6 +84,69 @@ BeforeAll {
         $null = Start-Process -FilePath $chrome -ArgumentList $argv -Wait -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $work 'dom.html') -RedirectStandardError (Join-Path $work 'err.txt')
         [string](Get-Content -LiteralPath (Join-Path $work 'dom.html') -Raw -ErrorAction SilentlyContinue)
     }
+    # Drives headless Chrome over the DevTools protocol, which --dump-dom cannot: opens $Url/static/base.css to put
+    # $Token in the tab's sessionStorage (where the page keeps it), opens $Url$Route, runs $Script (an expression, a
+    # promise awaited) in the page and returns its value. $null without Chrome.
+    function Invoke-PageScript([string] $Url, [string] $Route, [string] $Token, [string] $Script) {
+        $chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+        if (-not $chrome) { return $null }
+        $work = Join-Path $TestDrive "cdp-$([guid]::NewGuid())"
+        $null = New-Item -ItemType Directory -Force -Path $work
+        $port = 18203
+        $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', "--remote-debugging-port=$port", '--window-size=1400,900', 'about:blank')
+        $proc = Start-Process -FilePath $chrome -ArgumentList $argv -PassThru -RedirectStandardOutput (Join-Path $work 'out.txt') -RedirectStandardError (Join-Path $work 'err.txt')
+        $ws = [System.Net.WebSockets.ClientWebSocket]::new()
+        $cts = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(60))
+        $state = @{ id = 0 }
+        $buf = [byte[]]::new(1MB)
+        # One DevTools command; with -Event, also waits for that event (it may come before or after the answer).
+        $call = {
+            param([string] $Method, [hashtable] $Params = @{}, [string] $Event)
+            $state.id++
+            $msg = [Text.Encoding]::UTF8.GetBytes((@{ id = $state.id; method = $Method; params = $Params } | ConvertTo-Json -Depth 10 -Compress))
+            $null = $ws.SendAsync([ArraySegment[byte]]::new($msg), 'Text', $true, $cts.Token).GetAwaiter().GetResult()
+            $answer = $null
+            $seen = -not $Event
+            while (-not $answer -or -not $seen) {
+                $sb = [Text.StringBuilder]::new()
+                do {
+                    $r = $ws.ReceiveAsync([ArraySegment[byte]]::new($buf), $cts.Token).GetAwaiter().GetResult()
+                    $null = $sb.Append([Text.Encoding]::UTF8.GetString($buf, 0, $r.Count))
+                } until ($r.EndOfMessage)
+                $m = $sb.ToString() | ConvertFrom-Json -Depth 64
+                if ($m.PSObject.Properties['id'] -and $m.id -eq $state.id) {
+                    if ($m.PSObject.Properties['error']) { throw "DevTools $Method failed: $($m.error.message)" }
+                    $answer = $m
+                }
+                elseif ($Event -and $m.PSObject.Properties['method'] -and $m.method -eq $Event) { $seen = $true }
+            }
+            $answer.result
+        }
+        try {
+            $page = $null
+            $deadline = [datetime]::UtcNow.AddSeconds(20)
+            while (-not $page -and [datetime]::UtcNow -lt $deadline) {
+                # Invoke-RestMethod hands back the JSON list as one object: unroll it before filtering.
+                try { $list = Invoke-RestMethod "http://127.0.0.1:$port/json/list" -TimeoutSec 2; $page = $list | Where-Object type -EQ 'page' | Select-Object -First 1 }
+                catch { Start-Sleep -Milliseconds 200 }
+            }
+            if (-not $page) { throw "Chrome's DevTools did not answer on port $port" }
+            $null = $ws.ConnectAsync([uri]$page.webSocketDebuggerUrl, $cts.Token).GetAwaiter().GetResult()
+            $null = & $call 'Page.enable'
+            $null = & $call 'Page.navigate' @{ url = "$Url/static/base.css" } 'Page.loadEventFired'
+            $null = & $call 'Runtime.evaluate' @{ expression = "sessionStorage.setItem('portal.token', '$Token')" }
+            $null = & $call 'Page.navigate' @{ url = "$Url$Route" } 'Page.loadEventFired'
+            $r = & $call 'Runtime.evaluate' @{ expression = $Script; awaitPromise = $true; returnByValue = $true }
+            if ($r.PSObject.Properties['exceptionDetails']) { throw "page script failed: $($r.exceptionDetails.exception.description)" }
+            $r.result.value
+        }
+        finally {
+            try { $null = & $call 'Browser.close' } catch { }
+            $ws.Dispose()
+            if (-not $proc.WaitForExit(5000)) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+        }
+    }
 }
 
 AfterAll {
@@ -91,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.4.1 and needs PowerShell 7.4' {
+    It 'is version 0.5.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.4.1'
+        $m.ModuleVersion | Should -Be '0.5.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -238,11 +302,11 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.4.1, the ten Kinds, the eight edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.5.0, the eleven Kinds, the eight edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.4\.1$'
-        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page') { $text | Should -Match "(?m)^  ${k}:" }
+        $text | Should -Match '(?m)^version: 0\.5\.0$'
+        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
     }
@@ -393,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.4.1'
+        $s.version | Should -Be '0.5.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -578,7 +642,10 @@ Describe 'Live portal' {
     It 'whoami names the token''s principal; without a token the module reads and a write is 401; a bad token is 401 on a read' {
         $me = (Send $Url GET '/api/tenants/default/auth/whoami').Body
         $me.name | Should -Be 'pester'
+        $me.id | Should -Be 'ui:principal:pester'
+        $me.role | Should -Be 'admin'
         $me.writes | Should -BeTrue
+        $me.administers | Should -BeTrue
         $saved = $env:PORTAL_TOKEN
         try {
             $env:PORTAL_TOKEN = $null
@@ -626,8 +693,8 @@ Describe 'Live portal' {
 }
 
 Describe 'Tenants and tokens' {
-    It 'tokens.yaml and connections.yaml are gitignored and their examples committed' {
-        foreach ($f in 'tokens', 'connections') {
+    It 'principals.yaml, tokens.yaml and connections.yaml are gitignored and their examples committed' {
+        foreach ($f in 'principals', 'tokens', 'connections') {
             & git -C $Repo check-ignore -q "tenants/default/$f.yaml"
             $LASTEXITCODE | Should -Be 0 -Because "$f.yaml holds a tenant's own"
             Join-Path $Repo 'tenants' 'default' "$f.example.yaml" | Should -Exist
@@ -636,19 +703,43 @@ Describe 'Tenants and tokens' {
         Join-Path $Repo 'portal.base.yaml' | Should -Exist
         Join-Path $Repo 'schema' 'portal.schema.json' | Should -Exist
     }
-    It 'New-PortalToken stores only the SHA-256, returns the token once and refuses a taken name' {
+    It 'New-PortalToken -Bootstrap makes the first admin once; -Name issues tokens only for a principal that exists' {
         $dir = Join-Path $TestDrive 'tok'
         $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'acme')
         Set-Content -LiteralPath (Join-Path $dir 'acme' 'portal.yaml') -Value '{}'
-        $t = New-PortalToken -Name ci -Tenant acme -Tenants $dir
+        { New-PortalToken -Name ci -Tenant acme -Tenants $dir } | Should -Throw '*No principal named ci*-Bootstrap*'
+        $t = New-PortalToken -Name ci -Bootstrap -Tenant acme -Tenants $dir
         $t.Token | Should -Match '^[0-9a-f]{64}$'
+        $t.Principal | Should -Be 'ui:principal:ci'
+        $t.Role | Should -Be 'admin'
+        $p = Get-Content -LiteralPath (Join-Path $dir 'acme' 'principals.yaml') -Raw
+        $p | Should -Match "(?m)^  - id: 'ui:principal:ci'$"
+        $p | Should -Match '(?m)^    role: admin$'
+        $p | Should -Match '(?m)^    createdBy: null$'
         $text = Get-Content -LiteralPath $t.Path -Raw
         $text | Should -Not -Match $t.Token
         $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($t.Token))).ToLowerInvariant()
-        $text | Should -Match "sha256: $hash"
-        { New-PortalToken -Name ci -Tenant acme -Tenants $dir } | Should -Throw '*already holds a token named ci*'
+        $text | Should -Match "(?m)^  - principal: 'ui:principal:ci'\r?\n    sha256: $hash\r?\n    created: '\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z'"
+        # Once: a second -Bootstrap, of any name, is an error and changes nothing.
+        { New-PortalToken -Name other -Bootstrap -Tenant acme -Tenants $dir } | Should -Throw '*-Bootstrap makes a tenant''s first admin, once*'
+        { New-PortalToken -Name ci -Bootstrap -Tenant acme -Tenants $dir } | Should -Throw '*once*'
+        Get-Content -LiteralPath (Join-Path $dir 'acme' 'principals.yaml') -Raw | Should -Be $p
+        # An existing principal may hold more than one token; an unknown one none.
+        $again = New-PortalToken -Name ci -Tenant acme -Tenants $dir
+        $again.Token | Should -Not -Be $t.Token
+        { New-PortalToken -Name nobody -Tenant acme -Tenants $dir } | Should -Throw '*No principal named nobody*Identity/Users*'
         { New-PortalToken -Name ci -Tenant nope -Tenants $dir } | Should -Throw '*No tenant nope*'
-        (New-PortalToken -Name second -Tenant acme -Tenants $dir).Token | Should -Not -Be $t.Token
+        # What the module writes, the binary reads: a portal on this tenant knows ci as its admin.
+        $work = Join-Path $TestDrive 'tok-art'
+        $portal = Start-Portal -Port 18200 -Artifacts $work -Filesystem '' -Tenant acme -Tenants $dir
+        try {
+            $me = Invoke-RestMethod "$($portal.Url)/api/tenants/acme/auth/whoami" -Headers @{ Authorization = "Bearer $($again.Token)" }
+            $me.id | Should -Be 'ui:principal:ci'
+            $me.role | Should -Be 'admin'
+            @((Invoke-RestMethod "$($portal.Url)/api/tenants/acme/tokens").principal) | Should -Be @('ui:principal:ci', 'ui:principal:ci')
+        }
+        # Windows can list the listener a moment after the process exits, and the next test starts on the same port.
+        finally { Stop-Portal -Artifacts $work; InModuleScope Portal { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
     }
     It 'a tenant overlay that fails the schema stops the binary, naming the file' {
         $dir = Join-Path $TestDrive 'badtenant'
@@ -660,6 +751,102 @@ Describe 'Tenants and tokens' {
         Set-Content -LiteralPath (Join-Path $dir 'default' 'portal.yaml') -Value 'theme: { graph: { wheelZoomSpeed: 10 } }'
         { Start-Portal -Port 18200 -Artifacts (Join-Path $TestDrive 'badtenant-art2') -Filesystem '' -Tenants $dir -TimeoutSec 5 } |
             Should -Throw '*portal.yaml*/theme/graph/wheelZoomSpeed*'
+    }
+}
+
+Describe 'Identity' {
+    # A tenant of its own: the first admin "root" (-Bootstrap) and a token from before 0.5.0, "old-ci", which names no
+    # principal (docs/design.md 38).
+    BeforeAll {
+        $script:IdTenants = Join-Path $TestDrive 'id-tenants'
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $IdTenants 'default')
+        Copy-Item -LiteralPath (Join-Path $Repo 'tenants' 'default' 'portal.yaml') -Destination (Join-Path $IdTenants 'default')
+        $script:Root = New-PortalToken -Name root -Bootstrap -Tenants $IdTenants
+        $script:LegacyToken = 'pester-legacy-token'
+        $legacyHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($LegacyToken))).ToLowerInvariant()
+        Add-Content -LiteralPath $Root.Path -Value "  - name: 'old-ci'`n    sha256: $legacyHash" -Encoding utf8NoBOM
+        $script:LegacyId = $legacyHash.Substring(0, 12)
+        $script:IdWork = Join-Path $TestDrive 'id'
+        $script:IdPortal = Start-Portal -Port 18200 -Artifacts $IdWork -Filesystem '' -Tenants $IdTenants
+        $script:IdUrl = $IdPortal.Url
+        $script:RootAuth = @{ Authorization = "Bearer $($Root.Token)" }
+        $script:RootId = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Root.Token))).ToLowerInvariant().Substring(0, 12)
+    }
+    AfterAll { Stop-Portal -Artifacts $IdWork; InModuleScope Portal { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
+
+    It 'boot warns, naming each token that belongs to no principal; such a token acts as admin' {
+        Get-Content -LiteralPath "$($IdPortal.LogPath).err" -Raw | Should -Match 'warning: tokens\.yaml entries without a principal act as admin until rotated: old-ci'
+        $me = Invoke-RestMethod "$IdUrl/api/tenants/default/auth/whoami" -Headers @{ Authorization = "Bearer $LegacyToken" }
+        $me.legacy | Should -BeTrue
+        $me.role | Should -Be 'admin'
+        $me.id | Should -BeNullOrEmpty
+    }
+    It 'draws Users with the bootstrap admin and Add disabled for anonymous, Agents as its empty state, Tokens by principal' {
+        $users = Get-PageDom $IdUrl '/default/identity/users'
+        if (-not $users) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $users | Should -Match '<tr data-principal="ui:principal:root"><td>root</td><td>admin</td><td>[^<]+</td><td>bootstrap</td></tr>'
+        $users | Should -Match '<button type="submit" class="gr-btn" disabled="" title="sign in to write" data-readonly="true">Add</button>'
+        $agents = Get-PageDom $IdUrl '/default/identity/agents'
+        $agents | Should -Match 'No agents yet'
+        $agents | Should -Match 'minted via Marker, later'
+        $agents | Should -Not -Match 'data-form="add-user"'
+        $tokens = Get-PageDom $IdUrl '/default/settings/tokens'
+        $tokens | Should -Match "<tr data-token=""$RootId""><td>root</td>"
+        $tokens | Should -Match "<tr data-token=""$LegacyId""><td>old-ci <span class=""pt-badge"">legacy: admin until rotated</span></td>"
+        $tokens | Should -Match 'disabled="" title="sign in to write" data-readonly="true">Revoke</button>'
+    }
+    It 'the Users page Add flow: the admin adds a reader in the page; principals.yaml records it, createdBy the admin' {
+        $js = @'
+(async () => {
+  const wait = async (f, what) => { for (let i = 0; i < 100; i++) { const v = f(); if (v) return v; await new Promise((r) => setTimeout(r, 100)); } throw new Error('timed out waiting for ' + what); };
+  const form = await wait(() => document.querySelector('form[data-form="add-user"]'), 'the Add user form');
+  await wait(() => document.querySelector('tr[data-principal="ui:principal:root"]'), 'the users table');
+  const btn = form.querySelector('button[type="submit"]');
+  const role = form.querySelector('select[name="role"]');
+  const out = { disabled: btn.disabled, title: btn.title, roles: [...role.options].filter((o) => !o.disabled).map((o) => o.value), avatar: document.getElementById('avatar').dataset.role };
+  form.querySelector('input[name="name"]').value = 'ann';
+  role.value = 'reader';
+  form.requestSubmit();
+  const row = await wait(() => document.querySelector('tr[data-principal="ui:principal:ann"]'), 'the added row');
+  out.cells = [...row.cells].map((c) => c.textContent);
+  out.status = form.querySelector('.pt-status').textContent;
+  return JSON.stringify(out);
+})()
+'@
+        $raw = Invoke-PageScript -Url $IdUrl -Route '/default/identity/users' -Token $Root.Token -Script $js
+        if ($null -eq $raw) { Set-ItResult -Skipped -Because 'no Chrome for the DevTools protocol'; return }
+        $seen = $raw | ConvertFrom-Json
+        $seen.avatar | Should -Be 'admin'
+        $seen.disabled | Should -BeFalse
+        $seen.title | Should -BeNullOrEmpty
+        @($seen.roles) | Should -Be @('reader', 'contributor', 'admin')
+        $seen.cells[0] | Should -Be 'ann'
+        $seen.cells[1] | Should -Be 'reader'
+        $seen.cells[3] | Should -Be 'root'
+        $seen.status | Should -Be 'Added ann. Issue its token with New-PortalToken -Name ann.'
+        $file = Get-Content -LiteralPath (Join-Path $IdTenants 'default' 'principals.yaml') -Raw
+        $file | Should -Match "(?m)^  - id: 'ui:principal:ann'\r?\n    name: 'ann'\r?\n    type: user\r?\n    role: reader\r?\n    created: '[^']+'\r?\n    createdBy: 'ui:principal:root'$"
+        $file | Should -Match '(?m)^# Principals of tenant default'
+        $n = (Invoke-RestMethod "$IdUrl/api/tenants/default/principals").nodes | Where-Object id -EQ 'ui:principal:ann'
+        $n.properties.createdBy | Should -Be 'ui:principal:root'
+    }
+    It 'New-PortalToken issues a token for a principal the portal added; an admin''s Revoke reloads tokens.yaml, so it goes live, and a reader is 403' {
+        $ann = New-PortalToken -Name ann -Tenants $IdTenants
+        $ann.Role | Should -Be 'reader'
+        $annAuth = @{ Authorization = "Bearer $($ann.Token)" }
+        # Minted after boot: refused until the portal next reads tokens.yaml.
+        [int](Invoke-WebRequest "$IdUrl/api/tenants/default/auth/whoami" -Headers $annAuth -SkipHttpErrorCheck).StatusCode | Should -Be 401
+        $gone = Invoke-RestMethod -Method Delete "$IdUrl/api/tenants/default/tokens/$LegacyId" -Headers $RootAuth
+        $gone.name | Should -Be 'old-ci'
+        $gone.legacy | Should -BeTrue
+        [int](Invoke-WebRequest "$IdUrl/api/tenants/default/auth/whoami" -Headers @{ Authorization = "Bearer $LegacyToken" } -SkipHttpErrorCheck).StatusCode | Should -Be 401
+        (Get-Content -LiteralPath $Root.Path -Raw) | Should -Not -Match 'old-ci'
+        (Invoke-RestMethod "$IdUrl/api/tenants/default/auth/whoami" -Headers $annAuth).role | Should -Be 'reader'
+        $r = Invoke-WebRequest -Method Post "$IdUrl/api/tenants/default/snap" -Headers $annAuth -SkipHttpErrorCheck
+        [int]$r.StatusCode | Should -Be 403
+        ($r.Content | ConvertFrom-Json).code | Should -Be 'forbidden'
+        $r = Invoke-WebRequest -Method Post "$IdUrl/api/tenants/default/principals" -Headers $RootAuth -ContentType 'application/json' -Body '{"name":"ann","role":"reader"}' -SkipHttpErrorCheck
+        [int]$r.StatusCode | Should -Be 409
     }
 }
 
@@ -692,7 +879,7 @@ Describe 'Service connections' {
         $null = New-Item -ItemType Directory -Force -Path (Join-Path $ConnTenants 'default')
         Copy-Item -LiteralPath (Join-Path $Repo 'tenants' 'default' 'portal.yaml') -Destination (Join-Path $ConnTenants 'default')
         Set-Content -LiteralPath (Join-Path $ConnTenants 'default' 'connections.yaml') -Value "connections:`n  - { name: github, type: github, url: 'http://localhost:$FakePort', token_env: PORTAL_PESTER_GH }"
-        $script:ConnToken = (New-PortalToken -Name pester -Tenants $ConnTenants).Token
+        $script:ConnToken = (New-PortalToken -Name pester -Bootstrap -Tenants $ConnTenants).Token
         $script:SavedGh = $env:PORTAL_PESTER_GH
         $env:PORTAL_PESTER_GH = 'gh-pester'
         $script:ConnWork = Join-Path $TestDrive 'conn'

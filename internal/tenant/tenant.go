@@ -1,10 +1,11 @@
 // Package tenant is what one tenant of the portal runs with: the product's
 // base config (portal.base.yaml) with the tenant's overlay
 // (tenants/<tenant>/portal.yaml) deep-merged over it, the menu built from
-// that config as a Graph.Node envelope, the bearer tokens that may write
-// (tokens.yaml) and the service connections (connections.yaml). Everything
-// is read once, at boot, and checked: a file that fails stops the binary.
-// Nothing here writes a file.
+// that config as a Graph.Node envelope, its identity (principals.yaml, and
+// tokens.yaml: the bearer tokens and whose they are) and the service
+// connections (connections.yaml). Everything is read at boot and checked: a
+// file that fails stops the binary. The only files written are the two
+// identity files, by an admin's Add principal and Revoke (identity.go).
 package tenant
 
 import (
@@ -17,6 +18,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"go.yaml.in/yaml/v3"
@@ -30,13 +33,18 @@ const Default = "default"
 // NamePattern is a tenant name: a path segment in every API route.
 var NamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-// Tenant is one loaded tenant. Safe for concurrent reads; never changed
-// after Load.
+// Tenant is one loaded tenant. Safe for concurrent use. Name, Config, Menu
+// and Connections never change after Load; principals and tokens change
+// only through AddPrincipal and RevokeToken, under mu.
 type Tenant struct {
 	Name        string
 	Config      map[string]any
 	Menu        *graph.Envelope
 	Connections []Connection
+	dir         string
+	now         func() time.Time
+	mu          sync.RWMutex
+	principals  []Principal
 	tokens      []token
 }
 
@@ -45,7 +53,7 @@ type Options struct {
 	// Name is the tenant; empty means Default.
 	Name string
 	// Dir holds one directory per tenant: <Dir>/<Name>/portal.yaml, and
-	// optionally tokens.yaml and connections.yaml beside it.
+	// optionally principals.yaml, tokens.yaml and connections.yaml beside it.
 	Dir string
 	// Base and Schema are portal.base.yaml and schema/portal.schema.json.
 	Base, Schema []byte
@@ -54,6 +62,8 @@ type Options struct {
 	// Check runs the portal ontology over the menu envelope (store's
 	// CheckEnvelope); nil skips it.
 	Check func(*graph.Envelope) []graph.Problem
+	// Now stamps a new principal's created; nil means time.Now.
+	Now func() time.Time
 }
 
 // ConfigError lists every problem found in one file, or in the merge.
@@ -97,7 +107,10 @@ func Load(o Options) (*Tenant, error) {
 	if ps := checkMerged(merged); len(ps) > 0 {
 		return nil, &ConfigError{File: "portal.base.yaml + " + overlayPath, Problems: ps}
 	}
-	t := &Tenant{Name: name, Config: merged}
+	t := &Tenant{Name: name, Config: merged, dir: dir, now: o.Now}
+	if t.now == nil {
+		t.now = time.Now
+	}
 	if t.Menu, err = BuildMenu(merged, o.Stamp); err != nil {
 		return nil, err
 	}
@@ -108,10 +121,10 @@ func Load(o Options) (*Tenant, error) {
 	if graph.HasErrors(ps) {
 		return nil, &ConfigError{File: "menu (from portal.base.yaml + " + overlayPath + ")", Problems: problemStrings(ps)}
 	}
-	if t.tokens, err = loadTokens(filepath.Join(dir, "tokens.yaml")); err != nil {
+	if t.principals, t.tokens, err = loadIdentity(dir); err != nil {
 		return nil, err
 	}
-	if t.Connections, err = loadConnections(filepath.Join(dir, "connections.yaml")); err != nil {
+	if t.Connections, err = loadConnections(filepath.Join(dir, "connections.yaml"), t.principals); err != nil {
 		return nil, err
 	}
 	return t, nil

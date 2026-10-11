@@ -1,0 +1,15 @@
+# Copy to principals.yaml (gitignored), or let New-PortalToken -Name <name>
+# -Bootstrap write it: who may hold a bearer token in this tenant, and with
+# what role (docs/design.md 38). id is ui:principal:<name>; type is user or
+# agent (only users are created in 0.5.0); role is reader (GET only),
+# contributor (every write but identity and settings) or admin (all).
+# createdBy is the creator's id, null only for the first admin. A principal
+# never has a role above its creator's (attenuation). An admin adds more on
+# Identity/Users; the portal appends them here.
+principals:
+  - id: 'ui:principal:example'
+    name: 'example'
+    type: user
+    role: admin
+    created: '2026-10-11T00:00:00.000Z'
+    createdBy: null

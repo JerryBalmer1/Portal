@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -21,12 +22,14 @@ import (
 
 // Connection is one entry of connections.yaml. TokenEnv names the
 // environment variable holding the secret; the secret is read when a call
-// needs it and never stored or served.
+// needs it and never stored or served. CreatedBy is the id of the principal
+// who made it; empty in a file from before 0.5.0.
 type Connection struct {
-	Name     string `yaml:"name" json:"name"`
-	Type     string `yaml:"type" json:"type"`
-	URL      string `yaml:"url" json:"url"`
-	TokenEnv string `yaml:"token_env" json:"token_env"`
+	Name      string `yaml:"name" json:"name"`
+	Type      string `yaml:"type" json:"type"`
+	URL       string `yaml:"url" json:"url"`
+	TokenEnv  string `yaml:"token_env" json:"token_env"`
+	CreatedBy string `yaml:"created_by,omitempty" json:"createdBy,omitempty"`
 }
 
 // ConnectionTypes are the types a connection may have.
@@ -59,7 +62,7 @@ func (e *UpstreamError) Error() string {
 	return fmt.Sprintf("%d: %s", e.Status, e.Message)
 }
 
-func loadConnections(path string) ([]Connection, error) {
+func loadConnections(path string, principals []Principal) ([]Connection, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -100,6 +103,9 @@ func loadConnections(path string) ([]Connection, error) {
 		}
 		if !envName.MatchString(c.TokenEnv) {
 			ps = append(ps, fmt.Sprintf("%s/token_env: %q names no environment variable", at, c.TokenEnv))
+		}
+		if c.CreatedBy != "" && !slices.ContainsFunc(principals, func(p Principal) bool { return p.ID == c.CreatedBy }) {
+			ps = append(ps, fmt.Sprintf("%s/created_by: %q is in no entry of %s", at, c.CreatedBy, PrincipalsFile))
 		}
 	}
 	if len(ps) > 0 {

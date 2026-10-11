@@ -7,6 +7,15 @@
 // anonymous.
 export const READ_ONLY = 'sign in to write';
 
+// refusal is why the principal who (whoami) may not make a write that needs
+// role need (contributor: any write; admin: identity and settings), as the
+// tooltip to show, or '' when it may (docs/design.md 38).
+export function refusal(who, need = 'contributor') {
+  if (!who || who.anonymous) return READ_ONLY;
+  if (need === 'admin' ? who.administers : who.writes) return '';
+  return need === 'admin' ? `admin only: ${who.name} is ${who.role}` : `${who.name} is ${who.role}, which reads only`;
+}
+
 let box = null;
 
 // toast shows err's code, message and problems (an Error object from
@@ -34,12 +43,13 @@ export function toast(err, ms = 5000) {
   return t;
 }
 
-// guard disables a write control while the viewer reads only, with the
-// read-only tooltip; it returns the control.
+// guard disables a write control while the viewer may not write, with the
+// tooltip readOnly gives when it is a string (refusal), else READ_ONLY; it
+// returns the control.
 export function guard(el, readOnly) {
   if (readOnly) {
     el.disabled = true;
-    el.title = READ_ONLY;
+    el.title = typeof readOnly === 'string' ? readOnly : READ_ONLY;
     el.dataset.readonly = 'true';
   }
   return el;

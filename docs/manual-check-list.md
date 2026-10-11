@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.4.1 on 2026-10-10, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: items 0.2 in full (Go 47 tests, Smoke passed, Pester 69 passed), 1.11 and 1.12 run as written and their Expects are the output seen. Not re-run for 0.4.1, as their code did not change: 0.1, 0.3, 1.1 to 1.10, 2.1 and 3.1 to 3.5 (last verified for 0.4.0). 2.2 to 2.6 are interactive and were not run as written. 2.6's steps were driven by script in Chrome against the same setup (overlay `wheelZoomSpeed: 3`, fixture layer): as anonymous the Canvas's collapse and all 13 Designer buttons were disabled with `sign in to write`, the forced collapse toasted `unauthorized: PATCH writes, and a write needs a bearer token; without one the portal reads only` with the Canvas still drawn (52/52 coloured, no error in the panel), the Canvas recorded `data-wheel-sensitivity` 0.6, and signed in as `check` all 13 were live and the badge gone. A real wheel notch was not tried.
+Verified for: 0.5.0 on 2026-10-10, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 in full (Go 55 tests, Smoke passed, Pester 73 passed); items 0.3, 1.1 to 1.14 and 3.1 to 3.5 run as written, each from its own `pwsh -NoProfile -File`, and their Expects are the output seen (every item that mints a token now bootstraps its principal first). Not run: 0.1 (no toolchain change); 2.1 to 2.7, which are interactive. 2.7's Add path was driven by the DevTools protocol in Pester ("the Users page Add flow"); its Revoke click and the page's sign-out after revoking its own token were not driven.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/server`, `internal/store` and `internal/tenant` (47 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke"}` and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 69, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
+Expect: go test ends `ok` for `cmd/portal`, `internal/server`, `internal/store` and `internal/tenant` (55 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 73, Failed: 0, Skipped: 0`; then `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -37,8 +37,8 @@ Expect: `exit 0`, then `git-guard: agents edit and stage only; commits are run b
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 $dir = Join-Path $env:TEMP 'portal-check-1.1'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
@@ -59,8 +59,8 @@ Expect: `boot: seed; nodes: 20, edges: 19, root: ui:root`, then `Category: 5`, `
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 $dir = Join-Path $env:TEMP 'portal-check-1.2'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
@@ -86,8 +86,8 @@ Expect: `422 display`, `422 schema`, `422 unknown-category`, `422 property-type`
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 $dir = Join-Path $env:TEMP 'portal-check-1.3'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
@@ -126,8 +126,8 @@ Expect: `hidden: ui:designer` (its section States stay, as every hidden node's S
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 $dir = Join-Path $env:TEMP 'portal-check-1.5'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $exe = '.\build\win-x64\portal.exe'
@@ -165,8 +165,8 @@ Expect: `boot: seed`, `first: previous [] diff []`, `second: previous is first T
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 $dir = Join-Path $env:TEMP 'portal-check-1.6'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
@@ -191,8 +191,8 @@ Expect: `201`, `201`, `201`, `422 edge-endpoints`, then the six menu edges `ui:m
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 $dir = Join-Path $env:TEMP 'portal-check-1.7'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
@@ -215,8 +215,8 @@ Expect: `mounted: agent-runs 52 nodes`, `recorded: Mount agent-runs C:\__Code\Po
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 $dir = Join-Path $env:TEMP 'portal-check-1.8'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
@@ -232,7 +232,7 @@ try {
 }
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: `GET /screen 200`, `POST /snap 401 unauthorized`, `GET /screen 401 unauthorized`, `POST /snap 201`, then `anonymous: {"name":"anonymous","anonymous":true,"writes":false,"tenant":"default","marker":null}` and `token: {"name":"check","anonymous":false,"writes":true,"tenant":"default","marker":null}`.
+Expect: `GET /screen 200`, `POST /snap 401 unauthorized`, `GET /screen 401 unauthorized`, `POST /snap 201`, then `anonymous: {"id":null,"name":"anonymous","type":null,"role":null,"anonymous":true,"legacy":false,"writes":false,"administers":false,"tenant":"default","marker":null}` and `token: {"id":"ui:principal:check","name":"check","type":"user","role":"admin","anonymous":false,"legacy":false,"writes":true,"administers":true,"tenant":"default","marker":null}` (since 0.5.0 the token belongs to the bootstrap admin, docs/design.md 38).
 
 ### 1.9 Config, menu and routes are the tenant's
 ```powershell
@@ -265,8 +265,8 @@ Expect: `product: Portal`, `menu: Page 39, Service 13, State 13`, `services: Ove
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 Set-Content "$env:PORTAL_TENANTS\default\connections.yaml" "connections:`n  - { name: github, type: github, token_env: PORTAL_CHECK_GH }`n"
 $dir = Join-Path $env:TEMP 'portal-check-1.10'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
@@ -283,7 +283,7 @@ try {
 }
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir, "$env:PORTAL_TENANTS\default\connections.yaml" -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: `list: {"name":"github","tokenSet":false,"token_env":"PORTAL_CHECK_GH","type":"github","url":"https://api.github.com"}` (one connection, so one object; the url is GitHub's default), `anonymous repos: 401 unauthorized` (the call spends the tenant's GitHub token, so it needs a bearer token though it is a GET), `repos: 422 token not set: connection github reads its token from PORTAL_CHECK_GH, which is not set`, `nope: 404`. With `PORTAL_CHECK_GH` set to a GitHub token before Start-Portal, `repos:` is `200` and the envelope holds one `git.repository` node per repository; a token GitHub refuses is `502` with GitHub's message (Go's `TestGitHubReposEndpoint` covers both against a fake GitHub).
+Expect: `list: {"name":"github","tokenSet":false,"token_env":"PORTAL_CHECK_GH","type":"github","url":"https://api.github.com","createdBy":null}` (one connection, so one object; the url is GitHub's default; `createdBy` null as the entry has no `created_by`), `anonymous repos: 401 unauthorized` (the call spends the tenant's GitHub token, so it needs a bearer token though it is a GET), `repos: 422 token not set: connection github reads its token from PORTAL_CHECK_GH, which is not set`, `nope: 404`. With `PORTAL_CHECK_GH` set to a GitHub token before Start-Portal, `repos:` is `200` and the envelope holds one `git.repository` node per repository; a token GitHub refuses is `502` with GitHub's message (Go's `TestGitHubReposEndpoint` covers both against a fake GitHub).
 
 ### 1.11 A tenant overlay that fails the schema stops the binary
 ```powershell
@@ -317,6 +317,68 @@ finally { Stop-Portal -Artifacts $dir; Remove-Item $t, $dir -Recurse -Force -Err
 ```
 Expect: `base: 1`, `anonymous collapse: 401 unauthorized`, `overlay: 2.5` (docs/design.md 37).
 
+### 1.13 Roles: reader GET only, contributor no identity, admin all; attenuation; revoke
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
+$null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$admin = @{ Authorization = "Bearer $((New-PortalToken -Name check -Bootstrap).Token)" }
+$dir = Join-Path $env:TEMP 'portal-check-1.13'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+try {
+    $api = "$($p.Url)/api/tenants/default"
+    $add = { param($name, $role, $h) $r = Invoke-WebRequest -Method Post "$api/principals" -Headers $h -ContentType application/json -Body (@{ name = $name; role = $role } | ConvertTo-Json) -SkipHttpErrorCheck; "add $name $role -> $($r.StatusCode)$(if ($r.StatusCode -ge 400) { ' ' + ($r.Content | ConvertFrom-Json).message })" }
+    & $add rea reader $admin
+    & $add con contributor $admin
+    $reader = @{ Authorization = "Bearer $((New-PortalToken -Name rea).Token)" }
+    $contrib = @{ Authorization = "Bearer $((New-PortalToken -Name con).Token)" }
+    # Tokens minted after boot go live at the portal's next Add or Revoke, which re-read tokens.yaml.
+    & $add ops reader $admin
+    & $add nobody reader @{}
+    foreach ($w in @(@{ n = 'reader'; h = $reader }, @{ n = 'contributor'; h = $contrib }, @{ n = 'admin'; h = $admin })) {
+        $snap = Invoke-WebRequest -Method Post "$api/snap" -Headers $w.h -SkipHttpErrorCheck
+        "$($w.n): GET $((Invoke-WebRequest "$api/screen" -Headers $w.h -SkipHttpErrorCheck).StatusCode), POST /snap $($snap.StatusCode)"
+    }
+    & $add boss admin $contrib
+    & $add peer reader $contrib
+    & $add peer reader $reader
+    (Invoke-RestMethod "$api/principals").nodes | ForEach-Object { "principal $($_.name) $($_.properties.role) by $($_.properties.createdBy)" }
+    $con = (Invoke-RestMethod "$api/tokens") | Where-Object name -EQ 'con'
+    "revoke by contributor: $((Invoke-WebRequest -Method Delete "$api/tokens/$($con.id)" -Headers $contrib -SkipHttpErrorCheck).StatusCode)"
+    "revoke by admin: $((Invoke-RestMethod -Method Delete "$api/tokens/$($con.id)" -Headers $admin) | ConvertTo-Json -Compress)"
+    "contributor after: $((Invoke-WebRequest "$api/screen" -Headers $contrib -SkipHttpErrorCheck).StatusCode)"
+    (Invoke-RestMethod "$api/tokens") | ForEach-Object { "token $($_.name) $($_.id)" }
+}
+finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `add rea reader -> 201`, `add con contributor -> 201`, `add ops reader -> 201`, `add nobody reader -> 401 POST writes, and a write needs a bearer token; without one the portal reads only`, then `reader: GET 200, POST /snap 403`, `contributor: GET 200, POST /snap 201`, `admin: GET 200, POST /snap 201`, then `add boss admin -> 403 forbidden: attenuation: contributor con may create principals of role reader or contributor only, not admin`, `add peer reader -> 403 forbidden: creating a principal is identity, which needs role admin; con is contributor`, `add peer reader -> 403 POST writes, and rea's role reader reads only`, the four principals (`check admin by` nothing, then `rea`, `con`, `ops` each `by ui:principal:check`), `revoke by contributor: 403`, `revoke by admin: {"id":"<12 hex>","principal":"ui:principal:con","name":"con","created":"<time>","legacy":false}`, `contributor after: 401`, and the two tokens left, `check` and `rea` (docs/design.md 38).
+
+### 1.14 A token from before 0.5.0 acts as admin and is named at boot
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
+$null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes('old-token'))).ToLowerInvariant()
+Set-Content "$env:PORTAL_TENANTS\default\tokens.yaml" "tokens:`n  - name: 'old-ci'`n    sha256: $hash`n"
+$old = @{ Authorization = 'Bearer old-token' }
+$dir = Join-Path $env:TEMP 'portal-check-1.14'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+try {
+    $api = "$($p.Url)/api/tenants/default"
+    Get-Content "$($p.LogPath).err"
+    "whoami: $((Invoke-RestMethod "$api/auth/whoami" -Headers $old) | ConvertTo-Json -Compress)"
+    "snap: $((Invoke-WebRequest -Method Post "$api/snap" -Headers $old -SkipHttpErrorCheck).StatusCode)"
+    $r = Invoke-WebRequest -Method Post "$api/principals" -Headers $old -ContentType application/json -Body '{"name":"x","role":"reader"}' -SkipHttpErrorCheck
+    "add: $($r.StatusCode) $(($r.Content | ConvertFrom-Json).message)"
+}
+finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `portal: warning: tokens.yaml entries without a principal act as admin until rotated: old-ci`, then `whoami: {"id":null,"name":"old-ci","type":null,"role":"admin","anonymous":false,"legacy":true,"writes":true,"administers":true,"tenant":"default","marker":null}`, `snap: 201`, and `add: 403 forbidden: old-ci's token belongs to no principal (from before 0.5.0), so it cannot be recorded as createdBy; bootstrap a principal with New-PortalToken -Bootstrap` (docs/design.md 38).
+
 ## 2. Page
 
 ### 2.1 The shell, and the FileSystem layer in colour on Graph/Explore
@@ -324,15 +386,15 @@ Expect: `base: 1`, `anonymous collapse: 401 unauthorized`, `overlay: 2.5` (docs/
 # needs C:\__Code\Graph.Emitter.FileSystem\artifacts\layers (falls back to the fixture); mounts C:\__Code\Claude.Agent\artifacts\layers as agent-runs when present
 Invoke-Build Screenshot
 ```
-Expect: `captured ...\docs\screenshots\summary.png`, `...service-connections.png`, `...explore.png`, then `canvas coloured from ontology: <n>/<n>`. Every PNG is dark: a near-black grid behind cards. The banner holds `Portal`, the breadcrumb (`default / Overview / Summary` and so on), a search box, `marker: none`, `Help` and the `anonymous` avatar. The rail lists Overview to Stack with icons, Settings at the foot above `Collapse`, and the open service's pages in place, the current one marked with the accent. summary.png shows the empty state `No summary yet`; service-connections.png one row, `github`, `https://api.github.com`, a red dot and `GITHUB_TOKEN`, and a `Test` button; explore.png the toolbar `filesystem · <n> nodes · <m> edges · <stamp>`, the badge `screen 20 · 19 · <stamp>` and `read-only: sign in to write`, above the filesystem Canvas filling the pane (with the sibling's layer Directories are blue rounded squares labelled `name/`, Files grey circles; with the fixture, Directories amber, Files blue).
+Expect: `captured ...\docs\screenshots\summary.png`, `...service-connections.png`, `...explore.png`, `...identity-users.png`, then `canvas coloured from ontology: <n>/<n>`. Every PNG is dark: a near-black grid behind cards. The banner holds `Portal`, the breadcrumb (`default / Overview / Summary` and so on), a search box, `marker: none`, `Help` and the `anonymous` avatar. The rail lists Overview to Stack with icons, Settings at the foot above `Collapse`, and the open service's pages in place, the current one marked with the accent. summary.png shows the empty state `No summary yet`; service-connections.png one row, `github`, `https://api.github.com`, a red dot and `GITHUB_TOKEN`, a `created by` of `example` and a `Test` button; identity-users.png the Add user form (name, `reader`, a greyed `Add`) above one row, `example`, `admin`, `2026-10-11T00:00:00.000Z`, `bootstrap`; explore.png the toolbar `filesystem · <n> nodes · <m> edges · <stamp>`, the badge `screen 20 · 19 · <stamp>` and `read-only: sign in to write`, above the filesystem Canvas filling the pane (with the sibling's layer Directories are blue rounded squares labelled `name/`, Files grey circles; with the fixture, Directories amber, Files blue).
 
 ### 2.2 Approve from the Designer
 ```powershell
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 "token: $env:PORTAL_TOKEN"
 $dir = Join-Path $env:TEMP 'portal-check-2.2'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
@@ -348,8 +410,8 @@ Expect: the avatar turns to `check` with the accent; the page shows only the App
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 "token: $env:PORTAL_TOKEN"
 $dir = Join-Path $env:TEMP 'portal-check-2.3'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
@@ -365,8 +427,8 @@ Expect: after Add Category the Categories list shows `└ Tree (refines Canvas)`
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 "token: $env:PORTAL_TOKEN"
 $dir = Join-Path $env:TEMP 'portal-check-2.4'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
@@ -389,9 +451,9 @@ Expect: the seeded page shows Approve and Categories open and the other five col
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Copy-Item .\tenants\default\connections.example.yaml "$env:PORTAL_TENANTS\default\connections.yaml" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-"token: $((New-PortalToken -Name check).Token)"
+(Get-Content .\tenants\default\connections.example.yaml) -replace 'ui:principal:example', 'ui:principal:check' | Set-Content "$env:PORTAL_TENANTS\default\connections.yaml"
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+"token: $((New-PortalToken -Name check -Bootstrap).Token)"
 $dir = Join-Path $env:TEMP 'portal-check-2.5'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
@@ -407,8 +469,8 @@ Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"
 Set-Content "$env:PORTAL_TENANTS\default\portal.yaml" 'theme: { graph: { wheelZoomSpeed: 3 } }'
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-"token: $((New-PortalToken -Name check).Token)"
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+"token: $((New-PortalToken -Name check -Bootstrap).Token)"
 $dir = Join-Path $env:TEMP 'portal-check-2.6'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
@@ -418,6 +480,23 @@ Stop-Portal -Artifacts $dir; Remove-Item $dir, "$env:PORTAL_TENANTS\default\port
 ```
 Expect: as anonymous the Canvas's `collapse` and every Designer button (section toggles, Approve, the four Adds) are greyed and show `sign in to write` on hover, and the toolbar says `read-only: sign in to write`. The collapse forced past `disabled` shows a toast at the bottom right, `unauthorized: PATCH writes, and a write needs a bearer token; without one the portal reads only`, for 5 s; the Canvas keeps drawing the graph and no error text appears in the panel. Signed in as `check`, the buttons are live and the badge is gone. With `wheelZoomSpeed: 3` the Canvas host carries `data-wheel-sensitivity="0.6"` (0.2 with the committed `{}`), and one wheel notch zooms about three times as far.
 
+### 2.7 Identity/Users Add, Identity/Agents, Settings/Tokens Revoke
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
+$null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+"admin token: $((New-PortalToken -Name check -Bootstrap).Token)"
+$dir = Join-Path $env:TEMP 'portal-check-2.7'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+Start-Process "$($p.Url)/default/identity/users"
+Read-Host 'Hover Add; give the avatar the admin token; Add "ann" as reader; open Identity > Agents; open Settings > Tokens and press Revoke twice on check''s row; press Enter here to stop'
+Get-Content "$env:PORTAL_TENANTS\default\principals.yaml"
+Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+```
+Expect: as anonymous Users lists `check`, `admin`, its created time and `bootstrap`, and the Add button is greyed with `sign in to write`. Signed in, the avatar reads `check` and the role list offers reader, contributor and admin; Add shows `Added ann. Issue its token with New-PortalToken -Name ann.` and a row `ann`, `reader`, `<created>`, `check`. Agents shows `No agents yet` and `Agents are minted via Marker, later.` Tokens lists `check` with a 12-digit hash and its created time; the first Revoke turns into `Revoke <hash>?`, the second removes it, and the page drops the now-refused token and reads as anonymous. The printed principals.yaml ends with ann's entry, `createdBy: 'ui:principal:check'`.
+
 ## 3. PowerShell
 
 ### 3.1 Approve, PATCH a Theme, approve, diff, restart
@@ -425,8 +504,8 @@ Expect: as anonymous the Canvas's `collapse` and every Designer button (section 
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 $dir = Join-Path $env:TEMP 'portal-check-3.1'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .\tests\fixtures\layers\filesystem
@@ -452,8 +531,8 @@ Expect: `approval: lighter; changed ui:theme:default`, `diff: changed ui:theme:d
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 $dir = Join-Path $env:TEMP 'portal-check-3.2'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
@@ -490,8 +569,8 @@ Up itself runs on 8200 over `artifacts/`; this drives the same private `Invoke-P
 Import-Module .\src\Portal\Portal.psd1 -Force
 $env:PORTAL_TENANTS = Join-Path $env:TEMP 'portal-check-tenants'
 $null = New-Item -ItemType Directory -Force "$env:PORTAL_TENANTS\default"; Copy-Item .\tenants\default\portal.yaml "$env:PORTAL_TENANTS\default" -Force
-Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml" -ErrorAction SilentlyContinue
-$env:PORTAL_TOKEN = (New-PortalToken -Name check).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
+Remove-Item "$env:PORTAL_TENANTS\default\tokens.yaml", "$env:PORTAL_TENANTS\default\principals.yaml" -ErrorAction SilentlyContinue
+$env:PORTAL_TOKEN = (New-PortalToken -Name check -Bootstrap).Token; $auth = @{ Authorization = "Bearer $env:PORTAL_TOKEN" }
 $dir = Join-Path $env:TEMP 'portal-check-3.4'
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 $m = Get-Module Portal
@@ -506,18 +585,22 @@ finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAc
 ```
 Expect: `replaced seed with <stamp>; new process: True; old gone: True` (`<stamp>` the snap just taken), then `noreplace: A portal is already running at http://127.0.0.1:18200 (process <pid>). Stop it with Stop-Portal first.` The 10 s timeout path is Pester's (a held port, 1 s bound).
 
-### 3.5 New-PortalToken: the hash on disk, the token once
+### 3.5 New-PortalToken: -Bootstrap once, then tokens for existing principals only
 ```powershell
 Import-Module .\src\Portal\Portal.psd1 -Force
 $t = Join-Path $env:TEMP 'portal-check-3.5-tenants'
 Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
 $null = New-Item -ItemType Directory -Force "$t\default"; Set-Content "$t\default\portal.yaml" '{}'
 try {
-    $k = New-PortalToken -Name jerry -Tenants $t
-    "token: $($k.Token.Length) hex chars; on disk: $((Get-Content $k.Path -Raw).Contains($k.Token))"
+    try { New-PortalToken -Name jerry -Tenants $t } catch { "before bootstrap: $($_.Exception.Message)" }
+    $k = New-PortalToken -Name jerry -Bootstrap -Tenants $t
+    "token: $($k.Token.Length) hex chars; on disk: $((Get-Content $k.Path -Raw).Contains($k.Token)); $($k.Principal) $($k.Role)"
+    Get-Content "$t\default\principals.yaml" | Select-Object -Skip 1
     Get-Content $k.Path | Select-Object -Skip 1
-    try { New-PortalToken -Name jerry -Tenants $t } catch { "again: $($_.Exception.Message)" }
+    try { New-PortalToken -Name eve -Bootstrap -Tenants $t } catch { "again: $($_.Exception.Message)" }
+    "second token: $((New-PortalToken -Name jerry -Tenants $t).Token -ne $k.Token)"
+    try { New-PortalToken -Name eve -Tenants $t } catch { "unknown: $($_.Exception.Message)" }
 }
 finally { Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: `token: 64 hex chars; on disk: False`, then `tokens:`, `  - name: 'jerry'`, `    sha256: <64 hex>`, then `again: tokens.yaml already holds a token named jerry (<path>). Remove its entry to replace it.`
+Expect: `before bootstrap: No principal named jerry in <path>\principals.yaml. The tenant has no principals yet: make the first admin with -Bootstrap.`, then `token: 64 hex chars; on disk: False; ui:principal:jerry admin`, then principals.yaml's `principals:` with one entry (`id: 'ui:principal:jerry'`, `name: 'jerry'`, `type: user`, `role: admin`, `created: '<time>'`, `createdBy: null`), then tokens.yaml's `tokens:` with `- principal: 'ui:principal:jerry'`, `sha256: <64 hex>`, `created: '<time>'`, then `again: -Bootstrap makes a tenant's first admin, once; <path>\principals.yaml already holds 1 principal(s) (jerry). Issue a token for one with New-PortalToken -Name <principal>.`, `second token: True` and `unknown: No principal named eve in <path>\principals.yaml. An admin adds one on Identity/Users.`

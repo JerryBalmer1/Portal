@@ -103,7 +103,7 @@ export function mount(el, ctx) {
     .filter((n) => (n.kind === 'Container' || n.kind === 'Widget') && !ix.isMenuEntry(n.id) && n.id !== screen.root)
     .map((n) => [n.id, `${n.name || n.id} (${n.kind})`]);
 
-  const ro = !!ctx.readOnly;
+  const ro = ctx.readOnly;
   const panel = form('Add Panel', [
     ['name', 'text', 'tree'],
     ['category', panelOptions],

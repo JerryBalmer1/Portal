@@ -2,7 +2,7 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.4.1, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.5.0, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 
@@ -14,12 +14,17 @@ Module `Portal`, version 0.4.1, id prefix `ui:` (registered to Portal in Graph.N
 | Shell theme | The config's `theme` block, the shell's own settings: not a node and not node display, which stays in State and Theme nodes. `graph.wheelZoomSpeed` (number, 0.1 to 5, base 1.0) scales the Canvas's mouse-wheel zoom step; an overlay may override it, and a value outside the range stops the binary at boot (docs/design.md 37). |
 | Menu | The shell's left rail, built from the merged config's `menu` tree and served by `GET /api/tenants/<tenant>/menu` as an envelope of Service and Page nodes. Not the screen graph: it is never written or snapped. |
 | Service | Kind. One rail entry (`ui:rail:<service>`): `path`, `order`, `dock` (`bottom` pins it to the foot of the rail: Settings). Its pages hang off it by `has-page`; its icon is its State's `icon`. |
-| Page | Kind. One page of a Service (`ui:rail:<service>:<page>`), routed at `/<tenant>/<path>`. `view` says what draws it: `table` (the nodes of `nodeKind`), `screen` (the screen node `screen` names, a Designer's `sections` only when given) or `connections`. `filter` lists `properties.kind` values offered as chips. A Page's own Pages are the tabs of its item page, `/<tenant>/<path>/<id>`. |
-| Token | A bearer token that may write to a tenant, stored only as its SHA-256 in `tenants/<tenant>/tokens.yaml` (gitignored; `New-PortalToken` adds one). |
-| Principal | Who a request is: a token's name, or `anonymous` with no token, which reads only. `GET /api/tenants/<tenant>/auth/whoami`. A token the tenant does not hold is refused (401). |
-| Read-only | What the page does for a principal that may not write (`writes` false: `anonymous`). Every control that would write (collapse, expand, Approve, the Designer's adds and section toggles) is disabled with the tooltip `sign in to write`. A write the portal still refuses (401) is a toast; the panel keeps drawing what the graph holds and never shows the error body (docs/design.md 37). |
+| Page | Kind. One page of a Service (`ui:rail:<service>:<page>`), routed at `/<tenant>/<path>`. `view` says what draws it: `table` (the nodes of `nodeKind`), `screen` (the screen node `screen` names, a Designer's `sections` only when given), `connections`, `users` or `agents` (the tenant's principals of that type) or `tokens` (its bearer tokens). `filter` lists `properties.kind` values offered as chips. A Page's own Pages are the tabs of its item page, `/<tenant>/<path>/<id>`. |
+| Principal | Kind. Who may hold a token in a tenant: `ui:principal:<name>` with `type` (`user` or `agent`; only users are created in 0.5.0, agents are minted via Marker, later), `role`, `created` and `createdBy`, the creator's id, absent only on the tenant's first admin. Kept in `tenants/<tenant>/principals.yaml` (gitignored), served by `GET /api/tenants/<tenant>/principals`, added by an admin through `POST` there (Identity/Users' Add). Never on the screen graph. Also who a request is (`GET .../auth/whoami`): a token's principal, or `anonymous` with no token, which reads only (docs/design.md 38). |
+| Bootstrap | `New-PortalToken -Name <name> -Bootstrap`: makes a tenant's first principal, an admin with `createdBy` null, and its token. Once: with any principal already in `principals.yaml` it is an error, and a file with a second null `createdBy` stops the binary (docs/design.md 38). |
+| Role | What a principal may do: `reader` (GET only), `contributor` (every write but identity and settings) or `admin` (all). Identity is creating principals and revoking tokens. A write the role does not allow is 403; a write with no token stays 401 (docs/design.md 38). |
+| Attenuation | A principal creates principals of a role equal to or below its own, never above. Enforced by the server before the admin check (a contributor asking for an admin is refused for attenuation) and at boot over `principals.yaml` (docs/design.md 38). |
+| Token | A bearer token, stored only as its SHA-256 in `tenants/<tenant>/tokens.yaml` (gitignored), with the `principal` it belongs to and when it was `created`. `New-PortalToken -Name <principal>` issues one; a principal may hold several. Listed by owner and the first 12 hex digits of the hash (`GET .../tokens`); an admin's Revoke removes it (`DELETE .../tokens/<id>`). A token the tenant does not hold is refused (401). |
+| Legacy token | A `tokens.yaml` entry from before 0.5.0, with `name` and no `principal`: it acts as an admin named after the token until it is revoked, cannot create principals (it has no id to record as `createdBy`), and the binary names it in a warning at boot (docs/design.md 38). |
+| Identity files | `principals.yaml` and `tokens.yaml`: the only files the binary writes outside `-artifacts`, each replaced whole and atomically on an admin's Add or Revoke, after re-reading both, so a token minted since boot goes live with the write (docs/design.md 38). |
+| Read-only | What the page does for a principal that may not write (`writes` false: `anonymous`, or a `reader`, whose tooltip names its role instead). Every control that would write (collapse, expand, Approve, the Designer's adds and section toggles) is disabled with the tooltip `sign in to write`. A write the portal still refuses (401) is a toast; the panel keeps drawing what the graph holds and never shows the error body (docs/design.md 37). |
 | Marker | The holder the banner names, or `none`. Nothing issues markers yet; whoami's `marker` is always null (docs/design.md 36). |
-| Service connection | An entry of `tenants/<tenant>/connections.yaml` (gitignored): `name`, `type` (`github`), `url`, `token_env`, the environment variable holding its secret. The API lists connections without secrets. A github connection's repositories come back as `git.repository` nodes, id `ui:conn:<connection>/<owner>/<repo>`, to a caller with a token only: the call spends the tenant's secret. |
+| Service connection | An entry of `tenants/<tenant>/connections.yaml` (gitignored): `name`, `type` (`github`), `url`, `token_env`, the environment variable holding its secret, and `created_by`, the id of the principal who made it (served as `createdBy`; null in a file from before 0.5.0). The API lists connections without secrets. A github connection's repositories come back as `git.repository` nodes, id `ui:conn:<connection>/<owner>/<repo>`, to a caller with a token only: the call spends the tenant's secret. |
 | Screen graph | The envelope `GET /api/tenants/<tenant>/screen` returns: module `Portal`, `root` `ui:root`, every panel a node. Held in memory; it reaches disk only as a snap. |
 | Boot | What a start loads the screen from: the snap `PORTAL_SNAP` names, else the newest snap, else the dev seed (`empty` with `-no-seed`). Reported in the `X-Portal-Boot` header (docs/design.md 20). |
 | Container | Kind. A box holding Containers and Widgets by `contains`; arranged by its Layout, drawn with its Theme. Properties `parent`, `order`, `visible`, `bounds`. The root is the Container no `contains` points at. |
@@ -55,6 +60,7 @@ Module `Portal`, version 0.4.1, id prefix `ui:` (registered to Portal in Graph.N
 | Mount | **`layer`**, **`path`** | (none) |
 | Service | **`path`**, `order`, `dock` | `has-page` → Page; `has-state` → State |
 | Page | **`path`**, `order`, `nodeKind`, `view`, `screen`, `sections`, `filter` | `has-page` → Page; `has-state` → State |
+| Principal | **`type`**, **`role`**, **`created`**, `createdBy` | (none) |
 
 Finding Kinds: `absent` (info), set by the diff on an element in snap a and not in snap b; `approved` (info), set by Approve on the snap envelope, its message the note.
 
@@ -79,7 +85,8 @@ Graph.Node's: `schema`, `duplicate-node`, `duplicate-edge`, `dangling-edge`, `ed
 ## Not here yet
 
 - Edges across envelopes, which would retire Ref (docs/design.md 9).
-- Real data on the shell's pages beyond Graph/Explore, the Designer pages, Designer/Themes and Settings/Service connections; markers; connection types beyond github; OAuth or sessions (docs/design.md 36).
+- Real data on the shell's pages beyond Graph/Explore, the Designer pages, Designer/Themes, Identity/Users, Settings/Tokens and Settings/Service connections; markers; connection types beyond github; OAuth or sessions (docs/design.md 36).
+- Agents as principals (minted via Marker), issuing a token from the page, changing a principal's role or removing one, and settings writes (docs/design.md 38).
 - An edge deletion route (docs/design.md 15).
 - A drift check for `internal/gen` (docs/design.md 16).
 - Editing a Theme from the Designer (docs/design.md 22).

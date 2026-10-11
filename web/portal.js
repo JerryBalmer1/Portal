@@ -5,7 +5,8 @@
 // Page nodes built from the tenant's config, icons in their States), the
 // product name and help from .../config, the avatar from .../auth/whoami,
 // and each page from its Page node: a table of nodes of its Kind, a screen
-// node drawn by screen.js, or the service connections (docs/design.md 36).
+// node drawn by screen.js, the service connections (docs/design.md 36), or
+// the tenant's principals and tokens (docs/design.md 38).
 // The route is the URL, /<tenant>/<service>/<page>[/<id>], so a deep link
 // survives a refresh. Which service is expanded, whether the rail is
 // collapsed and what the search box holds are the viewer's pointers, like a
@@ -14,10 +15,13 @@ import { createClient, getToken, setToken } from '/static/client.js';
 import * as screenView from '/static/screen.js';
 import * as nodes from '/static/nodes.js';
 import * as connections from '/static/connections.js';
+import * as principals from '/static/principals.js';
+import * as tokens from '/static/tokens.js';
 import { icon } from '/static/icons.js';
+import { refusal } from '/static/toast.js';
 
 // Page renderers by a Page's view; screen is drawn by screen.js.
-const VIEWS = { table: nodes, connections };
+const VIEWS = { table: nodes, connections, users: principals, agents: principals, tokens };
 
 const tenant = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || 'default');
 const client = createClient(tenant);
@@ -174,7 +178,8 @@ function drawWho() {
   label.textContent = name;
   ui.avatar.replaceChildren(badge, label);
   ui.avatar.dataset.principal = name;
-  ui.avatar.title = who && who.writes ? `${name}: may write` : 'anonymous: reads only. Click to give a token.';
+  ui.avatar.dataset.role = (who && who.role) || '';
+  ui.avatar.title = !who || who.anonymous ? 'anonymous: reads only. Click to give a token.' : `${name}: ${who.role}${who.legacy ? ' (legacy token)' : ''}`;
 }
 
 function wireBanner() {
@@ -210,7 +215,8 @@ function drawAccount() {
     render();
   };
   if (who && !who.anonymous) {
-    p.textContent = `Signed in as ${who.name}. Writes are allowed.`;
+    const can = who.administers ? 'Everything is allowed, identity and settings too.' : who.writes ? 'Writes are allowed, but not identity or settings.' : 'Reads only.';
+    p.textContent = `Signed in as ${who.name}, ${who.role}${who.legacy ? ' (a legacy token: rotate it)' : ''}. ${can}`;
     const out = document.createElement('button');
     out.type = 'button';
     out.className = 'gr-btn';
@@ -396,7 +402,15 @@ function drawPage(svc, page, r) {
 }
 
 function pageCtx(page) {
-  return { client, bus, page, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id) };
+  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id) };
+}
+
+// reauth reads whoami again (a token the portal refuses is dropped) and
+// redraws, after a write that may have revoked the viewer's own token.
+async function reauth() {
+  await whoami();
+  drawWho();
+  render();
 }
 
 // drawItem is one node of a page: its fields, and the page's tabs (its child
@@ -494,10 +508,13 @@ async function drawScreen(page) {
   badge.title = 'the screen graph: nodes, edges, stamp';
   badge.textContent = `screen ${screen.nodes.length} · ${screen.edges.length} · ${screen.layer}`;
   ui.toolbar.replaceChildren(stats, badge);
-  if (!(who && who.writes)) {
+  // readOnly: the principal may not write, so every write control is
+  // disabled with why (docs/design.md 37, 38).
+  const readOnly = refusal(who) || false;
+  if (readOnly) {
     const ro = document.createElement('span');
     ro.className = 'pt-readonly';
-    ro.textContent = 'read-only: sign in to write';
+    ro.textContent = `read-only: ${readOnly}`;
     ui.toolbar.appendChild(ro);
   }
   ui.content.replaceChildren();
@@ -505,9 +522,6 @@ async function drawScreen(page) {
     ui.content.appendChild(errorCard({ code: 'not_on_screen', message: `${id} is not on the screen${screen.nodes.some((n) => n.kind === 'Category' && n.name === 'Designer') ? ' (PORTAL_MODE=production hides the Designer)' : ''}` }));
     return;
   }
-  // readOnly: the principal may not write, so every write control is
-  // disabled (docs/design.md 37).
-  const readOnly = !(who && who.writes);
   const ctx = { client, bus, config, screen, ontology, layers, ix, readOnly, sections: page.properties.sections, refresh: () => drawScreen(page) };
   screenView.destroyAll();
   screenView.draw(ctx, node, ui.content);

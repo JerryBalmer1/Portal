@@ -1,8 +1,8 @@
 // Settings/Service connections: the tenant's connections from GET
 // /api/tenants/{tenant}/connections (no secrets: the variable that holds
-// each token, and whether the portal has it), each with a Test button that
-// calls GET .../connections/{name}/repos and shows how many repositories
-// came back, or the error. Nothing is stored.
+// each token, whether the portal has it, and who made the connection), each
+// with a Test button that calls GET .../connections/{name}/repos and shows
+// how many repositories came back, or the error. Nothing is stored.
 
 export function mount(el, ctx) {
   const wrap = document.createElement('div');
@@ -21,7 +21,7 @@ export function mount(el, ctx) {
     const t = document.createElement('table');
     t.className = 'pt-table';
     const head = t.createTHead().insertRow();
-    for (const name of ['name', 'type', 'url', 'token', '', 'result']) {
+    for (const name of ['name', 'type', 'url', 'token', 'created by', '', 'result']) {
       const th = document.createElement('th');
       th.textContent = name;
       head.appendChild(th);
@@ -37,6 +37,8 @@ export function mount(el, ctx) {
       dot.className = `pt-dot ${c.tokenSet ? 'pt-ok' : 'pt-bad'}`;
       dot.title = c.tokenSet ? `${c.token_env} is set` : `${c.token_env} is not set in the portal's environment`;
       token.prepend(dot);
+      // createdBy is a principal id (docs/design.md 38); null before 0.5.0.
+      row.insertCell().textContent = c.createdBy ? c.createdBy.replace(/^ui:principal:/, '') : '';
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'gr-btn';

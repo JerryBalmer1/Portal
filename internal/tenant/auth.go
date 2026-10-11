@@ -1,38 +1,71 @@
 package tenant
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"io"
-	"os"
 	"regexp"
 	"strings"
-
-	"go.yaml.in/yaml/v3"
 )
 
-// Principal is who a request is: a token's name, or anonymous.
+// Roles, lowest first (docs/design.md 38). A reader reads; a contributor
+// writes everything but identity and settings; an admin writes all.
+const (
+	RoleReader      = "reader"
+	RoleContributor = "contributor"
+	RoleAdmin       = "admin"
+)
+
+// Roles and PrincipalTypes are the values the files and the API accept.
+var (
+	Roles          = []string{RoleReader, RoleContributor, RoleAdmin}
+	PrincipalTypes = []string{"user", "agent"}
+)
+
+// Rank orders roles: reader 1, contributor 2, admin 3; anything else 0.
+func Rank(role string) int {
+	for i, r := range Roles {
+		if r == role {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// Principal is who a request is, and one entry of principals.yaml. A token
+// from before 0.5.0 that names no principal is Legacy: its token's name,
+// role admin, no id. Anonymous has no role.
 type Principal struct {
+	ID        string
 	Name      string
+	Type      string
+	Role      string
+	Created   string
+	CreatedBy string // "" only for the first admin (null in the file)
 	Anonymous bool
+	Legacy    bool
 }
 
 // Anonymous is the principal of a request with no Authorization header. It
 // reads and never writes.
 var Anonymous = Principal{Name: "anonymous", Anonymous: true}
 
+// Writes is whether the principal may write at all: contributor or admin.
+func (p Principal) Writes() bool { return !p.Anonymous && Rank(p.Role) >= Rank(RoleContributor) }
+
+// Administers is whether the principal may write identity and settings.
+func (p Principal) Administers() bool { return !p.Anonymous && Rank(p.Role) >= Rank(RoleAdmin) }
+
+// MayGrant is the attenuation rule: a principal creates principals of a
+// role equal to or below its own, never above.
+func (p Principal) MayGrant(role string) bool {
+	return !p.Anonymous && Rank(role) > 0 && Rank(role) <= Rank(p.Role)
+}
+
 // ErrBadToken: an Authorization header that is not a bearer token this
 // tenant holds.
 var ErrBadToken = errors.New("bad token")
-
-type token struct {
-	Name   string `yaml:"name"`
-	SHA256 string `yaml:"sha256"`
-}
 
 var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
@@ -42,46 +75,10 @@ func HashToken(t string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// loadTokens reads tokens.yaml; no file means no tokens, so nothing writes.
-func loadTokens(path string) ([]token, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var doc struct {
-		Tokens []token `yaml:"tokens"`
-	}
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&doc); err != nil && !errors.Is(err, io.EOF) {
-		return nil, &ConfigError{File: path, Problems: []string{err.Error()}}
-	}
-	var ps []string
-	names := map[string]bool{}
-	for i, t := range doc.Tokens {
-		if strings.TrimSpace(t.Name) == "" {
-			ps = append(ps, fmt.Sprintf("/tokens/%d/name: required", i))
-		}
-		if names[t.Name] {
-			ps = append(ps, fmt.Sprintf("/tokens/%d/name: %q twice", i, t.Name))
-		}
-		names[t.Name] = true
-		if !sha256Hex.MatchString(t.SHA256) {
-			ps = append(ps, fmt.Sprintf("/tokens/%d/sha256: 64 lower-case hex digits, the SHA-256 of the token", i))
-		}
-	}
-	if len(ps) > 0 {
-		return nil, &ConfigError{File: path, Problems: ps}
-	}
-	return doc.Tokens, nil
-}
-
 // Authenticate reads an Authorization header value. Empty is Anonymous;
-// "Bearer <token>" whose hash this tenant holds is that token's principal;
-// anything else is ErrBadToken.
+// "Bearer <token>" whose hash this tenant holds is that token's principal
+// (an admin named after the token when it names no principal); anything
+// else is ErrBadToken.
 func (t *Tenant) Authenticate(header string) (Principal, error) {
 	if header == "" {
 		return Anonymous, nil
@@ -92,13 +89,26 @@ func (t *Tenant) Authenticate(header string) (Principal, error) {
 		return Principal{}, ErrBadToken
 	}
 	sum := []byte(HashToken(raw))
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	for _, k := range t.tokens {
 		if subtle.ConstantTimeCompare(sum, []byte(k.SHA256)) == 1 {
-			return Principal{Name: k.Name}, nil
+			if k.Principal == "" {
+				return Principal{Name: k.Name, Role: RoleAdmin, Legacy: true}, nil
+			}
+			for _, p := range t.principals {
+				if p.ID == k.Principal {
+					return p, nil
+				}
+			}
 		}
 	}
 	return Principal{}, ErrBadToken
 }
 
 // Tokens is how many tokens the tenant holds.
-func (t *Tenant) Tokens() int { return len(t.tokens) }
+func (t *Tenant) Tokens() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return len(t.tokens)
+}

@@ -12,11 +12,15 @@ import (
 )
 
 type whoami struct {
-	Name      string
-	Anonymous bool
-	Writes    bool
-	Tenant    string
-	Marker    *string
+	ID          *string
+	Name        string
+	Role        *string
+	Anonymous   bool
+	Legacy      bool
+	Writes      bool
+	Administers bool
+	Tenant      string
+	Marker      *string
 }
 
 // No token reads and never writes; a token the tenant does not hold is 401
@@ -48,7 +52,7 @@ func TestAuthNoTokenReadsBadTokenIs401GoodTokenNamesThePrincipal(t *testing.T) {
 	h.doAs(t, "not-a-token", s.URL, "GET", "/api/tenants/default/auth/whoami", "", 401)
 	var me whoami
 	_ = json.Unmarshal(h.do(t, s.URL, "GET", "/api/tenants/default/auth/whoami", "", 200), &me)
-	if me.Name != tester || me.Anonymous || !me.Writes {
+	if me.Name != tester || me.Anonymous || !me.Writes || !me.Administers || me.ID == nil || *me.ID != "ui:principal:tester" || *me.Role != "admin" {
 		t.Errorf("good token: %+v", me)
 	}
 	h.do(t, s.URL, "POST", "/api/tenants/default/nodes", `{"id":"ui:w","kind":"Widget"}`, 201)
@@ -85,9 +89,13 @@ func TestConnectionsHideSecrets(t *testing.T) {
 			t.Errorf("connection %v", c)
 		}
 		for k := range c {
-			if !slices.Contains([]string{"name", "type", "url", "token_env", "tokenSet"}, k) {
+			if !slices.Contains([]string{"name", "type", "url", "token_env", "tokenSet", "createdBy"}, k) {
 				t.Errorf("connection carries %q", k)
 			}
+		}
+		// Each connection records who made it; null in a file from before 0.5.0.
+		if by := c["createdBy"]; (c["name"] == "gh" && by != "ui:principal:tester") || (c["name"] != "gh" && by != nil) {
+			t.Errorf("connection %v createdBy %v", c["name"], by)
 		}
 	}
 	if !got["gh"] || got["gh-unset"] || !got["gh-bad"] || len(got) != 3 {

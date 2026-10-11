@@ -4,3 +4,4 @@ build/
 tests/testResults.xml
 tenants/*/tokens.yaml
 tenants/*/connections.yaml
+tenants/*/principals.yaml

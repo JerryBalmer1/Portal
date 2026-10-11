@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 — 2026-10-11
+
+- Identity. New Kind `Principal` (`ui:principal:<name>`): `type` (user or agent), `role` (reader, contributor or admin), `created`, and `createdBy`, absent only on the first admin. Kept in `tenants/<tenant>/principals.yaml` (gitignored; example committed) and served by `GET /api/tenants/{tenant}/principals` as an envelope. An admin adds a user with `POST .../principals`; agents are refused, to be minted via Marker later (docs/design.md 38).
+- Tokens belong to a principal: a `tokens.yaml` entry is `{principal, sha256, created}`.
+  - `New-PortalToken -Name <principal>` issues a token for an existing principal and throws for an unknown one. A principal may hold several tokens.
+  - `New-PortalToken -Name <name> -Bootstrap` makes the first admin (`createdBy` null), once; a second is an error.
+  - `GET .../tokens` lists tokens by principal, the first 12 hex digits of the hash, and created. `DELETE .../tokens/{id}` revokes one (admin only).
+- Roles are enforced: reader is GET only, contributor makes every write but identity and settings, admin makes all. A write the role does not allow is 403 `forbidden`, a toast on the page; anonymous writes stay 401. Attenuation: no principal creates one of a role above its own. The server checks this first, and the boot checks it over the file.
+- An old `tokens.yaml` entry with `name` and no principal works as admin until revoked, and the binary names it in a warning at boot. It cannot add users.
+- The binary now writes the tenant's two identity files, atomically, on Add and Revoke, and nothing else outside `-artifacts`; design.md 2 and CLAUDE.md say so. Each such write re-reads both files, so a token minted since boot goes live with it.
+- `whoami` adds `id`, `type`, `role`, `legacy` and `administers`. Service connections record `created_by` (served as `createdBy`, shown on the page).
+- Page: Identity/Users lists users and has Add (name and role; admin only; roles above yours disabled). Identity/Agents is an empty state ("minted via Marker, later"). Settings/Tokens has Revoke (admin only; a second click confirms). Read-only tooltips name the role. New screenshot `identity-users.png`.
+- Go tests 55, Pester 73. New manual items 1.13, 1.14 and 2.7; 3.5 rewritten; every item that mints a token bootstraps first.
+
 ## 0.4.1 — 2026-10-10
 
 - Read-only page for an anonymous viewer. While whoami says the principal may not write, every control that would write is disabled with the tooltip `sign in to write`: a panel's collapse/expand, the Designer's section toggles, Approve, Add Panel, Add Container, Add Category and Add Menu Entry. A write the portal still refuses (401, or any refusal) is a toast at the bottom right (`web/toast.js`), never an error body inside a panel; the collapse toggle used to print the error JSON into the panel, and the Designer's status line printed refusals. A refused collapse no longer redraws the page (docs/design.md 37).

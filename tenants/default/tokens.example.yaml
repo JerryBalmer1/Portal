@@ -1,8 +1,13 @@
-# Copy to tokens.yaml (gitignored) to let a bearer token write. Each token is
-# stored as the SHA-256 of the token text, lower-case hex; the token itself is
-# never on disk. New-PortalToken -Name <name> makes one, adds it here and
-# prints the token once. A request with no token reads only; a request whose
-# token matches none is refused with 401.
+# Copy to tokens.yaml (gitignored), or let New-PortalToken write it. Each
+# token is stored as the SHA-256 of the token text, lower-case hex, with the
+# id of the principal it belongs to (principals.yaml) and when it was made;
+# the token itself is never on disk. New-PortalToken -Name <principal> issues
+# one and prints it once. A request with no token reads only; a request whose
+# token matches none is refused with 401; the principal's role decides which
+# writes it may make (403 otherwise). An admin's Revoke on Settings/Tokens
+# removes an entry. An entry with name instead of principal is a token from
+# before 0.5.0: it acts as admin until rotated, and the portal warns at boot.
 tokens:
-  - name: example
+  - principal: 'ui:principal:example'
     sha256: 0000000000000000000000000000000000000000000000000000000000000000
+    created: '2026-10-11T00:00:00.000Z'

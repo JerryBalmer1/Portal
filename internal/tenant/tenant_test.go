@@ -224,3 +224,109 @@ func TestMergeKeyedListsAndScalars(t *testing.T) {
 		t.Errorf("null in the overlay replaces: %v", got["c"])
 	}
 }
+
+const rootAdmin = "  - { id: 'ui:principal:jerry', name: jerry, type: user, role: admin, created: '2026-10-11T00:00:00.000Z', createdBy: null }\n"
+
+// Bootstrap happens once: createdBy is null on the first principal only,
+// and that one is an admin (docs/design.md 38). A second root, a root that
+// is not first, or a root that is not an admin stops the load.
+func TestBootstrapOnceOnly(t *testing.T) {
+	for name, text := range map[string]string{
+		"second root": rootAdmin +
+			"  - { id: 'ui:principal:eve', name: eve, type: user, role: admin, created: '2026-10-11T00:00:01.000Z', createdBy: null }\n",
+		"root not first": "  - { id: 'ui:principal:eve', name: eve, type: user, role: reader, created: '2026-10-11T00:00:01.000Z', createdBy: 'ui:principal:jerry' }\n" + rootAdmin,
+		"root not admin": "  - { id: 'ui:principal:jerry', name: jerry, type: user, role: contributor, created: '2026-10-11T00:00:00.000Z', createdBy: null }\n",
+	} {
+		_, err := load(t, map[string]string{"portal.yaml": "{}", "principals.yaml": "principals:\n" + text})
+		if err == nil || !strings.Contains(err.Error(), "principals.yaml") || !strings.Contains(err.Error(), "createdBy") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	tt, err := load(t, map[string]string{"portal.yaml": "{}", "principals.yaml": "principals:\n" + rootAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ps := tt.Principals(); len(ps) != 1 || ps[0].CreatedBy != "" || ps[0].Role != RoleAdmin {
+		t.Errorf("principals %+v", ps)
+	}
+}
+
+// Attenuation holds in the file as in the API: a principal whose role is
+// above its creator's stops the load, and AddPrincipal refuses it with
+// ErrForbidden, naming attenuation, before it checks for admin.
+func TestAttenuation(t *testing.T) {
+	contrib := "  - { id: 'ui:principal:cy', name: cy, type: user, role: contributor, created: '2026-10-11T00:00:01.000Z', createdBy: 'ui:principal:jerry' }\n"
+	_, err := load(t, map[string]string{"portal.yaml": "{}", "principals.yaml": "principals:\n" + rootAdmin + contrib +
+		"  - { id: 'ui:principal:max', name: max, type: user, role: admin, created: '2026-10-11T00:00:02.000Z', createdBy: 'ui:principal:cy' }\n"})
+	if err == nil || !strings.Contains(err.Error(), "attenuation") {
+		t.Errorf("an admin made by a contributor: %v", err)
+	}
+	tt, err := load(t, map[string]string{"portal.yaml": "{}", "principals.yaml": "principals:\n" + rootAdmin + contrib})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cy, _ := tt.PrincipalByID("ui:principal:cy")
+	jerry, _ := tt.PrincipalByID("ui:principal:jerry")
+	if _, err := tt.AddPrincipal(cy, "max", "user", RoleAdmin); !errors.Is(err, ErrForbidden) || !strings.Contains(err.Error(), "attenuation") {
+		t.Errorf("contributor -> admin: %v", err)
+	}
+	if _, err := tt.AddPrincipal(cy, "rea", "user", RoleReader); !errors.Is(err, ErrForbidden) || strings.Contains(err.Error(), "attenuation") {
+		t.Errorf("contributor -> reader: %v", err)
+	}
+	for _, role := range Roles {
+		if !jerry.MayGrant(role) || cy.MayGrant(role) != (role != RoleAdmin) {
+			t.Errorf("MayGrant %s: admin %v contributor %v", role, jerry.MayGrant(role), cy.MayGrant(role))
+		}
+	}
+	if Anonymous.MayGrant(RoleReader) || jerry.MayGrant("owner") {
+		t.Error("anonymous grants, or an unknown role is grantable")
+	}
+	p, err := tt.AddPrincipal(jerry, "max", "", RoleAdmin)
+	if err != nil || p.CreatedBy != jerry.ID || p.Type != "user" {
+		t.Errorf("admin -> admin: %+v %v", p, err)
+	}
+	if _, err := tt.AddPrincipal(jerry, "max", "user", RoleReader); !errors.Is(err, ErrExists) {
+		t.Errorf("a taken name: %v", err)
+	}
+}
+
+// A token names its principal, which principals.yaml must hold; a token
+// that names none is legacy and acts as admin.
+func TestTokensBelongToPrincipals(t *testing.T) {
+	_, err := load(t, map[string]string{"portal.yaml": "{}", "principals.yaml": "principals:\n" + rootAdmin,
+		"tokens.yaml": "tokens:\n  - { principal: 'ui:principal:nobody', sha256: " + HashToken("x") + " }\n"})
+	if err == nil || !strings.Contains(err.Error(), "ui:principal:nobody") {
+		t.Errorf("a token of no principal: %v", err)
+	}
+	tt, err := load(t, map[string]string{"portal.yaml": "{}", "principals.yaml": "principals:\n" + rootAdmin,
+		"tokens.yaml": "tokens:\n  - { principal: 'ui:principal:jerry', sha256: " + HashToken("j") + " }\n  - { name: ci, sha256: " + HashToken("c") + " }\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if who, _ := tt.Authenticate("Bearer j"); who.ID != "ui:principal:jerry" || who.Legacy {
+		t.Errorf("principal token: %+v", who)
+	}
+	if who, _ := tt.Authenticate("Bearer c"); who.Name != "ci" || !who.Legacy || who.Role != RoleAdmin {
+		t.Errorf("legacy token: %+v", who)
+	}
+}
+
+// The committed examples load together as a tenant's files: the example
+// admin, a token of it and a connection it made.
+func TestIdentityExamplesLoad(t *testing.T) {
+	files := map[string]string{"portal.yaml": "{}"}
+	for _, f := range []string{"principals", "tokens", "connections"} {
+		data, err := os.ReadFile("../../tenants/default/" + f + ".example.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[f+".yaml"] = string(data)
+	}
+	tt, err := load(t, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ps := tt.Principals(); len(ps) != 1 || ps[0].Role != RoleAdmin || tt.Tokens() != 1 || len(tt.LegacyTokens()) != 0 || tt.Connections[0].CreatedBy != ps[0].ID {
+		t.Errorf("examples: %+v, %d tokens, connection %+v", ps, tt.Tokens(), tt.Connections)
+	}
+}
