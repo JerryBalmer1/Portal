@@ -391,6 +391,60 @@ body.pt-rail-collapsed { --pt-rail-w: 52px; }
 .pt-toast { padding: 10px 14px; border-radius: 8px; border: var(--gr-border); background: var(--gr-card); color: var(--gr-text); font-size: 13px; white-space: pre-wrap; box-shadow: 0 6px 24px rgba(0,0,0,0.45); }
 .pt-toast[data-code="unauthorized"] { border-color: var(--gr-bad); }
 
+/* The environments graph (docs/design.md 46). Colour is an instance's kind,
+   shape its Kind; a node one edge away is smaller and dimmer. Hulls are the
+   env a node carries: dev in the dev bar's amber, qa blue, prod green, and
+   unset grey and dashed, so the gap shows. */
+.pt-envgraph { flex: 1; display: flex; flex-direction: column; min-height: 480px; overflow: hidden; }
+.pt-envgraph > svg.pt-eg { flex: 1; width: 100%; min-height: 440px; touch-action: none; }
+svg.pt-eg [hidden] { display: none; }
+.pt-eg { --eg-compose: rgb(240,150,72); --eg-container: rgb(96,165,250); --eg-kubernetes: rgb(167,139,250); --eg-host: rgb(45,212,191); --eg-other: rgb(160,166,176); }
+.pt-eg-node { cursor: pointer; }
+.pt-eg-node .pt-eg-shape { fill: var(--eg-other); stroke: var(--gr-card); stroke-width: 2; }
+.pt-eg-node[data-ikind="compose"] .pt-eg-shape { fill: var(--eg-compose); }
+.pt-eg-node[data-ikind="container"] .pt-eg-shape { fill: var(--eg-container); }
+.pt-eg-node[data-ikind="kubernetes"] .pt-eg-shape { fill: var(--eg-kubernetes); }
+.pt-eg-node[data-ikind="host"] .pt-eg-shape { fill: var(--eg-host); }
+.pt-eg-node.pt-eg-neighbour { opacity: 0.55; }
+.pt-eg-label { fill: var(--gr-text); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--gr-base); stroke-width: 3px; }
+.pt-eg-neighbour .pt-eg-label { fill: var(--gr-text-muted); font-size: 10px; }
+.pt-eg-node:focus { outline: none; }
+.pt-eg-node:focus-visible .pt-eg-shape, .pt-eg-node.pt-eg-selected .pt-eg-shape { stroke: var(--gr-text); stroke-width: 3; }
+.pt-eg-node.pt-eg-selected { opacity: 1; }
+.pt-eg-node.pt-eg-near { opacity: 1; }
+.pt-eg-node.pt-eg-pinned .pt-eg-shape { stroke-dasharray: 3 2; }
+.pt-eg-node.pt-eg-dim { opacity: 0.2; }
+.pt-eg-dragging, .pt-eg-dragging .pt-eg-node { cursor: grabbing; }
+.pt-eg-edge { stroke: var(--gr-text-muted); stroke-width: 1.5; fill: none; stroke-dasharray: 8 3 2 3; }
+.pt-eg-edge[data-kind="member-of"] { stroke-dasharray: none; }
+.pt-eg-edge[data-kind="runs-as"] { stroke-dasharray: 6 4; }
+.pt-eg-edge[data-kind="hosts"] { stroke-dasharray: 0.5 4.5; stroke-linecap: round; stroke-width: 2.5; }
+.pt-eg-arrow { fill: var(--gr-text-muted); }
+.pt-eg-hull path { fill: rgba(160,166,176,0.06); stroke: rgba(160,166,176,0.45); stroke-width: 1.5; stroke-linejoin: round; }
+.pt-eg-hull text { fill: var(--gr-text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
+.pt-eg-hull[data-env="dev"] path { fill: rgba(245,166,35,0.07); stroke: rgba(245,166,35,0.6); }
+.pt-eg-hull[data-env="qa"] path { fill: rgba(96,165,250,0.07); stroke: rgba(96,165,250,0.6); }
+.pt-eg-hull[data-env="prod"] path { fill: rgba(98,196,128,0.07); stroke: rgba(98,196,128,0.6); }
+.pt-eg-hull[data-env="unset"] path { fill: none; stroke-dasharray: 5 5; }
+.pt-eg-hull.pt-eg-subhull path { fill: rgba(255,255,255,0.03); stroke-dasharray: 2 3; stroke-width: 1; }
+.pt-eg-hull.pt-eg-subhull text { font-weight: 400; }
+.pt-eg-legend { display: flex; flex-wrap: wrap; gap: 6px 24px; padding: 8px 12px; border-top: var(--gr-border); font-size: 12px; color: var(--gr-text-muted); }
+.pt-eg-legend-row { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.pt-eg-key { display: inline-flex; align-items: center; gap: 5px; }
+.pt-eg-key svg { overflow: visible; }
+.pt-eg-status { color: var(--gr-text-muted); }
+.pt-eg-status[data-missing] { color: var(--gr-bad); }
+.pt-muted { color: var(--gr-text-muted); }
+
+/* The node menu (docs/design.md 46): every item a link; one the node has no
+   edge for is greyed, never hidden. */
+.pt-nodemenu { position: fixed; z-index: 60; min-width: 168px; padding: 4px; display: flex; flex-direction: column; background: var(--gr-raised); border: var(--gr-border); border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,0.5); font-size: 13px; }
+.pt-nodemenu-head { padding: 4px 10px 6px; font-size: 11px; color: var(--gr-text-muted); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-bottom: 1px solid var(--gr-line); margin-bottom: 4px; }
+.pt-nodemenu-item { padding: 6px 10px; border-radius: 5px; color: var(--gr-text); text-decoration: none; }
+.pt-nodemenu-item[href]:hover, .pt-nodemenu-item[href]:focus { background: var(--gr-surface); outline: none; box-shadow: inset 2px 0 0 var(--gr-accent); }
+.pt-nodemenu-item[aria-disabled="true"] { color: var(--gr-text-muted); opacity: 0.55; cursor: default; }
+.pt-nodemenu-item[aria-disabled="true"]:focus { outline: 1px dashed var(--gr-line); outline-offset: -1px; }
+
 @media (max-width: 760px) {
   body { --pt-rail-w: 52px; }
   .pt-rail-wrap .pt-label, .pt-rail-wrap .pt-chev, .pt-rail-wrap .pt-pages { display: none; }

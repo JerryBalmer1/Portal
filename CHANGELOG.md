@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.0 — 2026-10-11
+
+- **The environments graph.** `GET /api/tenants/{tenant}/environments/graph` (`getEnvironmentGraph`) serves every `environment.*` node of the mounted layers, with its layer's id, Kind and properties (first id wins). It also serves every layer edge touching one, with its kind kept (`member-of`, `runs-as`, `hosts`), and the node one hop away. A Run comes as `listAgents` serves it, with `layer` and `ledger`. A Principal comes as `listPrincipals` serves it, with dev-bootstrap made up. `has-run` joins a served principal to a served run it holds. An edge to a node nothing serves is left out. The response is empty, not 404, without an environment layer. No Kind is added to `ontology.yaml`.
+- **Environments/Graph** at `/<tenant>/environments/graph`, first under Environments (`view: environments-graph`, `web/envgraph.js`).
+  - It is drawn in SVG, so every node is a link to `#<id>`. A force layout settles before the first paint. A drag pins a node and a double-click releases it.
+  - Colour is the instance's kind and shape is the node's Kind. A node one edge away is smaller and dimmer. `member-of` is solid, `runs-as` dashed, `hosts` dotted.
+  - Hulls group nodes by the `env` they carry (`unset` without one), with `group` hulls inside them. The env and tag chips are Instances' chips.
+  - The node after `#` is selected and pinned with its neighbours, across a reload and Back. `/<tenant>/environments/graph/<id>` becomes `#<id>`.
+- **The node menu** (`web/nodemenu.js`). Right-click, Shift+F10 or the menu key on a graph node or on a row of an `environment.*` page opens Details (the item page), Show graph, Runs and Ledger. Each item is a link, greyed with why when no edge leads to it. Arrow keys, Home, End and Escape work in it.
+- **Boot.** An Environments page with the id `graph` and a view other than `environments-graph` stops the boot.
+- **Shell.** Back or Forward that changes only the fragment goes to a page's `onHash` when the page has one, instead of drawing the page again. `nodes.chips` takes an aria-label.
+- **Fixtures.** `tests/fixtures/layers/agent-environment/` is Portal.Agent's real agent-environment layer from Up, byte for byte. `agent-environment-tagged/` is the same layer with `env`, `group` and `tags` added, and its `hosts` edge pointing at the agent-runs run.
+- **Go** 91 to 96: `TestEnvironmentGraphIsEmptyWithoutAnEnvironmentLayer`, `TestEnvironmentGraphOfTheRealLayer`, `TestEnvironmentGraphOneHopNeighbours`, `TestEnvironmentGraphFirstLayerWins`, `TestEnvironmentGraphJoinsThePrincipalToTheRunsItHolds`. The spec test exercises the operation and the page. The bad-overlay table covers the `graph` page. The menu tests expect Graph before Instances.
+- **Pester** 105 to 109: the Environments graph block in Chrome. The version pins moved.
+- **Version.** 0.11.0 in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated. docs/design.md 46.
+
 ## 0.10.0 — 2026-10-11
 
 - **Ledger chains.** Kinds `Ledger` (`ui:ledger:<source>`: `count`, `valid`, `first`, `last`, `breakAt`, `reason`, `stamp`; `layer` and `claimed` for the agent's, `unchained` for Portal's) and `LedgerEntry` (`seq`, `stamp`, `prev`, `hash`). Edges `has-entry`, `prev`, `records` (an entry to its Run or Step) and `recorded-in`. Run gains optional `ledger`. No new id prefix: the agent's entries keep their layer's `ledger:<seq>` ids, and Portal's are `ui:ledger:portal/<seq>`.

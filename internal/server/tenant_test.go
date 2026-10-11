@@ -194,7 +194,7 @@ func TestMenuShape(t *testing.T) {
 		"ui:rail:workflows":          {"All"},
 		"ui:rail:workflows:all":      {"Plan", "Runs", "History"},
 		"ui:rail:workflows:all:runs": {"Steps"},
-		"ui:rail:environments":       {"Instances", "Images", "Networks"},
+		"ui:rail:environments":       {"Graph", "Instances", "Images", "Networks"},
 		"ui:rail:compliance":         {"Rules", "Findings", "Reports"},
 		"ui:rail:policy":             {"Rules", "Decisions"},
 		"ui:rail:ledger":             {"Entries", "Verify", "Keys"},
@@ -213,6 +213,9 @@ func TestMenuShape(t *testing.T) {
 	inst := env.Nodes[idx["ui:rail:environments:instances"]].Properties["filter"]
 	if b, _ := json.Marshal(inst); string(b) != `["container","compose","kubernetes","host"]` {
 		t.Errorf("Instances filter %s", b)
+	}
+	if v := env.Nodes[idx["ui:rail:environments:graph"]].Properties; v["view"] != "environments-graph" || v["path"] != "environments/graph" {
+		t.Errorf("Environments/Graph %v", v)
 	}
 	if v := env.Nodes[idx["ui:rail:graph:explore"]].Properties; v["view"] != "screen" || v["screen"] != "ui:canvas" {
 		t.Errorf("Graph/Explore %v", v)

@@ -28,7 +28,7 @@ cmd/portal, cmd/graphnode binaries (graphnode LIFTED)
 web/                      the page (embedded): portal.js, client.js, one renderer per base Category
 ontology.yaml             module Portal, prefix ui:
 src/Portal/               PowerShell wrappers; Public/ one function per file, Private/ helpers
-tests/                    Pester + fixtures (FileSystem layer, the Agent runs layer, the agent ledger layer and its broken copy, Graph.Node's invalid envelope, the Tool.Git and Emitter.Agent cards)
+tests/                    Pester + fixtures (FileSystem layer, the Agent runs layer, the agent ledger layer and its broken copy, the agent-environment layer and its tagged copy, Graph.Node's invalid envelope, the Tool.Git and Emitter.Agent cards)
 docs/                     design.md (numbered), manual-check-list.md, screenshots/
 .build.ps1                Invoke-Build: Modules, Generate, Build, Test, Up, Dev, Feeds, Status, Down, Smoke, Pester, Screenshot
 ```

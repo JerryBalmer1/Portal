@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.10.0 and needs PowerShell 7.4' {
+    It 'is version 0.11.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.10.0'
+        $m.ModuleVersion | Should -Be '0.11.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,10 +302,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.10.0, the nineteen Kinds, the seventeen edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.11.0, the nineteen Kinds, the seventeen edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.10\.0$'
+        $text | Should -Match '(?m)^version: 0\.11\.0$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.10.0'
+        $s.version | Should -Be '0.11.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -1658,5 +1658,166 @@ Describe 'Ledger' {
         # Portal's own chain: the line from before 0.10.0, unchained.
         $dom = Get-PageDom $LgUrl '/default/ledger/portal'
         $dom | Should -Match '<tr data-seq="1"><td><a href="/default/ledger/portal/1">1</a></td><td>2026-10-11T00:00:00.000Z</td><td>pushed \(unchained\)</td><td>Emitter.Agent@0.1.3</td><td>root</td>'
+    }
+}
+
+Describe 'Environments graph' {
+    # docs/design.md 46. A tenant of its own (admin root, -Bootstrap). root mounts the agent-runs and ledger fixtures, then
+    # agent-environment: first the real layer from Portal.Agent's Up (no env, no tags; its hosts edge names a run no
+    # fixture holds), later the tagged copy (env dev on three nodes, groups stack and egress, hosts onto the runs fixture's
+    # run) under the same name.
+    BeforeAll {
+        $script:EgTenants = Join-Path $TestDrive 'eg-tenants'
+        $td = Join-Path $EgTenants 'default'
+        $null = New-Item -ItemType Directory -Force -Path $td
+        Set-Content -LiteralPath (Join-Path $td 'portal.yaml') -Encoding utf8NoBOM -Value '{}'
+        $script:EgRoot = New-PortalToken -Name root -Bootstrap -Tenants $EgTenants
+        $script:EgWork = Join-Path $TestDrive 'envgraph'
+        $script:EgPortal = Start-Portal -Port 18200 -Artifacts $EgWork -Tenants $EgTenants
+        $script:EgUrl = $EgPortal.Url
+        $script:EgRun = 'agent:run/2026-10-09T02:50:43.7976027Z'
+        function Mount-EgAsRoot([string] $Name, [string] $Dir) {
+            $saved = $env:PORTAL_TOKEN
+            try { $env:PORTAL_TOKEN = $EgRoot.Token; Mount-PortalLayer -Name $Name -Path (Join-Path $Fixtures 'layers' $Dir) -Url $EgUrl }
+            finally { $env:PORTAL_TOKEN = $saved }
+        }
+        $null = Mount-EgAsRoot agent-runs agent-runs
+        $null = Mount-EgAsRoot ledger ledger
+        $null = Mount-EgAsRoot agent-environment agent-environment
+        # Waits in the page: wait(f) resolves f's first truthy value, polling, or throws after 6 s.
+        $script:EgWait = 'const wait = async (f) => { for (let t = 0; t < 120; t++) { const v = f(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); } throw new Error("timed out: " + f); };'
+        # The node menu's items as label|href|disabled, one string each.
+        $script:EgItems = 'const items = (m) => [...m.querySelectorAll("[role=menuitem]")].map((x) => `${x.textContent}|${x.getAttribute("href") || ""}|${x.getAttribute("aria-disabled") || ""}`);'
+    }
+    AfterAll { Stop-Portal -Artifacts $EgWork; InModuleScope Portal { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
+
+    It 'Environments/Graph sits first under Environments and draws the real layer: four instances, dev-bootstrap one runs-as edge away, every node a link to graph#id' {
+        $api = Invoke-RestMethod "$EgUrl/api/tenants/default/environments/graph"
+        @($api.nodes | ForEach-Object { "$($_.kind) $($_.id)" }) | Should -Be @('environment.instance claude-agent-dev', 'environment.instance claude-agent-dev/agent',
+            'environment.instance claude-agent-dev/ledger', 'environment.instance claude-agent-dev/mitm', 'Principal ui:principal:dev-bootstrap')
+        @($api.edges.kind | Sort-Object) | Should -Be @('member-of', 'member-of', 'member-of', 'runs-as')
+        $dom = Get-PageDom $EgUrl '/default/environments/graph'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $dom | Should -Match ('<a href="/default/environments/graph" class="pt-page" data-page="ui:rail:environments:graph" aria-current="page">Graph</a></li>' +
+            '<li><a href="/default/environments/instances" class="pt-page" data-page="ui:rail:environments:instances">Instances</a>')
+        $dom | Should -Match '<a href="/default/environments/graph#claude-agent-dev" class="pt-eg-node" data-id="claude-agent-dev" data-kind="environment.instance" data-shape="circle" data-ikind="compose" data-env="unset"'
+        $dom | Should -Match '<a href="/default/environments/graph#claude-agent-dev%2Fmitm" class="pt-eg-node" data-id="claude-agent-dev/mitm" data-kind="environment.instance" data-shape="circle" data-ikind="container" data-env="unset"'
+        $dom | Should -Match '<a href="/default/environments/graph#ui%3Aprincipal%3Adev-bootstrap" class="pt-eg-node pt-eg-neighbour" data-id="ui:principal:dev-bootstrap" data-kind="Principal" data-shape="hexagon"'
+        [regex]::Matches($dom, '<a href="[^"]*" class="pt-eg-node').Count | Should -Be 5
+        [regex]::Matches($dom, '<line class="pt-eg-edge" data-kind="member-of"').Count | Should -Be 3
+        [regex]::Matches($dom, '<line class="pt-eg-edge" data-kind="runs-as"').Count | Should -Be 1
+        $dom | Should -Not -Match 'data-kind="hosts" data-from'
+        $dom | Should -Match '<span class="pt-count" data-unset="4">4 nodes · 1 one edge away · 4 edges · 4 without env</span>'
+        # The env chips are Instances' chips; every node lands in unset, so the page shows the gap.
+        $dom | Should -Match ('<div class="pt-chips" role="group" aria-label="filter by env" data-chips="env"><button type="button" class="pt-chip" data-value="" aria-pressed="true">all</button>' +
+            '<button type="button" class="pt-chip" data-value="dev" aria-pressed="false">dev</button><button type="button" class="pt-chip" data-value="qa" aria-pressed="false">qa</button>' +
+            '<button type="button" class="pt-chip" data-value="prod" aria-pressed="false">prod</button><button type="button" class="pt-chip" data-value="unset" aria-pressed="false">unset</button></div>')
+        $dom | Should -Match '<span class="pt-muted" data-chips="tags">no tags</span>'
+        @([regex]::Matches($dom, '<g class="pt-eg-hull[^"]*" data-env="([^"]+)"') | ForEach-Object { $_.Groups[1].Value }) | Should -Be @('unset')
+        $dom | Should -Match '<svg [^>]*data-settled="true"'
+        # Line styles by edge kind, colour by the instance's kind.
+        $css = Get-Content -LiteralPath (Join-Path $Repo 'web' 'base.css') -Raw
+        $css | Should -Match '\.pt-eg-edge\[data-kind="member-of"\] \{ stroke-dasharray: none; \}'
+        $css | Should -Match '\.pt-eg-edge\[data-kind="runs-as"\] \{ stroke-dasharray: 6 4; \}'
+        $css | Should -Match '\.pt-eg-edge\[data-kind="hosts"\] \{ stroke-dasharray: 0\.5 4\.5;'
+        foreach ($k in 'compose', 'container', 'kubernetes', 'host') { $css | Should -Match ('\.pt-eg-node\[data-ikind="' + $k + '"\] \.pt-eg-shape \{ fill: var\(--eg-' + $k + '\); \}') }
+        # Shape by Kind, from the page's own module.
+        $shapes = Invoke-PageScript $EgUrl '/default/environments/graph' '' ('import("/static/envgraph.js").then((m) => ["environment.instance", "environment.image", "environment.network", "environment.volume", "Run"]' +
+            '.map((kind) => m.shapeOf({ kind })).join(" "))')
+        $shapes | Should -Be 'circle square diamond hexagon hexagon'
+    }
+
+    It 'the tagged copy draws env and group hulls and tag chips; the node after # is selected with its neighbours pinned, and survives a reload' {
+        $null = Mount-EgAsRoot agent-environment agent-environment-tagged
+        $api = Invoke-RestMethod "$EgUrl/api/tenants/default/environments/graph"
+        $run = $api.nodes | Where-Object id -EQ $EgRun
+        "$($run.kind) $($run.properties.layer) $($run.properties.ledger)" | Should -Be 'Run agent-runs 9'
+        @($api.edges | Where-Object kind -EQ 'hosts' | ForEach-Object { "$($_.from) $($_.to)" }) | Should -Be @("claude-agent-dev $EgRun")
+        $dom = Get-PageDom $EgUrl '/default/environments/graph#claude-agent-dev'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $dom | Should -Match '<span class="pt-count" data-unset="1">4 nodes · 2 one edge away · 5 edges · 1 without env</span>'
+        $dom | Should -Match 'data-id="claude-agent-dev" data-kind="environment.instance" data-shape="circle" data-ikind="compose" data-env="dev" data-group="stack" data-tags="agent compose"'
+        $dom | Should -Match 'data-id="claude-agent-dev/ledger" data-kind="environment.instance" data-shape="circle" data-ikind="container" data-env="unset"'
+        $hulls = [regex]::Matches($dom, '<g class="(pt-eg-hull[^"]*)" data-env="([^"]+)"(?: data-group="([^"]+)")?>') | ForEach-Object { "$($_.Groups[2].Value)/$($_.Groups[3].Value)" }
+        @($hulls | Sort-Object) | Should -Be @('dev/', 'dev/egress', 'dev/stack', 'unset/')
+        $dom | Should -Match ('aria-label="filter by tag" data-chips="tags"><button type="button" class="pt-chip" data-value="" aria-pressed="true">all</button>' +
+            '<button type="button" class="pt-chip" data-value="agent" aria-pressed="false">agent</button><button type="button" class="pt-chip" data-value="compose" aria-pressed="false">compose</button>' +
+            '<button type="button" class="pt-chip" data-value="egress" aria-pressed="false">egress</button></div>')
+        $dom | Should -Match '<svg [^>]*data-settled="true"'
+        $dom | Should -Match '<svg [^>]*data-selected="claude-agent-dev"'
+        $dom | Should -Match 'data-id="claude-agent-dev"[^>]*aria-current="true"'
+        # Selected and pinned: the compose node and its five neighbours (three containers, dev-bootstrap, the run).
+        @([regex]::Matches($dom, '<a [^>]*data-id="([^"]+)"[^>]*data-pinned="true"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object) |
+            Should -Be (@('claude-agent-dev', 'claude-agent-dev/agent', 'claude-agent-dev/ledger', 'claude-agent-dev/mitm', $EgRun, 'ui:principal:dev-bootstrap') | Sort-Object)
+        $dom | Should -Match '<span class="pt-eg-status" aria-live="polite">selected claude-agent-dev · 5 neighbours pinned</span>'
+        # A pasted item route becomes the graph with the node after #; the dev chip hides the unset keeper and its edge.
+        $r = Invoke-PageScript $EgUrl "/default/environments/graph/$([uri]::EscapeDataString('claude-agent-dev/mitm'))" '' ("(async () => { $EgWait " +
+            'const svg = await wait(() => document.querySelector("svg.pt-eg[data-settled=true]")); const at = location.pathname + location.hash; ' +
+            'document.querySelector("[data-chips=env] button[data-value=dev]").click(); ' +
+            'const keeper = document.querySelector("a.pt-eg-node[data-id=\"claude-agent-dev/ledger\"]").hasAttribute("hidden"); ' +
+            'const edge = document.querySelector("line[data-from=\"claude-agent-dev/ledger\"]").hasAttribute("hidden"); ' +
+            'return [at, svg.dataset.selected, svg.dataset.shown, keeper, edge].join(" "); })()')
+        $r | Should -Be '/default/environments/graph#claude-agent-dev%2Fmitm claude-agent-dev/mitm 3 true true'
+    }
+
+    It 'a drag pins a node and a double-click releases it' {
+        $r = Invoke-PageScript $EgUrl '/default/environments/graph' '' ("(async () => { $EgWait " +
+            'const svg = await wait(() => document.querySelector("svg.pt-eg[data-settled=true]")); ' +
+            'const a = document.querySelector("a.pt-eg-node[data-id=\"claude-agent-dev/agent\"]"); const b = a.getBoundingClientRect(); ' +
+            'const x = b.x + b.width / 2; const y = b.y + b.height / 2; const o = { bubbles: true, pointerId: 7, button: 0, isPrimary: true }; ' +
+            'a.querySelector(".pt-eg-shape").dispatchEvent(new PointerEvent("pointerdown", { ...o, clientX: x, clientY: y })); ' +
+            'svg.dispatchEvent(new PointerEvent("pointermove", { ...o, clientX: x + 60, clientY: y + 30 })); ' +
+            'svg.dispatchEvent(new PointerEvent("pointerup", { ...o, clientX: x + 60, clientY: y + 30 })); ' +
+            'const pinned = await wait(() => a.dataset.pinned); const clickKept = !location.hash; ' +
+            'a.querySelector(".pt-eg-shape").dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true })); ' +
+            'await wait(() => !a.dataset.pinned); return [pinned, clickKept, a.dataset.pinned === undefined].join(" "); })()')
+        if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
+        $r | Should -Be 'true true true'
+    }
+
+    It 'right-click on a graph node and on an Instances row opens Details, Show graph, Runs and Ledger as links, greyed where no edge leads, keyboard too' {
+        $runQ = [uri]::EscapeDataString($EgRun)
+        # The keyboard's contextmenu (Shift+F10, the menu key) comes at 0,0: the menu opens beside the focused node.
+        $r = Invoke-PageScript $EgUrl '/default/environments/graph' '' ("(async () => { $EgWait $EgItems " +
+            'const svg = await wait(() => document.querySelector("svg.pt-eg[data-settled=true]")); const out = {}; ' +
+            'const node = (id) => document.querySelector(`a.pt-eg-node[data-id="${id}"]`); ' +
+            'const c = node("claude-agent-dev"); const b = c.getBoundingClientRect(); ' +
+            'c.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: b.x + 4, clientY: b.y + 4 })); ' +
+            'let m = await wait(() => document.querySelector(".pt-nodemenu")); out.compose = items(m); out.first = document.activeElement.textContent; ' +
+            'm.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); out.second = document.activeElement.textContent; ' +
+            'm.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })); out.last = document.activeElement.textContent; ' +
+            'm.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); out.closed = !document.querySelector(".pt-nodemenu"); out.back = document.activeElement.dataset.id; ' +
+            'const k = node("claude-agent-dev/mitm"); k.focus(); k.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 0, clientY: 0 })); ' +
+            'm = await wait(() => document.querySelector(".pt-nodemenu")); out.mitm = items(m); out.titles = [...m.querySelectorAll("[aria-disabled]")].map((x) => x.title); ' +
+            'm.querySelector("[data-item=show-graph]").click(); out.selected = await wait(() => svg.dataset.selected); out.hash = location.hash; out.path = location.pathname; ' +
+            'node("ui:principal:dev-bootstrap").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 9, clientY: 9 })); ' +
+            'm = await wait(() => document.querySelector(".pt-nodemenu")); out.principal = items(m); ' +
+            "node('$EgRun')" + '.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 9, clientY: 9 })); ' +
+            'm = await wait(() => document.querySelector(".pt-nodemenu")); out.run = items(m); ' +
+            'return JSON.stringify(out); })()')
+        if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
+        $o = $r | ConvertFrom-Json
+        $o.compose | Should -Be @('Details|/default/environments/instances/claude-agent-dev|', 'Show graph|/default/environments/graph#claude-agent-dev|',
+            "Runs|/default/layers/agent-runs#$runQ|", "Ledger|/default/ledger/agent?run=$runQ|")
+        "$($o.first) / $($o.second) / $($o.last) / $($o.closed) / $($o.back)" | Should -Be 'Details / Show graph / Ledger / True / claude-agent-dev'
+        $o.mitm | Should -Be @('Details|/default/environments/instances/claude-agent-dev%2Fmitm|', 'Show graph|/default/environments/graph#claude-agent-dev%2Fmitm|', 'Runs||true', 'Ledger||true')
+        $o.titles | Should -Be @('no hosts edge to a mounted run', 'no hosts edge to a mounted run')
+        "$($o.path)$($o.hash) $($o.selected)" | Should -Be '/default/environments/graph#claude-agent-dev%2Fmitm claude-agent-dev/mitm'
+        # dev-bootstrap holds no run here (root mounted them): no has-run edge, so its pages are greyed.
+        $o.principal | Should -Be @('Details||true', 'Show graph|/default/environments/graph#ui%3Aprincipal%3Adev-bootstrap|', 'Runs||true', 'Ledger||true')
+        $o.run | Should -Be @("Details|/default/layers/agent-runs#$runQ|", "Show graph|/default/environments/graph#$runQ|", "Runs|/default/layers/agent-runs#$runQ|", "Ledger|/default/ledger/agent?run=$runQ|")
+
+        # The Instances row: the same menu; Show graph opens the graph with that node selected.
+        $r = Invoke-PageScript $EgUrl '/default/environments/instances' '' ("(async () => { $EgWait $EgItems " +
+            'const row = await wait(() => document.querySelector("tr[data-id=\"claude-agent-dev/agent\"]")); const out = {}; const b = row.getBoundingClientRect(); ' +
+            'row.cells[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: b.x + 30, clientY: b.y + 4 })); ' +
+            'const m = await wait(() => document.querySelector(".pt-nodemenu")); out.agent = items(m); out.label = m.getAttribute("aria-label"); ' +
+            'm.querySelector("[data-item=show-graph]").click(); ' +
+            'const svg = await wait(() => document.querySelector("svg.pt-eg[data-settled=true]")); out.at = location.pathname + location.hash; out.selected = svg.dataset.selected; ' +
+            'out.title = document.getElementById("title").textContent; return JSON.stringify(out); })()')
+        $o = $r | ConvertFrom-Json
+        $o.agent | Should -Be @('Details|/default/environments/instances/claude-agent-dev%2Fagent|', 'Show graph|/default/environments/graph#claude-agent-dev%2Fagent|', 'Runs||true', 'Ledger||true')
+        $o.label | Should -Be 'agent (claude-agent:dev) (environment.instance)'
+        "$($o.at) $($o.selected) $($o.title)" | Should -Be '/default/environments/graph#claude-agent-dev%2Fagent claude-agent-dev/agent Graph'
     }
 }

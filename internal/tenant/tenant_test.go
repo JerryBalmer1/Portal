@@ -133,7 +133,8 @@ menu:
 	if len(kids) != 2 || sum["label"] != "Start" || sum["kind"] != "portal.summary" {
 		t.Errorf("overview children %v", kids)
 	}
-	inst := c["menu"].([]any)[5].(map[string]any)["children"].([]any)[0].(map[string]any)
+	// The environments graph comes first (docs/design.md 46), then Instances.
+	inst := c["menu"].([]any)[5].(map[string]any)["children"].([]any)[1].(map[string]any)
 	if f := inst["filter"].([]any); len(f) != 1 || f[0] != "host" || inst["kind"] != "environment.instance" {
 		t.Errorf("instances %v", inst)
 	}
@@ -160,6 +161,7 @@ func TestBadOverlayFailsBoot(t *testing.T) {
 		"menu:\n  - id: layers\n    label: Layers\n    path: layers\n    children: [{ id: p, label: P, path: layers/p, kind: k }]\n": "/menu/13/id: layers is the route of the layer pages",
 		"menu:\n  - id: agents\n    label: Agents\n    path: agents\n    children: [{ id: p, label: P, path: agents/p, kind: k }]\n": "/menu/13/id: agents is the route of the agent pages",
 		"menu:\n  - id: ledger\n    children: [{ id: portal, label: P, path: ledger/portal, kind: k }]\n":                            "/children/3/id: portal is a ledger source, whose entries' route /<tenant>/ledger/portal this page would take",
+		"menu:\n  - id: environments\n    children: [{ id: graph, view: table, kind: environment.graph }]\n":                         "/children/0/view: environments/graph is the environments graph, where every Show graph lands; its view is environments-graph, not \"table\"",
 		"menu: [": "yaml",
 	} {
 		_, err := load(t, map[string]string{"portal.yaml": overlay})

@@ -365,8 +365,9 @@ func clone(v any) any {
 // every entry has a label and a path that is its parent's path plus its id,
 // ids unique among siblings, no service at layers or agents (the layer and
 // agent pages' routes), no page of the ledger service with the id of a
-// ledger source (whose entries' route it would take), and a page that knows
-// what it draws.
+// ledger source (whose entries' route it would take), the environments
+// service's page graph drawing the environments graph and nothing else
+// (every Show graph links there), and a page that knows what it draws.
 func checkMerged(c map[string]any) []string {
 	var out []string
 	product, _ := c["product"].(map[string]any)
@@ -401,6 +402,11 @@ func checkMerged(c map[string]any) []string {
 			kids, _ := item["children"].([]any)
 			if depth == 1 && parent == LedgerService && slices.Contains(LedgerSources, id) {
 				out = append(out, fmt.Sprintf("%s/id: %s is a ledger source, whose entries' route /<tenant>/%s/%s this page would take", here, id, LedgerService, id))
+			}
+			if depth == 1 && parent == EnvironmentsService && id == EnvironmentsGraphPage {
+				if view, _ := item["view"].(string); view != EnvironmentsGraphView {
+					out = append(out, fmt.Sprintf("%s/view: %s/%s is the environments graph, where every Show graph lands; its view is %s, not %q", here, EnvironmentsService, id, EnvironmentsGraphView, view))
+				}
 			}
 			if depth > 0 {
 				view, _ := item["view"].(string)

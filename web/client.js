@@ -26,6 +26,7 @@ export const ROUTES = Object.freeze({
   listLedgers: { method: 'GET', path: '/api/tenants/{tenant}/ledger' },
   getLedger: { method: 'GET', path: '/api/tenants/{tenant}/ledger/{source}' },
   getLedgerEntry: { method: 'GET', path: '/api/tenants/{tenant}/ledger/{source}/{seq}' },
+  getEnvironmentGraph: { method: 'GET', path: '/api/tenants/{tenant}/environments/graph' },
   listFeeds: { method: 'GET', path: '/api/tenants/{tenant}/feeds' },
   pushCard: { method: 'POST', path: '/api/tenants/{tenant}/feeds/{feed}/push' },
   listNodes: { method: 'GET', path: '/api/tenants/{tenant}/nodes' },
@@ -121,6 +122,7 @@ export function createClient(tenant, base = '') {
     listLedgers: () => call('listLedgers'),
     getLedger: (source, { limit, before, run } = {}) => call('getLedger', { params: { source }, query: { limit, before, run } }),
     getLedgerEntry: (source, seq) => call('getLedgerEntry', { params: { source, seq } }),
+    getEnvironmentGraph: () => call('getEnvironmentGraph'),
     listFeeds: () => call('listFeeds'),
     // pushCard(feed, manifest, files): manifest a Blob of manifest.yaml, files [{path, blob}]. Nothing on the page
     // pushes in 0.6.0; Portal.Agent and Publish-PortalCard do.

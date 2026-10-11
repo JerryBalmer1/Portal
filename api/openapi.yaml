@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.10.0
+  version: 0.11.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -36,6 +36,8 @@ tags:
     description: Emitters and the layers they produced (docs/design.md 44). An emitter is a card of type emitter in one of the tenant's feeds, served under the card's own id, or the module a mounted layer's ontology names when no feed holds its card. Read-only.
   - name: ledger
     description: Ledger chains and their verify (docs/design.md 45). Source agent is the agent's ledger, read from the mounted layer that holds LedgerEntry nodes under ledger:<seq> ids; source portal is the tenant's own push ledger, tenants/<tenant>/ledger.jsonl, whose lines carry seq and prev since 0.10.0. Read-only.
+  - name: environments
+    description: The environments graph (docs/design.md 46). Every node of an environment.* Kind in the mounted layers, as their layers emit them, with every edge of a mounted layer that touches one and the node at its other end. Read-only; Portal reads env, tags and group from the nodes and infers none.
   - name: feeds
     description: Where the tenant publishes Graph.Node manifest cards (an OCI registry or a NuGet v3 feed), what each holds, and the push. Every push is one line of tenants/<tenant>/ledger.jsonl.
 paths:
@@ -570,6 +572,31 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/environments/graph:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: getEnvironmentGraph
+      tags: [environments]
+      summary: >-
+        The environments graph as an envelope (module Portal, no ontology of its own: its nodes keep their layers' Kinds).
+        Every node of a Kind starting environment. (environment.instance, environment.image, environment.network, ...) in
+        the mounted layers, under its layer's id and with its layer's properties, the first id wins in mount order, and a
+        node with no stamp gets stamp.layer from its layer, as listNodes serves them. Then every edge of a mounted layer
+        with an environment node at one end, its kind kept (member-of, runs-as, hosts, ...), and the node at the other end,
+        one hop and no further: a Run (agent:run/<stamp>) as listAgents serves it, with its layer and ledger count; a
+        Principal (ui:principal:<name>) as listPrincipals serves it, dev-bootstrap made up when principals.yaml lacks it;
+        any other node as the mounted layer that holds it emits it. A served Principal holding a served Run (as listAgents
+        groups them) is joined to it by has-run; no other node is added. An edge whose other end no mounted layer holds
+        and Portal does not serve is left out. Empty, not 404, when no environment node is mounted.
+      responses:
+        "200":
+          description: The environment nodes, their one-hop neighbours and the edges between them (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/tenants/{tenant}/feeds/{feed}/push:

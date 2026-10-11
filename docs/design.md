@@ -603,3 +603,97 @@ Choices made without asking:
     - the run's `ledger` count; the boot refusal of a ledger page named `portal`; the ledger line's shape with `seq` and `prev`.
   - Pester, in Chrome: the list in green and red; the entries newest first with their run links; the run filter; the layer page marking the Step's row; one entry; and the agent page's count. Also the ledger line's `seq` and `prev` on a push.
 - **Version 0.10.0:** new operations and Kinds, and a field in the push ledger's lines.
+
+## 46. The environments graph and the node menu (0.11.0)
+
+The brief: Environments/Instances fills from Portal.Agent's `agent-environment` layer (Kind `environment.instance`, `properties.kind` compose or container, ids `claude-agent-dev` and `claude-agent-dev/<service>`, edges `member-of`, `runs-as` and `hosts`). Add a page Environments → Graph at `/<tenant>/environments/graph` over every `environment.*` Kind and what is one edge away, grouped by the `env`, `group` and `tags` the nodes carry, and the first right-click menu (Details, Show graph, Runs, Ledger) on the graph's nodes and the Instances rows. Every node and item is a link; the selected node is `#<id>`.
+
+Asked, and Jerry chose:
+
+- **Details links to the node's item page.** The brief names an "existing quick-details drawer", and the page has none. The details view that exists is the item page, `/<tenant>/<service>/<page>/<id>` (its fields and tabs). So Details is a link to the item page of the Page that lists the node's Kind, and no drawer was built.
+- **`graph` is reserved in the Environments service.** The brief's "boot refuses a page named like a kind, as before" matched no rule in the code. Jerry's answer: the merged-config check refuses an Environments page with the id `graph` whose view is not `environments-graph` (`/menu/<i>/children/<j>/view: environments/graph is the environments graph, where every Show graph lands; ...`). A tenant overlay cannot turn the address every Show graph links to into a table of some Kind. The other options were refusing a page id that is a Kind's last segment, and adding no rule.
+
+Choices made without asking:
+
+- **The real layer was read, at the brief's direction.** CLAUDE.md does not list `../Portal.Agent` (entries 42, 45), but the brief asks for a fixture built from that real layer. The layer is in `agent/Orchestrator/artifacts/environment-layers/`, not in `ledger-layers/` as the brief says; that folder holds the ledger layer. CLAUDE.md's list is not widened, since that is the owner's call (entry 41).
+- **Fixtures.**
+  - `tests/fixtures/layers/agent-environment/` is `2026-10-11T10-08-56Z.environment.graph.json` and the `ontology.yaml` beside it, byte for byte, from Portal.Agent's working tree at 66eba88 (Up on 2026-10-11; Claude.Agent.Orchestrator 0.1.0).
+    - It carries no `env`, `group` or `tags`.
+    - Its `hosts` edge names `agent:run/2026-10-11T10:08:49.8679152Z`, which no fixture holds.
+    - Its `runs-as` edge names `ui:principal:dev-bootstrap`.
+  - `tests/fixtures/layers/agent-environment-tagged/` is derived from it, and only these things change:
+    - `env: dev` on the compose node, the agent and mitm.
+    - `group: stack` on the compose node and the agent; `group: egress` on mitm.
+    - `tags`: `[agent, compose]`, `[agent]` and `[egress]`.
+    - The ledger keeper carries none of the three, so it lands in `unset`.
+    - `hosts` points at the agent-runs fixture's run.
+    - Its ontology declares the three properties, marked fixture only.
+- **API: `getEnvironmentGraph`, `GET /api/tenants/<tenant>/environments/graph`.** It is an envelope (module Portal) with no `ontology` of its own, because its nodes keep their layers' Kinds.
+  - **Nodes.** Every node of a Kind starting `environment.` in the mounted layers, with its layer's id and properties. The first id wins in mount order and a node with no stamp gets `stamp.layer`, as `listNodes` does (entry 42).
+  - **Edges.** Every edge of a mounted layer with such a node at one end, its kind kept.
+  - **Neighbours, one hop only.**
+    - A Run is served as `listAgents` serves it, so it carries its `layer` and `ledger` count, which the menu needs.
+    - A Principal is served as `listPrincipals` serves it. dev-bootstrap is made up when `principals.yaml` lacks it, as the agents page does (entry 43).
+    - Any other node is served as its layer emits it.
+  - **Dropped edges.** An edge whose other end nothing serves is left out, so nothing dangles. This is the real layer's `hosts` edge until its runs layer is mounted.
+  - **`has-run`.** A served Principal holding a served Run (by `listAgents`' grouping) gets a `has-run` edge to it. It adds no node. Without it, a principal's Details and Runs would link an agent page that is 404 for a principal holding no run.
+  - Empty, not 404, when nothing is mounted.
+  - The envelope does not go through the portal check (`CheckEnvelope`), which would refuse unprefixed ids and Kinds outside `ontology.yaml`. Like `listNodes`, it is layer data served read-only.
+  - `ontology.yaml` is unchanged but for its version: no Kind or edge Kind is added.
+- **"Ledger root" one edge away.** Neither real layer has an edge between them. The ledger layer's root is `ledger.jsonl` (a `LedgerChain`, module Claude.Agent.Ledger) with no edges, and its entries `records` the run. So the ledger is reached through the run: Ledger links `/<tenant>/ledger/agent?run=<id>` when the hosted Run counts entries. A ledger node would be drawn if an edge reached it.
+- **Page.** Environments → Graph is `{ id: graph, path: environments/graph, view: environments-graph }`, first under Environments, so the rail lists it above Instances. It is `web/envgraph.js`, drawn as SVG and not with the vendored Cytoscape, because a canvas node cannot be an `<a>`.
+  - **Layout.** A small force layout of its own:
+    - Repulsion, doubled between two envs.
+    - A link distance by edge kind: `member-of` 90, `runs-as` and `hosts` 170, any other 130.
+    - A pull toward each env's mean, and a weak pull to the centre.
+  - **Settle.** The layout settles in about 300 ticks, four a frame, and sets `data-settled` on the `svg`. Until it first settles, the view is fitted to the drawing, never closer than 1.5 times life size. After that the view stays put, so a drag does not move it under the pointer. Initial positions are fixed per env, so a reload lays out the same way.
+  - **Pins.** Dragging a node pins it, shown with a dashed outline. Double-clicking releases it.
+  - **Selection.**
+    - Selecting a node pins it and its neighbours where the layout settles them.
+    - Clicking a node's link selects it in place (`history.pushState`).
+    - Back, Forward or an edited fragment reach the page through the shell's new `onHash` hook, so its pins and layout stay.
+    - An item route, `/<tenant>/environments/graph/<id>`, is rewritten to `#<id>`.
+    - An id the graph lacks says so in red in the toolbar.
+  - **Look.**
+    - Colour is an instance's `properties.kind`: compose, container, kubernetes or host.
+    - Shape is the Kind: instance a circle, image a square, network a diamond, any other a hexagon.
+    - A node one edge away is smaller and at 55% opacity.
+    - `member-of` is solid, `runs-as` dashed, `hosts` dotted and any other dash-dot, all with arrowheads.
+    - A legend under the graph says all of this.
+- **Grouping.** It is read from node fields only.
+  - **env.** `env` is a string. Missing or empty is `unset`. dev, qa and prod are always offered as chips, and any other value gets its own hull and chip, since Portal reads env and does not judge it.
+  - **group and tags.** `group` draws a hull inside its env's hull, labelled at its foot. `tags` is a list, or one string read as one tag.
+  - **Neighbours.** A neighbour is in no hull.
+  - **Chips.** The env and tag chips are Instances' chips (`nodes.chips`, which now takes its group's aria-label). A chip hides what it does not match; a neighbour stays while a shown node is next to it.
+  - **Search.** The banner's search dims what it does not match.
+  - **Count.** The toolbar counts `<n> nodes · <m> one edge away · <e> edges · <u> without env`.
+- **The node menu, `web/nodemenu.js`.** It opens on right-click, and on Shift+F10 or the menu key, which reach the page as a `contextmenu` at 0,0, so the menu opens beside the focused node or row. Arrow keys, Home and End move through it, Enter follows, and Escape returns focus.
+  - **Items.** Every item is an `<a>`. One with nowhere to go has no `href`, has `aria-disabled`, and says why in its title.
+    - **Details:** the node's item page. For a Run, its row on the runs layer's page (entry 43's `#<id>`). For a Principal, its agent page, when a `has-run` edge says it holds a run.
+    - **Show graph:** `/<tenant>/environments/graph#<id>`.
+    - **Runs:** the newest Run a `hosts` edge reaches, as its row on the layer page. For a Principal, its agent page, as above.
+    - **Ledger:** `/<tenant>/ledger/agent?run=<id>`, when that Run counts ledger entries.
+    - A container has no `hosts` edge, so its Runs and Ledger are greyed.
+  - **Where it opens.** On the graph, and on every table page of an `environment.*` Kind: Instances now, and Images and Networks once they fill. The rows read the environments graph on the first right-click.
+- **Not added.**
+  - A PowerShell wrapper (`Get-PortalEnvironmentGraph`): the brief asks for routes, pages and tests.
+  - A way to drag or release a pin by keyboard: nodes and items are reachable, and selection pins by keyboard.
+- **For later.**
+  - Entry 45's ledger fixture should be replaced by a copy of the real ledger layer. That layer's module is Claude.Agent.Ledger, its root `ledger.jsonl` is a `LedgerChain`, and it has 236 entries. Portal finds it by its `ledger:<seq>` entries, so it mounts.
+  - Kubernetes and host colours are checked only in the stylesheet: no layer emits them yet.
+- **Coverage.**
+  - Go:
+    - the operation against the spec (200, 404 for another tenant), the page and its item route;
+    - empty with no environment layer;
+    - the real layer: four instances, dev-bootstrap made up, member-of and runs-as, its hosts edge left out;
+    - one hop: the Run with layer and ledger 9, no Step, Decision or ledger entry, the three edge kinds;
+    - the first layer winning on an id and every edge once;
+    - `has-run` from dev-bootstrap to runs a legacy token mounted;
+    - the boot refusal of a graph page with another view;
+    - the menu order.
+  - Pester (Chrome):
+    - the rail order, the real layer's nodes as links, edges by kind, the unset chips and hull, the shapes;
+    - the tagged copy's hulls, tag chips, the node after `#` selected with its five neighbours pinned, the item route rewritten, a chip hiding the keeper;
+    - a drag pinning and a double-click releasing;
+    - the menu on a compose node, a container, the principal and the run, its keys, Show graph selecting in place, and the Instances row's menu landing on the graph with the node selected.
+- **Version 0.11.0:** a new operation and page.

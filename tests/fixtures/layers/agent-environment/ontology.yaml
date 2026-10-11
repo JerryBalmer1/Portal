@@ -1,0 +1,38 @@
+module: Claude.Agent.Orchestrator
+version: 0.1.0
+kinds:
+  environment.instance:
+    description: "The running compose stack (properties.kind compose) and each of its containers (properties.kind container), as Up saw them before the run. Portal's Environments/Instances page lists this Kind and filters its chips on properties.kind. Down re-emits the layer with state stopped on every node."
+    idRule: "<compose project> for the compose node, <compose project>/<service> for a container; no prefix (Graph.Node registers none for environment.instance)"
+    properties:
+      - { name: kind, type: string, required: true, description: "compose or container: what Portal's filter chips match." }
+      - { name: state, type: string, required: true, description: "The compose node: running, or stopped once Down re-emits it. A container: docker inspect's State.Status (running, exited, ...), or stopped once Down re-emits it." }
+      - { name: composeProject, type: string, required: true, description: The compose project name. }
+      - { name: updated, type: string, description: "When the node was seen in this state (RFC 3339 UTC): Up's build, or Down's re-emit." }
+      - { name: host, type: string, description: "compose: the machine the stack runs on ($env:COMPUTERNAME)." }
+      - { name: started, type: string, description: "compose: the stack's stamp (its agent container's start, to the second). container: docker inspect's State.StartedAt." }
+      - { name: imageDigest, type: string, description: "compose: the agent image's id (sha256:...), as Up handed it to the agent." }
+      - { name: principal, type: string, description: "compose: the portal principal whose token mounted the layers (ui:principal:<name>); absent when nothing was mounted." }
+      - { name: portalBase, type: string, description: "compose: PORTAL_BASE, where the layers are mounted." }
+      - { name: mitmAddress, type: string, description: "compose: the egress sidecar's address as the agent is given it (HTTP_PROXY)." }
+      - { name: ledgerCopyOut, type: string, description: "compose: where Up copies ledger.jsonl out to, relative to the Orchestrator folder." }
+      - { name: service, type: string, description: "container: the compose service." }
+      - { name: containerId, type: string, description: "container: the docker container id." }
+      - { name: image, type: string, description: "container: the image it was started from, by name." }
+      - { name: imageId, type: string, description: "container: the image's id (sha256:...)." }
+      - { name: networks, type: array, description: "container: the networks it is attached to, without the project prefix (inside, outside; none for the ledger keeper)." }
+      - { name: stopped, type: string, description: "Down's re-emit: when Down marked the node stopped (RFC 3339 UTC)." }
+    display: { color: "#2a9d8f", shape: hexagon, size: 2, label: "{name}", when: [ { properties: { state: stopped }, color: "#8d99ae" } ] }
+edgeKinds:
+  member-of:
+    description: The container belongs to this compose stack.
+    from: [environment.instance]
+    to: [environment.instance]
+  runs-as:
+    description: "The stack's layers were mounted on the portal as this principal (Portal's ui:principal:<name>, the id its agents page groups runs on)."
+    from: [environment.instance]
+    to: [Principal]
+  hosts:
+    description: "The stack ran this run: the runs layer's root (Graph.Emitter.Agent's agent:run/<stamp>)."
+    from: [environment.instance]
+    to: [Run]

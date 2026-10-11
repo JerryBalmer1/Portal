@@ -4,7 +4,10 @@
 // updated), or an empty state naming the page. A row opens the node's item
 // page, /<tenant>/<service>/<page>/<id>. A page with filter offers its
 // values as toolbar chips over properties.kind; the banner's search box
-// filters the rows on screen. Nothing here writes.
+// filters the rows on screen. On a page of an environment.* Kind a row's
+// right-click (or Shift+F10) opens the node menu (nodemenu.js; docs/design.md
+// 46), whose links read the environments graph. Nothing here writes.
+import * as nodemenu from '/static/nodemenu.js';
 
 // mount draws into el. ctx: {client, page, toolbar, bus, href, navigate}.
 export function mount(el, ctx) {
@@ -43,6 +46,7 @@ export function mount(el, ctx) {
     const onSearch = (ev) => { search = String(ev.detail || '').toLowerCase(); apply(); };
     ctx.bus.addEventListener('search', onSearch);
     h.off = () => ctx.bus.removeEventListener('search', onSearch);
+    if (String(kind).startsWith('environment.') && ctx.nodeLinks) withMenu(t, rows, ctx);
     apply();
     wrap.appendChild(t);
   }).catch((err) => {
@@ -90,18 +94,38 @@ export function table(list, opts = {}) {
 }
 
 export function destroy(h) {
+  nodemenu.close(false);
   h.off();
   h.wrap.remove();
 }
 
+// withMenu opens the node menu on a row's right-click. The environments
+// graph, whose edges say which items link where, is read on the first.
+function withMenu(t, rows, ctx) {
+  let graph = null;
+  t.dataset.menu = 'node';
+  t.addEventListener('contextmenu', async (ev) => {
+    const row = ev.target.closest('tr[data-id]');
+    const r = row && rows.find((x) => x.row === row);
+    if (!r) return;
+    ev.preventDefault();
+    graph ||= ctx.client.getEnvironmentGraph().catch(() => ({ nodes: [], edges: [] }));
+    const g = await graph;
+    if (!row.isConnected) return;
+    const at = { clientX: ev.clientX, clientY: ev.clientY };
+    nodemenu.open(at, r.n, g, ctx.nodeLinks, ctx.navigate, row.querySelector('a') || row);
+  });
+}
+
 // chips is one toggle per filter value, and "all" first; choosing one calls
-// pick with the value ('' for all).
-export function chips(values, pick) {
+// pick with the value ('' for all). label names the group for a screen
+// reader.
+export function chips(values, pick, label = 'filter by kind') {
   if (!Array.isArray(values) || !values.length) return [];
   const group = document.createElement('div');
   group.className = 'pt-chips';
   group.setAttribute('role', 'group');
-  group.setAttribute('aria-label', 'filter by kind');
+  group.setAttribute('aria-label', label);
   const all = ['', ...values];
   const buttons = all.map((v) => {
     const b = document.createElement('button');

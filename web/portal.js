@@ -16,7 +16,9 @@
 // /<tenant>/emitters and each at /<tenant>/emitters/<name> (docs/design.md 44),
 // or the ledger chains, at /<tenant>/ledger, each chain's entries at
 // /<tenant>/ledger/<source> and each entry at /<tenant>/ledger/<source>/<seq>
-// (docs/design.md 45). The route is the URL, /<tenant>/<service>/<page>[/<id>],
+// (docs/design.md 45), or the environments graph at
+// /<tenant>/environments/graph, its selected node after # (docs/design.md
+// 46). The route is the URL, /<tenant>/<service>/<page>[/<id>],
 // /<tenant>/layers/<name>, /<tenant>/agents[/<name>],
 // /<tenant>/emitters[/<name>] or /<tenant>/ledger[/<source>[/<seq>]], so a deep link survives a refresh. Which service is expanded, whether the rail is
 // collapsed and what the search box holds are the viewer's pointers, like a
@@ -32,11 +34,12 @@ import * as layers from '/static/layers.js';
 import * as agents from '/static/agents.js';
 import * as emitters from '/static/emitters.js';
 import * as ledger from '/static/ledger.js';
+import * as envgraph from '/static/envgraph.js';
 import { icon } from '/static/icons.js';
 import { refusal } from '/static/toast.js';
 
 // Page renderers by a Page's view; screen is drawn by screen.js.
-const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers, emitters, ledger };
+const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers, emitters, ledger, 'environments-graph': envgraph };
 
 const tenant = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || 'default');
 const client = createClient(tenant);
@@ -144,6 +147,23 @@ function cardHref(id) {
   return list ? `${href(list.properties.path)}#${encodeURIComponent(id)}` : null;
 }
 
+// kindHref is a node's item page on the Page that lists its Kind, or null
+// when no page does.
+function kindHref(kind, id) {
+  const page = [...menu.pages.values()].find((p) => p.properties.nodeKind === kind && (p.properties.view || 'table') === 'table');
+  return page ? href(page.properties.path, id) : null;
+}
+
+// graphHref is a node selected on the environments graph,
+// /<tenant>/environments/graph#<id> (docs/design.md 46).
+function graphHref(id) {
+  const page = [...menu.pages.values()].find((p) => p.properties.view === 'environments-graph');
+  return page ? `${href(page.properties.path)}#${encodeURIComponent(id)}` : null;
+}
+
+// nodeLinks are where the node menu's items lead (nodemenu.js).
+const nodeLinks = { kindHref, graphHref, layerHref: (name) => (name ? layerHref(name) : null), agentHref, ledgerHref };
+
 // pageHref is where a Page lives: the agents page at /<tenant>/agents, the
 // emitters page at /<tenant>/emitters, every other at its path.
 function pageHref(page) {
@@ -218,7 +238,7 @@ async function boot() {
   await whoami();
   wireBanner();
   wireRail();
-  window.addEventListener('popstate', render);
+  window.addEventListener('popstate', onPop);
   render();
 }
 
@@ -244,7 +264,21 @@ function firstPage(service) {
   return page ? page.properties.path : '';
 }
 
+// onPop follows Back, Forward and an edited address. A move that changes
+// only the fragment goes to a page that takes it in place (the
+// environments graph's selected node), so its layout and pins stay.
+function onPop() {
+  if (rendered === location.pathname + location.search && current && current.handle && typeof current.handle.onHash === 'function') {
+    current.handle.onHash();
+    return;
+  }
+  render();
+}
+
+let rendered = '';
+
 function render() {
+  rendered = location.pathname + location.search;
   const r = route();
   const svc = menu.services.find((s) => s.properties.path === r.service) || null;
   // A move to another service expands it; staying keeps what the viewer chose.
@@ -253,6 +287,12 @@ function render() {
     expanded = svc.id;
   }
   const page = menu.pages.get(`${r.service}/${r.page}`) || null;
+  // The environments graph has no item page: its node is selected after #.
+  if (r.id && page && page.properties.view === 'environments-graph') {
+    history.replaceState(null, '', graphHref(r.id));
+    rendered = location.pathname + location.search;
+    r.id = null;
+  }
   document.documentElement.dataset.route = `${r.service}/${r.page}${r.id ? '/*' : ''}`;
   drawRail(r);
   drawCrumbs(svc, page, r);
@@ -602,7 +642,7 @@ function drawPage(svc, page, r) {
 }
 
 function pageCtx(page) {
-  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref, emitterHref, cardHref, ledgerHref };
+  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref, emitterHref, cardHref, ledgerHref, nodeLinks };
 }
 
 // reauth reads whoami again (a token the portal refuses is dropped) and

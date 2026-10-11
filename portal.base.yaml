@@ -21,8 +21,12 @@
 # ledger layer, and the tenant's own push ledger), each linking to its
 # entries at /<tenant>/ledger/<source> (docs/design.md 45; the ledger
 # service's pages keep their paths there, so no ledger page may have the id
-# of a source, agent or portal). A page's children are the tabs of its item
-# page, /<tenant>/<service>/<page>/<id>.
+# of a source, agent or portal), environments-graph the environments graph
+# (every environment.* node of the mounted layers and what is one edge away,
+# grouped by the env, group and tags they carry; the selected node after #,
+# /<tenant>/environments/graph#<id>; docs/design.md 46; the environments
+# service's page graph is this view and no other). A page's children are the
+# tabs of its item page, /<tenant>/<service>/<page>/<id>.
 #
 # feeds are where cards (Graph.Node manifest cards: manifest.yaml and the
 # files of its folder) are published: kind oci (an OCI registry; url is the
@@ -113,6 +117,7 @@ menu:
     icon: environment
     path: environments
     children:
+      - { id: graph, label: Graph, path: environments/graph, view: environments-graph }
       - { id: instances, label: Instances, path: environments/instances, kind: environment.instance, filter: [container, compose, kubernetes, host] }
       - { id: images, label: Images, path: environments/images, kind: environment.image }
       - { id: networks, label: Networks, path: environments/networks, kind: environment.network }
