@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.6.0 and needs PowerShell 7.4' {
+    It 'is version 0.7.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.6.0'
+        $m.ModuleVersion | Should -Be '0.7.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,10 +302,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.6.0, the thirteen Kinds, the nine edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.7.0, the thirteen Kinds, the nine edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.6\.0$'
+        $text | Should -Match '(?m)^version: 0\.7\.0$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -391,7 +391,7 @@ Describe 'Fixed port' {
 # Invoke-Build Up's start, Invoke-PortalUp, on the test port over its own artifacts (docs/design.md 32).
 Describe 'Up replaces a running portal' {
     BeforeAll { $script:UpWork = Join-Path $TestDrive 'up' }
-    AfterEach { Stop-Portal -Artifacts $UpWork }
+    AfterEach { Stop-Portal -Artifacts $UpWork; InModuleScope Portal { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
     It 'Up stops the running portal, waits for the port and starts another, naming both boot stamps' {
         $first = Start-Portal -Port 18200 -Artifacts $UpWork -Filesystem ''
         $snap = New-PortalSnap -Url $first.Url -Note 'up: replace'
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.6.0'
+        $s.version | Should -Be '0.7.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -622,6 +622,29 @@ Describe 'Live portal' {
         $codes = @($err.TargetObject.problems.code)
         foreach ($c in 'schema', 'duplicate-node', 'dangling-edge', 'edge-id', 'edgeid', 'kind', 'stamp') { $codes | Should -Contain $c }
         (Invoke-RestMethod "$Url/api/tenants/default/layers").name | Should -Not -Contain 'bad'
+    }
+    It 'a mount answers Location at the layer''s page, which serves the shell; POST /api/layers is 410 and names the tenant route' {
+        $body = @{ name = 'fs-located'; path = (Resolve-Path $FsFixture).Path } | ConvertTo-Json
+        $r = Invoke-WebRequest "$Url/api/tenants/default/layers" -Method POST -ContentType 'application/json' -Headers $Auth -Body $body
+        [int]$r.StatusCode | Should -Be 201
+        [string]$r.Headers['Location'] | Should -Be '/default/layers/fs-located'
+        (Invoke-WebRequest "$Url/default/layers/fs-located").Content | Should -Match 'src="/static/portal\.js"'
+        [int](Invoke-WebRequest "$Url/default/layers/nope" -SkipHttpErrorCheck).StatusCode | Should -Be 404
+        $gone = Invoke-WebRequest "$Url/api/layers" -Method POST -ContentType 'application/json' -Headers $Auth -Body ($body -replace 'fs-located', 'fs-gone') -SkipHttpErrorCheck
+        [int]$gone.StatusCode | Should -Be 410
+        ($gone.Content | ConvertFrom-Json).message | Should -BeLike '*POST /api/tenants/default/layers*'
+        (Invoke-RestMethod "$Url/api/tenants/default/layers").name | Should -Not -Contain 'fs-gone'
+    }
+    It 'Graph/Layers links each layer to its page, which shows its counts, stamp and nodes' {
+        $dom = Get-PageDom $Url '/default/graph/layers'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $dom | Should -Match '<tr data-layer="filesystem"><td><a href="/default/layers/filesystem">filesystem</a>'
+        $fs = (Invoke-WebRequest "$Url/api/tenants/default/layers").Content | ConvertFrom-Json -DateKind String | Where-Object name -EQ 'filesystem'
+        $dom = Get-PageDom $Url '/default/layers/filesystem'
+        $dom | Should -Match '<h1 class="pt-title" id="title"[^>]*>filesystem</h1>'
+        $dom | Should -Match ([regex]::Escape(">$($fs.counts.nodes) nodes · $($fs.counts.edges) edges · $($fs.stamp)</span>"))
+        @([regex]::Matches($dom, '<tr data-id="')).Count | Should -Be $fs.counts.nodes
+        $dom | Should -Match 'data-page="ui:rail:graph:layers"[^>]*aria-current="page"|aria-current="page"[^>]*data-page="ui:rail:graph:layers"'
     }
     It 'Mount-PortalLayer mounts by path and by envelope; the layer ontology is served' {
         $l = Mount-PortalLayer -Name fs2 -Path $FsFixture -Url $Url

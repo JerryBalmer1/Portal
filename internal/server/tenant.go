@@ -137,6 +137,25 @@ func (s *Server) shell(w http.ResponseWriter, name, service, page string) {
 		writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("no page %s/%s in tenant %s's menu", service, page, name), nil)
 		return
 	}
+	s.index(w)
+}
+
+// GetLayerPage serves index.html at one mounted layer's page,
+// /<tenant>/layers/<name>; the shell draws the layer from the API.
+func (s *Server) GetLayerPage(w http.ResponseWriter, r *http.Request, name api.Tenant, layer string) {
+	if !s.tenantOK(w, name) {
+		return
+	}
+	for _, l := range s.p.Layers() {
+		if l.Name == layer {
+			s.index(w)
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("no layer %s is mounted in tenant %s", layer, name), nil)
+}
+
+func (s *Server) index(w http.ResponseWriter) {
 	data, err := fs.ReadFile(s.web, "index.html")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal", err.Error(), nil)
@@ -381,8 +400,8 @@ func (s *Server) ListNodes(w http.ResponseWriter, r *http.Request, name api.Tena
 	writeJSON(w, http.StatusOK, env)
 }
 
-// MountLayerUnscoped is mountLayer at its pre-0.4.0 path, for this
-// process's tenant.
+// MountLayerUnscoped is mountLayer's pre-0.4.0 path, gone since 0.7.0: it
+// mounts nothing and names the tenant's route.
 func (s *Server) MountLayerUnscoped(w http.ResponseWriter, r *http.Request) {
-	s.MountLayer(w, r, s.t.Name)
+	writeError(w, http.StatusGone, "gone", fmt.Sprintf("POST /api/layers is gone; mount with POST /api/tenants/%s/layers", s.t.Name), nil)
 }

@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.6.0 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 in full (Go 78 tests, Smoke passed, Pester 98 passed); items 1.16 and 3.8 run as written, each from its own `pwsh -NoProfile -File`, and 3.7 against Docker engine 29.5.3 (both runs, the rerun's two 409s included); their Expects are the output seen. Not run for 0.6.0: 2.9 (interactive, and tenants/default is in mode dev); 0.1, 0.3, 1.1 to 1.15 and 3.1 to 3.6 (their code is unchanged; Pester and Smoke cover them); 2.1 to 2.8, which are interactive.
+Verified for: 0.7.0 on 2026-10-11, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23: item 0.2 in full (Go 79 tests, Smoke passed, Pester 100 passed); item 1.17 run as written from its own `pwsh -NoProfile -File`, its Expect the output seen; 2.10's two pages read with headless Chrome (`--dump-dom`) on the same portal its block starts, without the click, so its Expect is the DOM seen at each route; 2.9 read the same way, headless, against the portal already on 8200 (tenants/default, mode dev; its cards from earlier pushes): every Expect held, and the hash hover is each hash's `title`, read not hovered. Not run for 0.7.0: 3.7 (Docker is not running here), so 2.9 did not follow it; 0.1, 0.3, 1.1 to 1.16 and 3.1 to 3.6, 3.8 (their code is unchanged or covered by Pester and Smoke; 1.7 and 1.3 mount through the tenant route, which only gained a header); 2.1 to 2.8, which are interactive.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (78 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 98, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 97, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
+Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (79 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.853 here), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 100, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 99, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -442,6 +442,33 @@ finally { $env:PORTAL_TOKEN = $saved; Stop-Portal -Artifacts $dir; Remove-Item $
 ```
 Expect: `feeds: ui:feed:cards-oci oci http://127.0.0.1:1/cards; ui:feed:cards-nuget nuget http://127.0.0.1:8202/v3/index.json` (the overlay's url over the base's, the other feed as the base has it); `anonymous: ... -> 401: POST writes, and a write needs a bearer token; ...`; `admin, feed down: ... -> 502: feed cards-oci: Head "http://127.0.0.1:1/v2/cards/tool.git/manifests/0.1.0": dial tcp ...`; `admin, no such feed: ... -> 404: no such feed: nope; tenant default has cards-oci, cards-nuget`; and one line, `ledger: failed cards-oci Tool.Git 0.1.0 files 2 by ui:principal:check` (the 401 and the 404 write none; docs/design.md 40).
 
+### 1.17 A mount answers Location at the layer's page; POST /api/layers is 410
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-1.17-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"
+Set-Content "$t\default\portal.yaml" 'mode: demo'
+$admin = New-PortalToken -Name check -Bootstrap -Tenants $t
+$dir = Join-Path $env:TEMP 'portal-check-1.17'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' -Tenants $t
+try {
+    $auth = @{ Authorization = "Bearer $($admin.Token)" }
+    $body = @{ name = 'fs'; path = (Resolve-Path .	estsixtures\layersilesystem).Path } | ConvertTo-Json
+    $r = Invoke-WebRequest "$($p.Url)/api/tenants/default/layers" -Method POST -ContentType 'application/json' -Headers $auth -Body $body
+    "mount: $([int]$r.StatusCode) Location $($r.Headers['Location'])"
+    $page = Invoke-WebRequest "$($p.Url)$($r.Headers['Location'])" -SkipHttpErrorCheck
+    "page: $([int]$page.StatusCode) $($page.Headers['Content-Type'])"
+    "not mounted: $([int](Invoke-WebRequest "$($p.Url)/default/layers/nope" -SkipHttpErrorCheck).StatusCode)"
+    $old = Invoke-WebRequest "$($p.Url)/api/layers" -Method POST -ContentType 'application/json' -Headers $auth -Body ($body -replace '"fs"', '"old"') -SkipHttpErrorCheck
+    "old route: $([int]$old.StatusCode) $($old.Content.Trim())"
+    "layers: $((Invoke-RestMethod "$($p.Url)/api/tenants/default/layers").name -join ',')"
+}
+finally { Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `mount: 201 Location /default/layers/fs`; `page: 200 text/html; charset=utf-8`; `not mounted: 404`; `old route: 410 {"code":"gone","message":"POST /api/layers is gone; mount with POST /api/tenants/default/layers"}`; `layers: fs` (the old route mounted nothing; docs/design.md 42).
+
 ## 2. Page
 
 ### 2.1 The shell, and the FileSystem layer in colour on Graph/Explore
@@ -577,6 +604,24 @@ Expect: Invoke-Build prints `minted dev-bootstrap (admin) in <repo>\tenants\defa
 Start-Process "http://127.0.0.1:8200/default/artifacts/feeds"
 ```
 Expect: under Artifacts, Feeds is the first page. Two cards, `Cards (OCI)` and `Cards (NuGet)`, each with its kind, `private` and its URL, and in each a row `Tool.Git · 0.1.0 · tool · <12 hex> · <pushed> · dev-bootstrap` (or whoever pushed); hovering the hash shows the whole `sha256:` and the feed's digest. The toolbar reads `2 feeds · 2 cards`. No button pushes or deletes. The amber DEV MODE bar and the avatar behave as in 2.8.
+
+### 2.10 Graph/Layers links each layer to its page; the page shows its counts, stamp and nodes
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$t = Join-Path $env:TEMP 'portal-check-2.10-tenants'
+Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"
+Set-Content "$t\default\portal.yaml" 'mode: demo'
+$dir = Join-Path $env:TEMP 'portal-check-2.10'
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+$p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem .	estsixtures\layersilesystem -Tenants $t
+try {
+    Start-Process "$($p.Url)/default/graph/layers"
+    Read-Host 'Read Graph/Layers, click filesystem, press Enter here to stop'
+}
+finally { Stop-Portal -Artifacts $dir; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: Graph/Layers is the fourth page under Graph and is marked current; the toolbar reads `1 layers`; one row, `filesystem · Graph.Emitter.FileSystem 0.1.0 · 52 · 51 · 2026-10-09T00:51:29Z · <repo>	estsixtures\layersilesystem6-10-09T00-51-29Z.graph.json`. Clicking `filesystem` opens `/default/layers/filesystem` in place: the title `filesystem`, crumbs `default › Graph › Layers › filesystem`, Graph/Layers still current in the rail, a toolbar badge `52 nodes · 51 edges · 2026-10-09T00:51:29Z`, then `52 nodes`, and 52 rows of id, kind, label, updated, the first `fs:. · Directory · Graph.Emitter.FileSystem · 2026-10-09T00:51:29Z`.
 
 ## 3. PowerShell
 

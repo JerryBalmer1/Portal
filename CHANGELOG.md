@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 — 2026-10-11
+
+- **A layer has an address.** `POST /api/tenants/{tenant}/layers` answers 201 with `Location: /<tenant>/layers/<name>`, the layer's page.
+- **The layer page.** `GET /{tenant}/layers/{name}` (`getLayerPage`, new) serves the shell for a mounted layer and is 404 for any other name. The page shows the layer's name as its title, a toolbar badge `<n> nodes · <m> edges · <stamp>`, and its nodes in the table the Graph pages use (`nodes.table`, now shared). The banner's search filters the rows.
+- **Graph/Layers** (new, `view: layers`, `web/layers.js`) lists the mounted layers, each linking to its page. A menu service with the id `layers` is refused at boot.
+- **`POST /api/layers` is gone.** It answers 410 `gone`, naming `POST /api/tenants/<tenant>/layers`, and mounts nothing. A write without a token is still 401 first.
+- **CLAUDE.md** lists the Portal.* seeds (Tools, Skills, Workflows, Emitters, Ontology) among the read-only siblings.
+- **Pester.** Block "Up replaces a running portal" waits for port 18200 after each test. New tests: Location and 410; Graph/Layers and the layer page in Chrome.
+- **Go.** New test `TestMountLocationIsTheLayerPageAndTheOldRouteIsGone`. The spec test exercises `getLayerPage` and expects 410 from `POST /api/layers`. `TestMenuShape` expects Graph's pages `Explore, Kinds, Taxonomy, Layers`, `TestShellRoutes` covers the layer page, and `TestBadOverlayFailsBoot` covers the `layers` service id.
+- **Version.** 0.7.0 in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated. docs/design.md 42.
+
 ## 0.6.0 — 2026-10-11
 
 - **Stock services.** `compose.yaml` (new), project `portal-<tenant>`, data under `<tenants>/<tenant>/data/` (gitignored):

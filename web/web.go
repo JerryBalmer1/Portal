@@ -27,6 +27,7 @@ var static = map[string]string{
 	"principals.js":    "principals.js",
 	"tokens.js":        "tokens.js",
 	"feeds.js":         "feeds.js",
+	"layers.js":        "layers.js",
 	"canvas.js":        "canvas.js",
 	"table.js":         "table.js",
 	"detail.js":        "detail.js",

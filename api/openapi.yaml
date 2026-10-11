@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.6.0
+  version: 0.7.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -73,6 +73,22 @@ paths:
         - { name: service, in: path, required: true, schema: { type: string } }
         - { name: page, in: path, required: true, schema: { type: string } }
         - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/layers/{name}:
+    get:
+      operationId: getLayerPage
+      tags: [page, layers]
+      summary: The shell page (index.html) at one mounted layer's page, which shows its name, node and edge counts, layer stamp and its nodes. mountLayer's Location points here. The literal layers segment wins over getShellPage's service, so no menu service may have the path layers. 404 when tenant is not this process's tenant or no layer of that name is mounted.
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+        - { name: name, in: path, required: true, schema: { type: string } }
       responses:
         "200":
           description: index.html
@@ -507,6 +523,11 @@ paths:
       responses:
         "201":
           description: The mounted layer.
+          headers:
+            Location:
+              required: true
+              description: The layer's page, /<tenant>/layers/<name> (getLayerPage).
+              schema: { type: string }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LayerSummary" }
@@ -520,23 +541,10 @@ paths:
       operationId: mountLayerUnscoped
       deprecated: true
       tags: [layers]
-      summary: mountLayer for the tenant this process serves, at the path it had before 0.4.0, kept so Claude.Agent's Up keeps mounting until it moves to /api/tenants/{tenant}/layers. Needs a token like any write.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/MountRequest" }
+      summary: Gone since 0.7.0. mountLayer's path before 0.4.0; it mounts nothing and answers 410 with a message naming POST /api/tenants/<tenant>/layers. A request with a token the tenant does not hold is still 401, and a write without a token too, as for any write.
       responses:
-        "201":
-          description: The mounted layer.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/LayerSummary" }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "410": { $ref: "#/components/responses/Gone" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/Invalid" }
   /api/tenants/{tenant}/layers/{name}/nodes:
     parameters:
       - $ref: "#/components/parameters/Tenant"
@@ -684,6 +692,11 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     BadGateway:
       description: The service a connection or a feed names failed or answered with an error; message carries its status and message.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Gone:
+      description: The path no longer serves; message names the one that does.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

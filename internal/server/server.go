@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -210,7 +211,14 @@ func (s *Server) MountLayer(w http.ResponseWriter, r *http.Request, tenant api.T
 		writeStoreError(w, err)
 		return
 	}
+	w.Header().Set("Location", layerPage(tenant, l.Name))
 	writeJSON(w, http.StatusCreated, summary(l))
+}
+
+// layerPage is the page of one mounted layer (getLayerPage), where
+// mountLayer's Location points.
+func layerPage(tenant, name string) string {
+	return "/" + url.PathEscape(tenant) + "/layers/" + url.PathEscape(name)
 }
 
 func (s *Server) GetLayerNodes(w http.ResponseWriter, r *http.Request, tenant api.Tenant, name string, params api.GetLayerNodesParams) {

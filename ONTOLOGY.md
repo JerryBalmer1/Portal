@@ -2,7 +2,7 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.6.0, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.7.0, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 
@@ -43,8 +43,8 @@ Module `Portal`, version 0.6.0, id prefix `ui:` (registered to Portal in Graph.N
 | Theme | Kind. How a Container and what it holds look: `color` (accent, `#rrggbb`), `opacity` (glass surface, 0 to 1), `font` (CSS font-family). Joined by `themed-by`; a Container without one takes its parent's. A display Kind, and a node like any other, so a theme change is a changed node in a diff (docs/design.md 22). |
 | Display Kind | State or Theme: the only Kinds whose `properties` may hold display keys (docs/design.md 5). |
 | Ref | Kind. A stand-in on screen for one node of a mounted layer (`layer`, `node`), so `displays` stays inside the envelope (docs/design.md 9). |
-| Data layer | A Graph.Node envelope mounted read-only under a name (`POST /api/layers`); never written (docs/design.md 2). A page that draws a screen node shows its layer in the toolbar: name, node and edge counts and stamp (docs/design.md 33, 36). |
-| Mount | Kind. A layer mounted by path through `POST /api/layers`, recorded on screen as `ui:mount:<layer>` (`layer`, `path` as given, made absolute), so an approved snap mounts it again at boot. A mount by envelope removes it; flag mounts are never recorded. No edges; it draws nothing (docs/design.md 33). |
+| Data layer | A Graph.Node envelope mounted read-only under a name (`POST /api/tenants/<tenant>/layers`); never written (docs/design.md 2). Each mounted layer has a page, `/<tenant>/layers/<name>`, the mount's `Location`: its counts, stamp and nodes, linked from Graph/Layers (docs/design.md 42). A page that draws a screen node shows its layer in the toolbar: name, node and edge counts and stamp (docs/design.md 33, 36). |
+| Mount | Kind. A layer mounted by path through `POST /api/tenants/<tenant>/layers`, recorded on screen as `ui:mount:<layer>` (`layer`, `path` as given, made absolute), so an approved snap mounts it again at boot. A mount by envelope removes it; flag mounts are never recorded. No edges; it draws nothing (docs/design.md 33). |
 | Source | A Widget's `source`: a layer name and optional `?kind=&from=` query. |
 | Bounds | `{x, y, w, h}`: grid cells under grid, pixels under canvas. |
 | Snap | The screen graph written to `artifacts/snaps/<stamp>.graph.json`; `<stamp>` is UTC with milliseconds, `:` as `-`. The newest is what the next start boots from. |

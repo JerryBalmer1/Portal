@@ -9,9 +9,10 @@
 // and each page from its Page node: a table of nodes of its Kind, a screen
 // node drawn by screen.js, the service connections (docs/design.md 36), or
 // the tenant's principals and tokens (docs/design.md 38), or its feeds and
-// the cards they hold (docs/design.md 40).
-// The route is the URL, /<tenant>/<service>/<page>[/<id>], so a deep link
-// survives a refresh. Which service is expanded, whether the rail is
+// the cards they hold (docs/design.md 40), or the mounted layers, each with
+// its own page at /<tenant>/layers/<name> (docs/design.md 42).
+// The route is the URL, /<tenant>/<service>/<page>[/<id>] or
+// /<tenant>/layers/<name>, so a deep link survives a refresh. Which service is expanded, whether the rail is
 // collapsed and what the search box holds are the viewer's pointers, like a
 // Canvas selection (docs/design.md 11): never written.
 import { createClient, getToken, setToken } from '/static/client.js';
@@ -21,11 +22,12 @@ import * as connections from '/static/connections.js';
 import * as principals from '/static/principals.js';
 import * as tokens from '/static/tokens.js';
 import * as feeds from '/static/feeds.js';
+import * as layers from '/static/layers.js';
 import { icon } from '/static/icons.js';
 import { refusal } from '/static/toast.js';
 
 // Page renderers by a Page's view; screen is drawn by screen.js.
-const VIEWS = { table: nodes, connections, users: principals, agents: principals, tokens, feeds };
+const VIEWS = { table: nodes, connections, users: principals, agents: principals, tokens, feeds, layers };
 
 const tenant = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || 'default');
 const client = createClient(tenant);
@@ -60,7 +62,22 @@ export function railModel(env) {
 
 function route() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  if (parts[1] === 'layers' && parts[2] && !parts[3]) return layerRoute(parts[2]);
   return { service: parts[1] || '', page: parts[2] || '', id: parts[3] || null, tab: new URLSearchParams(location.search).get('tab') };
+}
+
+// layerRoute places a layer page, /<tenant>/layers/<name>, under the Page
+// whose view is layers (Graph/Layers), so the rail and the crumbs show
+// where it sits; no service has the path layers (the binary refuses one).
+function layerRoute(name) {
+  const list = [...menu.pages.values()].find((p) => p.properties.view === 'layers');
+  const path = list ? list.properties.path : '';
+  const cut = path.indexOf('/');
+  return { service: path.slice(0, cut), page: path.slice(cut + 1), id: name, layer: name, tab: null };
+}
+
+function layerHref(name) {
+  return `/${encodeURIComponent(tenant)}/layers/${encodeURIComponent(name)}`;
 }
 
 function href(path, id) {
@@ -203,7 +220,7 @@ function drawCrumbs(svc, page, r) {
     }
     ui.crumbs.appendChild(li);
   });
-  document.title = `${page ? page.name : 'Not found'} · ${config.product.name}`;
+  document.title = `${r.layer || (page ? page.name : 'Not found')} · ${config.product.name}`;
 }
 
 function drawWho() {
@@ -456,6 +473,12 @@ function drawPage(svc, page, r) {
   ui.toolbar.replaceChildren();
   ui.content.replaceChildren();
   ui.content.className = 'pt-content';
+  if (r.layer) {
+    ui.title.textContent = r.layer;
+    ui.title.dataset.page = `layer:${r.layer}`;
+    current = { mod: layers, handle: layers.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.layer }) };
+    return;
+  }
   if (!page) {
     ui.title.textContent = 'Not found';
     ui.content.appendChild(errorCard({ code: 'not_found', message: `no page ${r.service}/${r.page} in tenant ${tenant}'s menu` }));
@@ -481,7 +504,7 @@ function drawPage(svc, page, r) {
 }
 
 function pageCtx(page) {
-  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id) };
+  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref };
 }
 
 // reauth reads whoami again (a token the portal refuses is dropped) and

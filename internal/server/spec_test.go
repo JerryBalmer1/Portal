@@ -40,8 +40,8 @@ const (
 )
 
 // Operations the page loads directly rather than through client.js, and
-// mountLayerUnscoped, kept at its pre-0.4.0 path for Claude.Agent only.
-var pageLoaded = map[string]bool{"getIndex": true, "getStatic": true, "getShellPage": true, "getShellItem": true, "mountLayerUnscoped": true}
+// mountLayerUnscoped, gone since 0.7.0 (410).
+var pageLoaded = map[string]bool{"getIndex": true, "getStatic": true, "getShellPage": true, "getShellItem": true, "getLayerPage": true, "mountLayerUnscoped": true}
 
 func init() {
 	text := func(r io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
@@ -347,10 +347,11 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 		{"GET", "/api/tenants/default/nodes?kind=Category", "", 200},
 		{"GET", "/api/tenants/default/nodes", "", 400},
 		{"GET", "/api/tenants/other/nodes?kind=Category", "", 404},
-		{"POST", "/api/layers", `{"name":"fs3","path":` + string(fixtureJSON) + `}`, 201},
-		{"POST", "/api/layers", `{"name":"Bad Name","path":"x"}`, 400},
-		{"POST", "/api/layers", `{"name":"none","path":"does/not/exist"}`, 404},
-		{"POST", "/api/layers", `{"name":"bad","envelope":` + string(invalid) + `}`, 422},
+		{"POST", "/api/layers", `{"name":"fs3","path":` + string(fixtureJSON) + `}`, 410},
+		{"POST", "/api/layers", `{"name":"Bad Name","path":"x"}`, 410},
+		{"GET", "/default/layers/filesystem", "", 200},
+		{"GET", "/default/layers/nope", "", 404},
+		{"GET", "/other/layers/filesystem", "", 404},
 		{"GET", "/static/portal.js", "", 200},
 		{"GET", "/static/base.css", "", 200},
 		{"GET", "/static/cytoscape.min.js", "", 200},
@@ -695,6 +696,47 @@ func TestLayerFailingValidationIsRefusedWithCodes(t *testing.T) {
 			t.Error("a refused layer was mounted")
 		}
 	}
+}
+
+// A mount answers 201 with Location at the layer's page, which serves the
+// shell; the pre-0.4.0 POST /api/layers is 410, names the tenant route and
+// mounts nothing.
+func TestMountLocationIsTheLayerPageAndTheOldRouteIsGone(t *testing.T) {
+	h := newHarness(t)
+	s, _, _ := newPortal(t, false)
+	fixture, _ := filepath.Abs(fixtureDir)
+	pj, _ := json.Marshal(fixture)
+	req, _ := http.NewRequest("POST", s.URL+"/api/tenants/default/layers", strings.NewReader(`{"name":"fs2","path":`+string(pj)+`}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 201 {
+		t.Fatalf("mount: %d", res.StatusCode)
+	}
+	loc := res.Header.Get("Location")
+	if loc != "/default/layers/fs2" {
+		t.Fatalf("Location %q, want /default/layers/fs2", loc)
+	}
+	if page := string(h.doAs(t, "", s.URL, "GET", loc, "", 200)); !strings.Contains(page, `<script type="module" src="/static/portal.js">`) {
+		t.Errorf("%s is not the shell", loc)
+	}
+	var e struct{ Code, Message string }
+	_ = json.Unmarshal(h.do(t, s.URL, "POST", "/api/layers", `{"name":"fs3","path":`+string(pj)+`}`, 410), &e)
+	if e.Code != "gone" || !strings.Contains(e.Message, "POST /api/tenants/default/layers") {
+		t.Errorf("410 body %+v does not name the tenant route", e)
+	}
+	var layers []struct{ Name string }
+	_ = json.Unmarshal(h.do(t, s.URL, "GET", "/api/tenants/default/layers", "", 200), &layers)
+	for _, l := range layers {
+		if l.Name == "fs3" {
+			t.Error("POST /api/layers mounted fs3")
+		}
+	}
+	h.doAs(t, "", s.URL, "GET", "/default/layers/fs3", "", 404)
 }
 
 func TestLayerOntologyAndQuery(t *testing.T) {

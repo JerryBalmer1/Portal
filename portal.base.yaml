@@ -11,8 +11,10 @@
 # says otherwise: screen draws a screen node, connections lists the tenant's
 # service connections, users and agents its principals of that type (users
 # with an admin's Add), tokens its bearer tokens (with an admin's Revoke;
-# docs/design.md 38), feeds the tenant's feeds and their cards (read-only). A page's children are the tabs of its item page,
-# /<tenant>/<service>/<page>/<id>.
+# docs/design.md 38), feeds the tenant's feeds and their cards (read-only), layers
+# the mounted layers, each linking to its own page /<tenant>/layers/<name>
+# (docs/design.md 42; so no service has the id layers). A page's children are
+# the tabs of its item page, /<tenant>/<service>/<page>/<id>.
 #
 # feeds are where cards (Graph.Node manifest cards: manifest.yaml and the
 # files of its folder) are published: kind oci (an OCI registry; url is the
@@ -58,6 +60,7 @@ menu:
       - { id: explore, label: Explore, path: graph/explore, view: screen, screen: "ui:canvas" }
       - { id: kinds, label: Kinds, path: graph/kinds, kind: graph.kind }
       - { id: taxonomy, label: Taxonomy, path: graph/taxonomy, kind: graph.taxonomy }
+      - { id: layers, label: Layers, path: graph/layers, view: layers }
 
   - id: emitters
     label: Emitters

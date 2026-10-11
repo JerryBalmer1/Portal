@@ -358,7 +358,8 @@ func clone(v any) any {
 // checkMerged is what the schema cannot say for an overlay that names only
 // what it changes: the merged config names the product and has a menu whose
 // every entry has a label and a path that is its parent's path plus its id,
-// ids unique among siblings, and a page that knows what it draws.
+// ids unique among siblings, no service at layers (the layer pages' route),
+// and a page that knows what it draws.
 func checkMerged(c map[string]any) []string {
 	var out []string
 	product, _ := c["product"].(map[string]any)
@@ -401,8 +402,13 @@ func checkMerged(c map[string]any) []string {
 				case (view == "" || view == "table") && kind == "":
 					out = append(out, here+"/kind: a table page names the Kind it lists")
 				}
-			} else if len(kids) == 0 {
-				out = append(out, here+"/children: a service has at least one page")
+			} else {
+				if len(kids) == 0 {
+					out = append(out, here+"/children: a service has at least one page")
+				}
+				if id == "layers" {
+					out = append(out, here+"/id: layers is the route of the layer pages, /<tenant>/layers/<name>")
+				}
 			}
 			walk(kids, here+"/children", want, depth+1)
 		}

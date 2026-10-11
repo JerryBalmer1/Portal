@@ -188,7 +188,7 @@ func TestMenuShape(t *testing.T) {
 	}
 	for id, want := range map[string][]string{
 		"ui:rail:overview":           {"Summary", "Dashboards"},
-		"ui:rail:graph":              {"Explore", "Kinds", "Taxonomy"},
+		"ui:rail:graph":              {"Explore", "Kinds", "Taxonomy", "Layers"},
 		"ui:rail:emitters":           {"Catalogue", "Sources", "Runs", "Schemas"},
 		"ui:rail:designer":           {"Sections", "Themes", "Export"},
 		"ui:rail:workflows":          {"All"},
@@ -261,11 +261,12 @@ func TestShellRoutes(t *testing.T) {
 	if loc := res.Header.Get("Location"); loc != "/default/overview/summary" {
 		t.Errorf("/ redirects to %q", loc)
 	}
-	for _, path := range []string{"/default/overview/summary", "/default/settings/service-connections", "/default/graph/explore", "/default/workflows/all/some-id"} {
+	for _, path := range []string{"/default/overview/summary", "/default/settings/service-connections", "/default/graph/explore", "/default/graph/layers", "/default/workflows/all/some-id", "/default/layers/filesystem"} {
 		page := string(h.doAs(t, "", s.URL, "GET", path, "", 200))
 		if !strings.Contains(page, `<script type="module" src="/static/portal.js">`) {
 			t.Errorf("%s is not the shell", path)
 		}
 	}
 	h.doAs(t, "", s.URL, "GET", "/default/workflows/plan", "", 404)
+	h.doAs(t, "", s.URL, "GET", "/default/layers/nope", "", 404)
 }

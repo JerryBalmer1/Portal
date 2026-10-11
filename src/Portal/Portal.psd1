@@ -1,6 +1,6 @@
 @{
     RootModule        = 'Portal.psm1'
-    ModuleVersion     = '0.6.0'
+    ModuleVersion     = '0.7.0'
     GUID              = '3f6c2a9e-7d41-4b8e-9c55-1a2b3c4d5e6f'
     Author            = 'Jerry Balmer'
     CompanyName       = 'JerryBalmer1'

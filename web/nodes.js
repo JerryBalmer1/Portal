@@ -30,30 +30,7 @@ export function mount(el, ctx) {
       h.wrap = e;
       return;
     }
-    const t = document.createElement('table');
-    t.className = 'pt-table';
-    const head = t.createTHead().insertRow();
-    for (const name of ['id', 'kind', 'label', 'updated']) {
-      const th = document.createElement('th');
-      th.textContent = name;
-      head.appendChild(th);
-    }
-    const body = t.createTBody();
-    const rows = env.nodes.map((n) => {
-      const row = body.insertRow();
-      row.dataset.id = n.id;
-      const link = document.createElement('a');
-      link.href = ctx.href(n.id);
-      link.textContent = n.id;
-      link.addEventListener('click', (ev) => {
-        if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button !== 0) return;
-        ev.preventDefault();
-        ctx.navigate(link.getAttribute('href'));
-      });
-      row.insertCell().appendChild(link);
-      for (const v of [n.kind, labelOf(n), updatedOf(n)]) row.insertCell().textContent = v;
-      return { row, n, text: `${n.id} ${n.kind} ${labelOf(n)}`.toLowerCase() };
-    });
+    const { t, rows } = table(env.nodes, { href: ctx.href, navigate: ctx.navigate });
     apply = () => {
       let shown = 0;
       for (const r of rows) {
@@ -73,6 +50,43 @@ export function mount(el, ctx) {
     wrap.textContent = `${err.code}: ${err.message}`;
   });
   return h;
+}
+
+// table is one row per node (id, kind, label, updated), the id a link to
+// opts.href(id) inside the shell when href is given; a node with no stamp
+// shows opts.updated. It returns the table and, per row, the node and the
+// text the search box matches.
+export function table(list, opts = {}) {
+  const t = document.createElement('table');
+  t.className = 'pt-table';
+  const head = t.createTHead().insertRow();
+  for (const name of ['id', 'kind', 'label', 'updated']) {
+    const th = document.createElement('th');
+    th.textContent = name;
+    head.appendChild(th);
+  }
+  const body = t.createTBody();
+  const rows = list.map((n) => {
+    const row = body.insertRow();
+    row.dataset.id = n.id;
+    const cell = row.insertCell();
+    if (opts.href) {
+      const link = document.createElement('a');
+      link.href = opts.href(n.id);
+      link.textContent = n.id;
+      link.addEventListener('click', (ev) => {
+        if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button !== 0) return;
+        ev.preventDefault();
+        opts.navigate(link.getAttribute('href'));
+      });
+      cell.appendChild(link);
+    } else {
+      cell.textContent = n.id;
+    }
+    for (const v of [n.kind, labelOf(n), updatedOf(n) || opts.updated || '']) row.insertCell().textContent = v;
+    return { row, n, text: `${n.id} ${n.kind} ${labelOf(n)}`.toLowerCase() };
+  });
+  return { t, rows };
 }
 
 export function destroy(h) {
