@@ -4,7 +4,9 @@
 // feed: its kind, URL and visibility, then a row per card pushed to it
 // (name, version, type, content hash, pushed, by). Read-only in 0.6.0:
 // cards are pushed through POST .../feeds/{feed}/push (Publish-PortalCard,
-// Portal.Agent), never from the page.
+// Portal.Agent), never from the page. A card id after # in the URL marks
+// that card's row and scrolls to it: an emitter's card links there
+// (docs/design.md 44).
 
 // short is a sha256:<hex> cut to its first 12 hex digits, as tokens are named.
 function short(hash) {
@@ -42,6 +44,13 @@ export function mount(el, ctx) {
       return;
     }
     wrap.replaceChildren(...feeds.map((f) => feedCard(f, held.get(f.id))));
+    const target = decodeURIComponent(location.hash.slice(1));
+    const hit = target && [...wrap.querySelectorAll('tr[data-card]')].find((r) => r.dataset.card === target);
+    if (hit) {
+      hit.classList.add('pt-target');
+      hit.setAttribute('aria-current', 'true');
+      hit.scrollIntoView({ block: 'center' });
+    }
   }).catch((err) => {
     if (err.code === 'unauthorized') {
       ctx.reauth();

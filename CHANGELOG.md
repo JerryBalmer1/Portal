@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0 — 2026-10-11
+
+- **Every layer traces back to its emitter.** An emitter is a card of type `emitter` in one of the tenant's feeds, under the card's own id. It is named by the module its layers' ontology names: the card `Emitter.<X>` is the emitter `Graph.Emitter.<X>`. An emitter a mounted layer names with no card in any feed is Kind `Emitter` (`ui:emitter:<name>`, `unknown`, `layers`). New Kind `Layer` (`ui:layer:<name>`). New edges `produced-by` (Layer to Card or Emitter) and `has-layer` (the reverse). Card gains optional `emitter` and `layers`. No new id prefix.
+- **API.** `GET /api/tenants/{tenant}/emitters` (`listEmitters`) and `GET .../emitters/{name}` (`getEmitter`, its layers newest first; 404 for a name that is no emitter).
+- **Pages.** `GET /{tenant}/emitters` (`getEmittersPage`) and `GET /{tenant}/emitters/{name}` (`getEmitterPage`).
+  - Emitters/Catalogue is now `view: emitters` (`web/emitters.js`), linked at `/<tenant>/emitters`. Unknown emitters show in amber. A card links to its row on the feeds page, which marks the row a `#<card id>` names.
+  - An emitter's page lists its layers, each linking its layer page. The layer page has a produced-by line linking back.
+  - Emitters/Sources, Runs and Schemas keep their paths under `/<tenant>/emitters/`. A ledger line pushing an emitter card named like one of those pages stops the boot.
+- **Fixture.** `tests/fixtures/cards/Emitter.Agent/`: Portal.Emitters' Agent card at cd862d9.
+- **Go** 83 to 86: `TestEmitterOfALayerIsItsFeedCard`, `TestUnmountedEmitterIs404`, `TestEmitterCardNamedLikeAPageStopsTheBoot`. The spec test exercises the four new operations; `TestShellRoutes` covers the emitters routes.
+- **Pester** 101 to 103: the emitters pages and the produced-by line in Chrome. The version and ontology pins moved (17 Kinds, 13 edge Kinds).
+- **Version.** 0.9.0 in `Portal.psd1`, `ontology.yaml`, `ontology.go` and `api/openapi.yaml`; `internal/gen` regenerated. docs/design.md 44.
+
 ## 0.8.0 — 2026-10-11
 
 - **Agents are principals.** There is no Agent Kind. An agent is a principal of type `agent`, or one whose token mounted a layer whose module is Graph.Emitter.Agent and which holds a Run. Runs mounted with no principal's token (a token from before 0.5.0, or a `-mount` flag at start) are dev-bootstrap's. When principals.yaml lacks dev-bootstrap, it is served with no `created`.

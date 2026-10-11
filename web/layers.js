@@ -6,8 +6,10 @@
 // .../layers/{name}/nodes as the table pages draw nodes (nodes.js), the
 // banner's search box filtering them (docs/design.md 42). A node id after #
 // in the URL marks that node's row and scrolls to it: an agent's decision
-// links there (docs/design.md 43). Nothing here writes; a layer is mounted
-// through the API (Mount-PortalLayer).
+// links there (docs/design.md 43). Above the nodes, a produced-by line links
+// the emitter that produced the layer, from GET .../emitters, to its page
+// /<tenant>/emitters/<name> (docs/design.md 44). Nothing here writes; a layer
+// is mounted through the API (Mount-PortalLayer).
 import * as nodes from '/static/nodes.js';
 
 // mount draws the list into el. ctx: {client, toolbar, bus, navigate, layerHref}.
@@ -62,19 +64,23 @@ export function mount(el, ctx) {
   return { wrap, off: () => {} };
 }
 
-// open draws one layer into el. ctx: {client, toolbar, bus, name}.
+// open draws one layer into el. ctx: {client, toolbar, bus, name, navigate, emitterHref}.
 export function open(el, ctx) {
+  const by = document.createElement('p');
+  by.className = 'pt-produced-by';
+  by.hidden = true;
   const wrap = document.createElement('div');
   wrap.className = 'pt-card pt-table-card';
-  el.appendChild(wrap);
-  const h = { wrap, off: () => {} };
+  el.append(by, wrap);
+  const h = { wrap, by, off: () => {} };
   const stats = document.createElement('span');
   stats.className = 'pt-badge';
   stats.id = 'layer-stats';
   const count = document.createElement('span');
   count.className = 'pt-count';
   ctx.toolbar.append(stats, count);
-  Promise.all([ctx.client.listLayers(), ctx.client.getLayerNodes(ctx.name)]).then(([layers, env]) => {
+  Promise.all([ctx.client.listLayers(), ctx.client.getLayerNodes(ctx.name), ctx.client.listEmitters()]).then(([layers, env, ems]) => {
+    producedBy(by, ems, ctx);
     const l = layers.find((x) => x.name === ctx.name);
     if (l) {
       stats.dataset.layer = l.name;
@@ -106,7 +112,39 @@ export function open(el, ctx) {
   return h;
 }
 
+// producedBy fills the line naming the emitter of layer ctx.name: the
+// target of its Layer node's produced-by edge, linked to the emitter's page,
+// with an unknown badge when no feed holds the emitter's card.
+function producedBy(p, ems, ctx) {
+  const from = `ui:layer:${ctx.name}`;
+  const e = ems.edges.find((x) => x.kind === 'produced-by' && x.from === from);
+  const em = e && ems.nodes.find((n) => n.id === e.to);
+  if (!em) return;
+  const name = em.properties.emitter || em.name;
+  const a = document.createElement('a');
+  a.href = ctx.emitterHref(name);
+  a.textContent = name;
+  a.addEventListener('click', (ev) => {
+    if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button !== 0) return;
+    ev.preventDefault();
+    ctx.navigate(a.getAttribute('href'));
+  });
+  p.dataset.emitter = name;
+  p.append('produced by ', a);
+  if (em.properties.unknown) {
+    const b = document.createElement('span');
+    b.className = 'pt-unknown-badge';
+    b.textContent = 'unknown';
+    b.title = 'No feed of the tenant holds a card of this emitter.';
+    p.append(' ', b);
+  } else {
+    p.append(` ${em.properties.version}`);
+  }
+  p.hidden = false;
+}
+
 export function destroy(h) {
   h.off();
   h.wrap.remove();
+  if (h.by) h.by.remove();
 }

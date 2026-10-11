@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.8.0
+  version: 0.9.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -32,6 +32,8 @@ tags:
     description: The tenant's principals and their bearer tokens. Reads are open, as every read is; writes are admin only.
   - name: agents
     description: Agent runs, read from every mounted layer whose module is Graph.Emitter.Agent and grouped by the principal whose token mounted the layer (docs/design.md 43). Read-only.
+  - name: emitters
+    description: Emitters and the layers they produced (docs/design.md 44). An emitter is a card of type emitter in one of the tenant's feeds, served under the card's own id, or the module a mounted layer's ontology names when no feed holds its card. Read-only.
   - name: feeds
     description: Where the tenant publishes Graph.Node manifest cards (an OCI registry or a NuGet v3 feed), what each holds, and the push. Every push is one line of tenants/<tenant>/ledger.jsonl.
 paths:
@@ -119,6 +121,37 @@ paths:
       operationId: getAgentPage
       tags: [page, agents]
       summary: The shell page (index.html) of one agent, its runs newest first. The literal agents segment wins over getShellPage's service, so no menu service may have the id agents. 404 when tenant is not this process's tenant or name is not an agent (listAgents).
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/emitters:
+    get:
+      operationId: getEmittersPage
+      tags: [page, emitters]
+      summary: The shell page (index.html) listing the tenant's emitters, drawn under the menu's Page whose view is emitters (Emitters/Catalogue). Two segments, so no shell route competes. 404 when tenant is not this process's tenant.
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/emitters/{name}:
+    get:
+      operationId: getEmitterPage
+      tags: [page, emitters]
+      summary: The shell page (index.html) of one emitter, its layers newest first. The literal emitters segment wins over getShellPage's service, so this route also serves the shell for every page of the menu's emitters service (emitters/sources, emitters/runs, ...), which keep their paths. No emitter card can be named like one of those pages, since Graph.Node's manifest schema wants a dotted card name and a menu id has no dot, and boot refuses a ledger that holds one anyway (docs/design.md 44). 404 when tenant is not this process's tenant, or name is neither such a page nor an emitter (listEmitters).
       parameters:
         - $ref: "#/components/parameters/Tenant"
         - { name: name, in: path, required: true, schema: { type: string } }
@@ -399,6 +432,37 @@ paths:
       responses:
         "200":
           description: The agent, its runs and their decisions (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/emitters:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listEmitters
+      tags: [emitters]
+      summary: The tenant's emitters as an envelope (module Portal), by name. An emitter is named by the module its layers carry, the module of a mounted layer's ontology (Graph.Emitter.Agent); a card of type emitter named Emitter.<X> is the emitter Graph.Emitter.<X>, one named otherwise is the emitter of its own name. An emitter some feed holds a card of is that Card node, under the card's own id ui:card:<feed>/<name>@<version> as listFeeds serves it (the newest push when several cards name it), with emitter (its name) and layers (how many mounted layers it produced). An emitter a mounted layer names with no card in any feed is an Emitter node, ui:emitter:<name>, with unknown true and layers. Every mounted layer is a Layer node, ui:layer:<name> (emitter, module, version, stamp, node and edge counts, mountedBy, path), joined Layer to its emitter by produced-by and back by has-layer.
+      responses:
+        "200":
+          description: The emitters and the layers they produced (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/emitters/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+      - { name: name, in: path, required: true, description: "The emitter's name, as listEmitters serves it (Graph.Emitter.Agent).", schema: { type: string } }
+    get:
+      operationId: getEmitter
+      tags: [emitters]
+      summary: One emitter as an envelope (module Portal) rooted at its node (as listEmitters serves it), with the Layer nodes of every mounted layer it produced, newest first by stamp, joined produced-by and has-layer. 404 when name is not one of listEmitters' emitters.
+      responses:
+        "200":
+          description: The emitter and its layers (module Portal).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }

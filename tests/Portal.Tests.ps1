@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.8.0 and needs PowerShell 7.4' {
+    It 'is version 0.9.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.8.0'
+        $m.ModuleVersion | Should -Be '0.9.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,12 +302,12 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.8.0, the fifteen Kinds, the eleven edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.9.0, the seventeen Kinds, the thirteen edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.8\.0$'
-        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision') { $text | Should -Match "(?m)^  ${k}:" }
-        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision') { $text | Should -Match "(?m)^  ${e}:" }
+        $text | Should -Match '(?m)^version: 0\.9\.0$'
+        foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer') { $text | Should -Match "(?m)^  ${k}:" }
+        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
     }
     It 'the FileSystem fixture passes graphnode validate and has its ontology beside it' {
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.8.0'
+        $s.version | Should -Be '0.9.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -1502,5 +1502,69 @@ feeds:
         InModuleScope Portal -Parameters @{ E = $envFile } { param($E) Get-PortalEnvValue -Name PORTAL_POSTGRES_PASSWORD -EnvFile $E } | Should -BeNullOrEmpty
         Invoke-AsToken $FeedRoot.Token { { Publish-PortalCard -Feed cards-nuget -Path $CardDir -Url $p.Url } | Should -Throw '*-> 502*cards-nuget*' }
         (Get-LedgerLines)[-1].message | Should -Not -Match 'not set'
+    }
+}
+
+Describe 'Emitters' {
+    # docs/design.md 44. A tenant of its own: admin root (-Bootstrap) and a ledger that holds one push of the seed card,
+    # Emitter.Agent 0.1.3 (tests/fixtures/cards/Emitter.Agent), to cards-oci. The FileSystem fixture is mounted at start
+    # (its emitter has no card: unknown) and the agent-runs fixture by root's token (its emitter is the card).
+    BeforeAll {
+        $script:EmTenants = Join-Path $TestDrive 'em-tenants'
+        $td = Join-Path $EmTenants 'default'
+        $null = New-Item -ItemType Directory -Force -Path $td
+        Set-Content -LiteralPath (Join-Path $td 'portal.yaml') -Encoding utf8NoBOM -Value '{}'
+        $script:EmRoot = New-PortalToken -Name root -Bootstrap -Tenants $EmTenants
+        $card = Get-Content -LiteralPath (Join-Path $Fixtures 'cards' 'Emitter.Agent' 'manifest.yaml') -Raw
+        [regex]::Match($card, '(?m)^name: (\S+)$').Groups[1].Value | Should -Be 'Emitter.Agent'
+        [regex]::Match($card, '(?m)^version: (\S+)$').Groups[1].Value | Should -Be '0.1.3'
+        Set-Content -LiteralPath (Join-Path $td 'ledger.jsonl') -Encoding utf8NoBOM -Value ('{"at":"2026-10-11T00:00:00.000Z","principal":"ui:principal:root","name":"root","role":"admin","feed":"cards-oci","kind":"oci",' +
+            '"card":"Emitter.Agent","version":"0.1.3","type":"emitter","hash":"sha256:' + ('ab' * 32) + '","digest":"sha256:' + ('cd' * 32) + '","files":1,"result":"pushed","message":"Emitter.Agent 0.1.3 to cards-oci"}')
+        $script:EmWork = Join-Path $TestDrive 'emitters'
+        $script:EmPortal = Start-Portal -Port 18200 -Artifacts $EmWork -Filesystem $FsFixture -Tenants $EmTenants
+        $script:EmUrl = $EmPortal.Url
+        $saved = $env:PORTAL_TOKEN
+        try { $env:PORTAL_TOKEN = $EmRoot.Token; $script:EmLayer = Mount-PortalLayer -Name agent-runs -Path (Join-Path $Fixtures 'layers' 'agent-runs') -Url $EmUrl }
+        finally { $env:PORTAL_TOKEN = $saved }
+        $script:EmCard = 'ui:card:cards-oci/Emitter.Agent@0.1.3'
+    }
+    AfterAll { Stop-Portal -Artifacts $EmWork; InModuleScope Portal { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
+
+    It 'Emitters/Catalogue lists the card of the agent-runs emitter with its layer count, and the FileSystem emitter in amber, unknown' {
+        $EmLayer.mountedBy | Should -Be 'ui:principal:root'
+        $api = Invoke-RestMethod "$EmUrl/api/tenants/default/emitters"
+        @($api.nodes | Where-Object { $_.kind -in 'Card', 'Emitter' } | ForEach-Object { "$($_.kind) $($_.id) $($_.properties.layers)" }) |
+            Should -Be @("Card $EmCard 1", 'Emitter ui:emitter:Graph.Emitter.FileSystem 1')
+        $dom = Get-PageDom $EmUrl '/default/emitters'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $dom | Should -Match ('<tr data-emitter="Graph.Emitter.Agent"><td><a href="/default/emitters/Graph.Emitter.Agent">Graph.Emitter.Agent</a></td><td>0.1.3</td><td>cards-oci</td>' +
+            '<td><a href="/default/artifacts/feeds#' + [regex]::Escape([uri]::EscapeDataString($EmCard)) + '" class="pt-card-link" data-card="' + [regex]::Escape($EmCard) + '">Emitter.Agent@0.1.3</a></td><td>1</td></tr>')
+        $dom | Should -Match ('<tr data-emitter="Graph.Emitter.FileSystem" class="pt-unknown"><td><a href="/default/emitters/Graph.Emitter.FileSystem">Graph.Emitter.FileSystem</a> ' +
+            '<span class="pt-unknown-badge" title="[^"]*">unknown</span></td><td></td><td></td><td></td><td>1</td></tr>')
+        $dom | Should -Match '<span class="pt-count">2 emitters · 1 unknown</span>'
+        $dom | Should -Match 'href="/default/emitters" class="pt-page" data-page="ui:rail:emitters:catalogue" aria-current="page"'
+        # The card link lands on its row of the feeds page, marked.
+        $dom = Get-PageDom $EmUrl "/default/artifacts/feeds#$([uri]::EscapeDataString($EmCard))"
+        $dom | Should -Match ('<tr data-card="' + [regex]::Escape($EmCard) + '" class="pt-target" aria-current="true">')
+        # The emitters service's other pages keep their paths.
+        $dom = Get-PageDom $EmUrl '/default/emitters/sources'
+        $dom | Should -Match '<h1 class="pt-title" id="title"[^>]*>Sources</h1>'
+    }
+    It 'an emitter''s page lists its layers with their counts, linking each layer page, which links back by produced-by' {
+        [int](Invoke-WebRequest "$EmUrl/default/emitters/Graph.Emitter.Terraform" -SkipHttpErrorCheck).StatusCode | Should -Be 404
+        $dom = Get-PageDom $EmUrl '/default/emitters/Graph.Emitter.Agent'
+        if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+        $dom | Should -Match '<h1 class="pt-title" id="title"[^>]*>Graph.Emitter.Agent</h1>'
+        $dom | Should -Match '<span class="pt-badge" id="emitter-stats"[^>]*>1 layers</span>'
+        $dom | Should -Match ('<span class="pt-emitter-card">0.1.3 in cards-oci · <a href="/default/artifacts/feeds#[^"]+" class="pt-card-link" data-card="' + [regex]::Escape($EmCard) + '">')
+        $dom | Should -Match '<tr data-layer="agent-runs" title="Graph.Emitter.Agent 0.1.2"><td><a href="/default/layers/agent-runs">agent-runs</a></td><td>12</td><td>11</td><td>2026-10-09T02:50:56Z</td><td>root</td></tr>'
+        $dom | Should -Match 'href="/default/emitters" class="pt-page" data-page="ui:rail:emitters:catalogue" aria-current="page"'
+        $dom = Get-PageDom $EmUrl '/default/emitters/Graph.Emitter.FileSystem'
+        $dom | Should -Match '<span class="pt-emitter-card"><span class="pt-unknown-badge"[^>]*>unknown</span></span>'
+        $dom | Should -Match '<tr data-layer="filesystem" title="Graph.Emitter.FileSystem 0.1.0"><td><a href="/default/layers/filesystem">filesystem</a></td><td>\d+</td><td>\d+</td><td>2026-10-09T00:51:29Z</td><td></td></tr>'
+        $dom = Get-PageDom $EmUrl '/default/layers/agent-runs'
+        $dom | Should -Match '<p class="pt-produced-by" data-emitter="Graph.Emitter.Agent">produced by <a href="/default/emitters/Graph.Emitter.Agent">Graph.Emitter.Agent</a> 0.1.3</p>'
+        $dom = Get-PageDom $EmUrl '/default/layers/filesystem'
+        $dom | Should -Match '<p class="pt-produced-by" data-emitter="Graph.Emitter.FileSystem">produced by <a href="/default/emitters/Graph.Emitter.FileSystem">Graph.Emitter.FileSystem</a> <span class="pt-unknown-badge"[^>]*>unknown</span></p>'
     }
 }

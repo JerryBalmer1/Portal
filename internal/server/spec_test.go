@@ -43,7 +43,7 @@ const (
 // Operations the page loads directly rather than through client.js, and
 // mountLayerUnscoped, gone since 0.7.0 (410).
 var pageLoaded = map[string]bool{"getIndex": true, "getStatic": true, "getShellPage": true, "getShellItem": true, "getLayerPage": true,
-	"getAgentsPage": true, "getAgentPage": true, "mountLayerUnscoped": true}
+	"getAgentsPage": true, "getAgentPage": true, "getEmittersPage": true, "getEmitterPage": true, "mountLayerUnscoped": true}
 
 func init() {
 	text := func(r io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
@@ -367,6 +367,17 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 		{"GET", "/api/tenants/default/agents/tester/runs", "", 200},
 		{"GET", "/api/tenants/default/agents/reed/runs", "", 404},
 		{"GET", "/api/tenants/other/agents/tester/runs", "", 404},
+		{"GET", "/default/emitters", "", 200},
+		{"GET", "/other/emitters", "", 404},
+		{"GET", "/default/emitters/Graph.Emitter.FileSystem", "", 200},
+		{"GET", "/default/emitters/sources", "", 200},
+		{"GET", "/default/emitters/Graph.Emitter.Terraform", "", 404},
+		{"GET", "/other/emitters/Graph.Emitter.FileSystem", "", 404},
+		{"GET", "/api/tenants/default/emitters", "", 200},
+		{"GET", "/api/tenants/other/emitters", "", 404},
+		{"GET", "/api/tenants/default/emitters/Graph.Emitter.Agent", "", 200},
+		{"GET", "/api/tenants/default/emitters/Graph.Emitter.Terraform", "", 404},
+		{"GET", "/api/tenants/other/emitters/Graph.Emitter.Agent", "", 404},
 		{"GET", "/static/portal.js", "", 200},
 		{"GET", "/static/base.css", "", 200},
 		{"GET", "/static/cytoscape.min.js", "", 200},

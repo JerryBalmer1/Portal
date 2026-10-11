@@ -150,6 +150,9 @@ func Load(o Options) (*Tenant, error) {
 	if t.ledger, err = loadLedger(filepath.Join(dir, LedgerFile)); err != nil {
 		return nil, err
 	}
+	if ps := checkEmitterCards(t.Menu, t.ledger); len(ps) > 0 {
+		return nil, &ConfigError{File: filepath.Join(dir, LedgerFile) + " against the menu (portal.base.yaml + " + overlayPath + ")", Problems: ps}
+	}
 	feeds := t.FeedsEnvelope(o.Stamp)
 	ps = graph.Validate(feeds)
 	if o.Check != nil {

@@ -13,8 +13,12 @@
 # with an admin's Add), tokens its bearer tokens (with an admin's Revoke;
 # docs/design.md 38), feeds the tenant's feeds and their cards (read-only), layers
 # the mounted layers, each linking to its own page /<tenant>/layers/<name>
-# (docs/design.md 42; so no service has the id layers). A page's children are
-# the tabs of its item page, /<tenant>/<service>/<page>/<id>.
+# (docs/design.md 42; so no service has the id layers), emitters the emitters
+# (cards of type emitter, and every emitter a mounted layer names), each
+# linking to its own page /<tenant>/emitters/<name> (docs/design.md 44; the
+# emitters service's pages keep their paths there, so no emitter card may be
+# named like one). A page's children are the tabs of its item page,
+# /<tenant>/<service>/<page>/<id>.
 #
 # feeds are where cards (Graph.Node manifest cards: manifest.yaml and the
 # files of its folder) are published: kind oci (an OCI registry; url is the
@@ -67,7 +71,7 @@ menu:
     icon: emitter
     path: emitters
     children:
-      - { id: catalogue, label: Catalogue, path: emitters/catalogue, kind: emitter }
+      - { id: catalogue, label: Catalogue, path: emitters/catalogue, view: emitters }
       - { id: sources, label: Sources, path: emitters/sources, kind: emitter.source }
       - { id: runs, label: Runs, path: emitters/runs, kind: emitter.run }
       - { id: schemas, label: Schemas, path: emitters/schemas, kind: emitter.schema }

@@ -322,6 +322,12 @@ body.pt-rail-collapsed { --pt-rail-w: 52px; }
 .pt-runs tr[data-run] td { border-bottom: 0; }
 .pt-table td a.pt-decision { display: inline-block; margin: 0 10px 2px 0; color: var(--gr-text-muted); }
 .pt-table td a.pt-decision.pt-deny { color: var(--gr-bad); }
+/* An emitter no feed holds a card of (docs/design.md 44): amber, the dev bar's hue. */
+.pt-table tbody tr.pt-unknown td, .pt-table tbody tr.pt-unknown td a { color: rgb(245,166,35); }
+.pt-unknown-badge { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; background: rgb(245,166,35); color: rgb(26,18,4); }
+.pt-produced-by { margin: 0 0 10px; font-size: 13px; color: var(--gr-text-muted); }
+.pt-produced-by a, .pt-emitter-card a { color: var(--gr-text); }
+.pt-emitter-card { font-size: 12px; color: var(--gr-text-muted); }
 .pt-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
 .pt-dot.pt-ok { background: var(--gr-ok); }
 .pt-dot.pt-bad { background: var(--gr-bad); }

@@ -12,9 +12,11 @@
 // the cards they hold (docs/design.md 40), or the mounted layers, each with
 // its own page at /<tenant>/layers/<name> (docs/design.md 42), or the
 // agents, principals holding runs, at /<tenant>/agents and each at
-// /<tenant>/agents/<name> (docs/design.md 43).
+// /<tenant>/agents/<name> (docs/design.md 43), or the emitters, at
+// /<tenant>/emitters and each at /<tenant>/emitters/<name> (docs/design.md 44).
 // The route is the URL, /<tenant>/<service>/<page>[/<id>],
-// /<tenant>/layers/<name> or /<tenant>/agents[/<name>], so a deep link survives a refresh. Which service is expanded, whether the rail is
+// /<tenant>/layers/<name>, /<tenant>/agents[/<name>] or
+// /<tenant>/emitters[/<name>], so a deep link survives a refresh. Which service is expanded, whether the rail is
 // collapsed and what the search box holds are the viewer's pointers, like a
 // Canvas selection (docs/design.md 11): never written.
 import { createClient, getToken, setToken } from '/static/client.js';
@@ -26,11 +28,12 @@ import * as tokens from '/static/tokens.js';
 import * as feeds from '/static/feeds.js';
 import * as layers from '/static/layers.js';
 import * as agents from '/static/agents.js';
+import * as emitters from '/static/emitters.js';
 import { icon } from '/static/icons.js';
 import { refusal } from '/static/toast.js';
 
 // Page renderers by a Page's view; screen is drawn by screen.js.
-const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers };
+const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers, emitters };
 
 const tenant = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || 'default');
 const client = createClient(tenant);
@@ -67,6 +70,8 @@ function route() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   if (parts[1] === 'layers' && parts[2] && !parts[3]) return layerRoute(parts[2]);
   if (parts[1] === 'agents' && !parts[3]) return agentRoute(parts[2] || null);
+  // A page of the emitters service keeps its path; any other name is an emitter's.
+  if (parts[1] === 'emitters' && !parts[3] && !(parts[2] && menu.pages.has(`emitters/${parts[2]}`))) return emitterRoute(parts[2] || null);
   return { service: parts[1] || '', page: parts[2] || '', id: parts[3] || null, tab: new URLSearchParams(location.search).get('tab') };
 }
 
@@ -98,10 +103,32 @@ function agentHref(name) {
   return `/${encodeURIComponent(tenant)}/agents${name ? `/${encodeURIComponent(name)}` : ''}`;
 }
 
-// pageHref is where a Page lives: the agents page at /<tenant>/agents, every
-// other at its path.
+// emitterRoute places /<tenant>/emitters under the Page whose view is
+// emitters (Emitters/Catalogue), and /<tenant>/emitters/<name> as its item.
+function emitterRoute(name) {
+  const list = [...menu.pages.values()].find((p) => p.properties.view === 'emitters');
+  const path = list ? list.properties.path : '';
+  const cut = path.indexOf('/');
+  return { service: path.slice(0, cut), page: path.slice(cut + 1), id: name, emitter: name, tab: null };
+}
+
+function emitterHref(name) {
+  return `/${encodeURIComponent(tenant)}/emitters${name ? `/${encodeURIComponent(name)}` : ''}`;
+}
+
+// cardHref is a card's row on the Page whose view is feeds (Artifacts/Feeds),
+// which marks the row its fragment names.
+function cardHref(id) {
+  const list = [...menu.pages.values()].find((p) => p.properties.view === 'feeds');
+  return list ? `${href(list.properties.path)}#${encodeURIComponent(id)}` : null;
+}
+
+// pageHref is where a Page lives: the agents page at /<tenant>/agents, the
+// emitters page at /<tenant>/emitters, every other at its path.
 function pageHref(page) {
-  return page.properties.view === 'agents' ? agentHref(null) : href(page.properties.path);
+  if (page.properties.view === 'agents') return agentHref(null);
+  if (page.properties.view === 'emitters') return emitterHref(null);
+  return href(page.properties.path);
 }
 
 function href(path, id) {
@@ -231,6 +258,7 @@ function drawCrumbs(svc, page, r) {
   if (svc) parts.push([href(firstPage(svc)), svc.name]);
   if (page) parts.push([pageHref(page), page.name]);
   if (r.agent) parts.push([agentHref(r.agent), r.agent]);
+  else if (r.emitter) parts.push([emitterHref(r.emitter), r.emitter]);
   else if (r.id) parts.push([href(page ? page.properties.path : `${r.service}/${r.page}`, r.id), r.id]);
   ui.crumbs.replaceChildren();
   parts.forEach(([to, text], i) => {
@@ -245,7 +273,7 @@ function drawCrumbs(svc, page, r) {
     }
     ui.crumbs.appendChild(li);
   });
-  document.title = `${r.layer || r.agent || (page ? page.name : 'Not found')} · ${config.product.name}`;
+  document.title = `${r.layer || r.agent || r.emitter || (page ? page.name : 'Not found')} · ${config.product.name}`;
 }
 
 function drawWho() {
@@ -501,13 +529,19 @@ function drawPage(svc, page, r) {
   if (r.layer) {
     ui.title.textContent = r.layer;
     ui.title.dataset.page = `layer:${r.layer}`;
-    current = { mod: layers, handle: layers.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.layer }) };
+    current = { mod: layers, handle: layers.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.layer, navigate, emitterHref }) };
     return;
   }
   if (r.agent) {
     ui.title.textContent = r.agent;
     ui.title.dataset.page = `agent:${r.agent}`;
     current = { mod: agents, handle: agents.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.agent, navigate, layerHref }) };
+    return;
+  }
+  if (r.emitter) {
+    ui.title.textContent = r.emitter;
+    ui.title.dataset.page = `emitter:${r.emitter}`;
+    current = { mod: emitters, handle: emitters.open(ui.content, { client, bus, toolbar: ui.toolbar, name: r.emitter, navigate, layerHref, cardHref }) };
     return;
   }
   if (!page) {
@@ -535,7 +569,7 @@ function drawPage(svc, page, r) {
 }
 
 function pageCtx(page) {
-  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref };
+  return { client, bus, page, who, reauth, toolbar: ui.toolbar, navigate, href: (id) => href(page.properties.path, id), layerHref, agentHref, emitterHref, cardHref };
 }
 
 // reauth reads whoami again (a token the portal refuses is dropped) and

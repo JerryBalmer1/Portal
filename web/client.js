@@ -21,6 +21,8 @@ export const ROUTES = Object.freeze({
   revokeToken: { method: 'DELETE', path: '/api/tenants/{tenant}/tokens/{id}' },
   listAgents: { method: 'GET', path: '/api/tenants/{tenant}/agents' },
   listAgentRuns: { method: 'GET', path: '/api/tenants/{tenant}/agents/{name}/runs' },
+  listEmitters: { method: 'GET', path: '/api/tenants/{tenant}/emitters' },
+  getEmitter: { method: 'GET', path: '/api/tenants/{tenant}/emitters/{name}' },
   listFeeds: { method: 'GET', path: '/api/tenants/{tenant}/feeds' },
   pushCard: { method: 'POST', path: '/api/tenants/{tenant}/feeds/{feed}/push' },
   listNodes: { method: 'GET', path: '/api/tenants/{tenant}/nodes' },
@@ -111,6 +113,8 @@ export function createClient(tenant, base = '') {
     revokeToken: (id) => call('revokeToken', { params: { id } }),
     listAgents: () => call('listAgents'),
     listAgentRuns: (name) => call('listAgentRuns', { params: { name } }),
+    listEmitters: () => call('listEmitters'),
+    getEmitter: (name) => call('getEmitter', { params: { name } }),
     listFeeds: () => call('listFeeds'),
     // pushCard(feed, manifest, files): manifest a Blob of manifest.yaml, files [{path, blob}]. Nothing on the page
     // pushes in 0.6.0; Portal.Agent and Publish-PortalCard do.

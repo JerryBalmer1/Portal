@@ -502,3 +502,41 @@ Choices made without asking:
   - Pester: both pages in Chrome; the counts, the red deny, the layer link, every decision link, and the marked row on the layer page.
 - **Fixture.** `tests/fixtures/layers/agent-runs/` is Portal.Emitters' `emitters/Agent/artifacts/layers/2026-10-09T02-50-56Z.runs.graph.json` and the `ontology.yaml` beside it (Graph.Emitter.Agent 0.1.2), at cd862d9. It is the run of Graph.Emitter.Agent's policy-smoke ledger. Graph's `artifacts/layers/Graph.Emitter.Agent` holds another emit of the same ledger, same stamp and version, different bytes. CLAUDE.md does not list `../Graph.Emitter.Agent` among the read-only siblings, so it was not read.
 - **Version 0.8.0:** new operations and Kinds, and Identity/Agents changed what it draws.
+
+## 44. Emitters and the layers they produced (0.9.0)
+
+The brief: an emitter is the card Portal.Emitters pushes to a feed, under the card's own id, with no new id prefix. A mounted layer gets an edge `produced-by` to the emitter its ontology names, and the reverse `has-layer`. Two routes, two pages on the existing Emitters menu entry, and a fixture.
+
+Asked, and Jerry chose:
+
+- **The `emitters` service keeps its id; boot refuses none.** The brief asked for a boot refusal of a service named emitters, as for agents and layers. portal.base.yaml already has that service (Catalogue, Sources, Runs, Schemas), so the product would not boot. Jerry's answer: keep the id and drop the refusal. Catalogue becomes the list (`view: emitters`) at `/<tenant>/emitters`, as Identity/Agents is at `/<tenant>/agents`. One emitter's page is `/<tenant>/emitters/<name>`. Sources, Runs and Schemas keep their paths, because the boot check below reserves their names.
+  - `getEmitterPage` serves the shell for a page of the emitters service as well. Its literal route wins over `getShellPage`'s in chi. The page's router does the same: a page the menu has under `emitters/` is that page, any other name is an emitter. `/<tenant>/emitters/catalogue` still draws the list.
+  - **The boot check.** A pushed ledger line whose card has type `emitter` and is named like a page of that service, by its name or its emitter name, stops the binary. The check names the ledger entry and the page. In practice only a hand-written ledger can hold one: Graph.Node's manifest schema requires a dotted card name (`^[A-Za-z][A-Za-z0-9-]*([.][A-Za-z][A-Za-z0-9-]*)+$`), and a menu id has no dot (`^[a-z0-9][a-z0-9-]*$`). So a push cannot make one. A push-time refusal was written first; it was dead code and was removed.
+
+Choices made without asking:
+
+- **Which name an emitter has.** It is the module its layers name: the `module` of the layer's ontology (the file the envelope's `ontology` field names, read at mount), or the envelope's own `module` when the portal could not read one (an inline mount of a relative ontology). Portal.Emitters names the card of the module `Graph.Emitter.<X>` as `Emitter.<X>` (all seven at cd862d9), so the card `Emitter.<X>` is the emitter `Graph.Emitter.<X>`. A card named any other way is the emitter of its own name. The brief's names, Graph.Emitter.Git.Repo and so on, are read as those modules.
+- **No new Kind for a known emitter: it is the Card**, served under the card's own id `ui:card:<feed>/<name>@<version>` with every property listFeeds gives it. It also carries two new optional Card properties: `emitter` (its name) and `layers` (how many mounted layers it produced). When several cards name one emitter (versions, feeds), the newest push wins, by `pushed`.
+- **One new Kind, `Emitter`, for an unknown emitter only.** A layer can name an emitter that no feed holds a card of, and the brief has it shown by name, flagged unknown. A Card is a push to a feed, with a required `feed`, `version`, `hash` and `pushed`, and such an emitter has none of them. So it is Kind Emitter, `ui:emitter:<name>`, with `unknown` (always true) and `layers`. The id is under Portal's own `ui:`, so no new prefix.
+- **One new Kind, `Layer`**, for the edges' other end: `ui:layer:<name>` with `emitter`, `module`, `version`, `stamp`, `nodes`, `edges`, `mountedBy` and `path`. The Mount Kind was not reused. It is a screen record of a path mount, with a required `path` and a remount at boot, and an inline layer has neither.
+- **Edges.** `produced-by` (Layer to Card or Emitter) and `has-layer` (Card or Emitter to Layer). Both are served, as the brief named both.
+- **API.**
+  - `listEmitters` is an envelope of every emitter by name, each followed by its layers newest first, with both edges.
+  - `getEmitter` is one emitter, rooted at its node.
+  - Both are envelopes, like listAgents (entry 43). A name that is no emitter is 404, including a card's own name (`Emitter.Agent`): the emitter is `Graph.Emitter.Agent`.
+  - An emitter stops being one when its last layer goes and no card names it.
+- **"Card link".** The node id is the card's id; no URL is served. The page links a card to its row on the feeds page (`/<tenant>/artifacts/feeds#<card id>`). feeds.js marks that row and scrolls to it, as the layer page does for a decision (entry 43).
+- **"Principal".** A layer's `mountedBy` (entry 43). The emitter page shows the principal's name. A layer mounted with no principal shows nothing; listAgents's dev-bootstrap fallback is not repeated here.
+- **Pages.**
+  - The list has one row per emitter: name (linking its page), version, feed, card (linking its row on the feeds page) and layers. The toolbar count reads `<n> emitters · <u> unknown`.
+  - An unknown emitter's row is amber (the dev bar's hue) with an `unknown` badge and empty version, feed and card.
+  - An emitter's page shows a badge `<n> layers`, the card's version and feed with its link (or the unknown badge), and its layers newest first: name (linking the layer page), nodes, edges, stamp and principal.
+  - The layer page gains a line above its nodes, `produced by <emitter> <version>`, linking the emitter's page, with the unknown badge in place of the version.
+- **A layer whose module is named like a page** (a single-word module such as `runs`, possible only for a layer Portal.Emitters did not emit) has its emitter page shadowed by that page. It is listed, and its link draws the page. Left as is; noted in ONTOLOGY.md's Not here yet.
+- **Fixture.** `tests/fixtures/cards/Emitter.Agent/manifest.yaml` is Portal.Emitters' `emitters/Agent/manifest.yaml` at cd862d9, byte for byte (Emitter.Agent 0.1.3, type emitter). It is the card of the agent-runs fixture's emitter (entry 43). The layer itself was emitted by Graph.Emitter.Agent 0.1.2, so the card's version and the layer's differ, and both are shown.
+  - The "seed feed card" is the card as a feed holds it, which for Portal is a pushed ledger line. Go pushes the fixture through the fake registry (a real push, Graph.Node's manifest check included). Pester writes the ledger line before boot, as its Feeds block does.
+- **Coverage.**
+  - Go: the four operations against the spec; produced-by resolving to the pushed card's id with emitter, feed, version and layer count; the unknown FileSystem emitter; the one-emitter envelope rooted at the card, with the layer's counts, stamp and principal; both envelopes through Graph.Node and the portal ontology; 404 for an unmounted name, for the card's own name, and for an emitter whose last layer was replaced; the Sources page keeping its path, and the shell routes; the boot check.
+  - Pester: both pages in Chrome; the counts, the amber unknown row, the card link landing on its marked row, Sources keeping its path, the layer rows, and the produced-by line on both layer pages.
+- **Not added: a PowerShell wrapper** (`Get-PortalEmitter`). The brief asked for routes, pages and tests.
+- **Version 0.9.0:** new operations and Kinds, and Emitters/Catalogue changed what it draws.

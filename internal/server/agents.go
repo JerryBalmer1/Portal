@@ -65,7 +65,9 @@ func (a agentSet) find(name string) (graph.Node, bool) {
 	return graph.Node{}, false
 }
 
-func agentsEnvelope(stamp string) *graph.Envelope {
+// servedEnvelope is the header of an envelope the API builds (agents,
+// emitters): module Portal, against its ontology.
+func servedEnvelope(stamp string) *graph.Envelope {
 	env := graph.NewEnvelope(portal.Module, portal.Version, stamp)
 	env.Ontology = "ontology.yaml"
 	return env
@@ -77,7 +79,7 @@ func (s *Server) ListAgents(w http.ResponseWriter, r *http.Request, name api.Ten
 	}
 	stamp := time.Now().UTC().Format(store.StampLayout)
 	set := s.agentSet(stamp)
-	env := agentsEnvelope(stamp)
+	env := servedEnvelope(stamp)
 	for _, p := range set.order {
 		env.Nodes = append(env.Nodes, p)
 		for _, run := range set.runs[p.ID] {
@@ -100,7 +102,7 @@ func (s *Server) ListAgentRuns(w http.ResponseWriter, r *http.Request, name api.
 		writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("no agent %s in tenant %s: an agent is a principal of type agent, or one whose token mounted a layer of %s runs", agent, name, store.AgentModule), nil)
 		return
 	}
-	env := agentsEnvelope(stamp)
+	env := servedEnvelope(stamp)
 	env.Root = p.ID
 	env.Nodes = append(env.Nodes, p)
 	for _, run := range set.runs[p.ID] {

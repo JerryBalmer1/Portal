@@ -68,7 +68,7 @@
         "icon": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
         "path": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$" },
         "kind": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$", "description": "The node Kind the page lists (Graph.Node's kind pattern)." },
-        "view": { "enum": ["table", "screen", "connections", "users", "agents", "tokens", "feeds", "layers"] },
+        "view": { "enum": ["table", "screen", "connections", "users", "agents", "tokens", "feeds", "layers", "emitters"] },
         "screen": { "type": "string", "pattern": "^ui:.+", "description": "With view screen: the screen node drawn." },
         "sections": { "type": "array", "items": { "$ref": "#/$defs/id" } },
         "filter": { "type": "array", "items": { "$ref": "#/$defs/id" } },

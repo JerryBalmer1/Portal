@@ -261,7 +261,8 @@ func TestShellRoutes(t *testing.T) {
 	if loc := res.Header.Get("Location"); loc != "/default/overview/summary" {
 		t.Errorf("/ redirects to %q", loc)
 	}
-	for _, path := range []string{"/default/overview/summary", "/default/settings/service-connections", "/default/graph/explore", "/default/graph/layers", "/default/workflows/all/some-id", "/default/layers/filesystem"} {
+	for _, path := range []string{"/default/overview/summary", "/default/settings/service-connections", "/default/graph/explore", "/default/graph/layers", "/default/workflows/all/some-id", "/default/layers/filesystem",
+		"/default/emitters", "/default/emitters/catalogue", "/default/emitters/sources", "/default/emitters/runs/some-id", "/default/emitters/Graph.Emitter.FileSystem"} {
 		page := string(h.doAs(t, "", s.URL, "GET", path, "", 200))
 		if !strings.Contains(page, `<script type="module" src="/static/portal.js">`) {
 			t.Errorf("%s is not the shell", path)
@@ -269,4 +270,5 @@ func TestShellRoutes(t *testing.T) {
 	}
 	h.doAs(t, "", s.URL, "GET", "/default/workflows/plan", "", 404)
 	h.doAs(t, "", s.URL, "GET", "/default/layers/nope", "", 404)
+	h.doAs(t, "", s.URL, "GET", "/default/emitters/nope", "", 404)
 }
