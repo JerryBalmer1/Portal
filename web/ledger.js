@@ -1,7 +1,8 @@
 // Ledger/Entries, at /<tenant>/ledger: the tenant's ledger chains from GET
 // /api/tenants/{tenant}/ledger (docs/design.md 45). The agent chain is read
-// from a mounted ledger layer, the portal chain is the tenant's own push
-// ledger. One row each (source, verify, entries, first, last, stamp, from),
+// from a mounted ledger layer, the portal chain is the tenant's ledger,
+// ledger.jsonl (pushes, action requests and the Runner's results). One row
+// each (source, verify, entries, first, last, stamp, from),
 // the verify green when the chain is valid and red with the seq it breaks at
 // when not; the source links to its entries, /<tenant>/ledger/<source>,
 // newest first from GET .../ledger/{source}, one page at a time, each run id
@@ -114,6 +115,11 @@ function entries(el, ctx) {
         row.insertCell().textContent = `${q.action} · ${q.outcome}`;
         row.insertCell().textContent = q.subject;
         row.insertCell().textContent = q.by;
+      } else if (q.event === 'action.result') {
+        row.dataset.event = q.event;
+        row.insertCell().textContent = `${q.status} · answers ${q.request}`;
+        row.insertCell().textContent = '';
+        row.insertCell().textContent = (q.writer || []).map((w) => w.emitter).join(', ');
       } else {
         row.insertCell().textContent = q.unchained ? `${q.result} (unchained)` : q.result;
         row.insertCell().textContent = q.card ? `${q.card}${q.version ? `@${q.version}` : ''}` : '';
@@ -196,26 +202,25 @@ function entry(el, ctx) {
 }
 
 // actionFields adds an action's own fields to an entry's page: for a
-// request, what was asked, of what, by whom, its outcome and its result
-// (linking the agent chain's entry); for a result, the request it answers
-// (linking Portal's entry), its status, times, exit and the output in a
-// pre block, and where the Runner wrote it. Resolves once the principal's
-// link is drawn.
+// request, what was asked, of what, by whom, its outcome and its result;
+// for a result, the request it answers, its status, times, exit and the
+// output in a pre block, and who wrote it where. Both are entries of the
+// tenant's one chain, so each links the other's entry there. Resolves once
+// the principal's link is drawn.
 function actionFields(ctx, n, env, field) {
   const q = n.properties;
   if (q.event === 'action.request') {
     field('action', q.action);
     const graph = ctx.graphHref && ctx.graphHref(q.subject);
     field('subject', graph ? go(ctx, graph, q.subject) : q.subject);
-    field('line id', q.lineId);
     field('status', q.status);
     const out = document.createElement('span');
     out.className = 'pt-outcome';
     out.dataset.outcome = q.outcome;
     out.textContent = q.outcome;
     field('outcome', out);
-    if (q.resultSeq) field('answered by', go(ctx, ctx.ledgerHref('agent', q.resultSeq), q.resultId));
-    else field('answered by', 'nothing yet: no action.result in the ledger layer names ' + q.lineId);
+    if (q.resultSeq) field('answered by', go(ctx, ctx.ledgerHref('portal', q.resultSeq), q.resultId));
+    else field('answered by', `nothing yet: no later action.result in the tenant's ledger names ${n.id}`);
     return ctx.client.listPrincipals().then((people) => {
       const p = people.nodes.find((x) => x.id === q.principal);
       const to = p && ctx.principalHref ? ctx.principalHref(p.id, p.properties?.type, p.name) : null;
@@ -224,8 +229,8 @@ function actionFields(ctx, n, env, field) {
   }
   if (q.event === 'action.result') {
     const back = env.edges.find((e) => e.kind === 'answers' && e.from === n.id);
-    field('answers', q.requestSeq && back ? go(ctx, ctx.ledgerHref('portal', q.requestSeq), `${q.request} (portal ${q.requestSeq})`)
-      : `${q.request || 'nothing'}: no such request in the tenant's ledger`);
+    field('answers', q.requestSeq && back ? go(ctx, ctx.ledgerHref('portal', q.requestSeq), q.request)
+      : `${q.request || 'nothing'}: no such request before it in the tenant's ledger`);
     const st = document.createElement('span');
     st.className = 'pt-outcome';
     st.dataset.outcome = q.status;
@@ -239,7 +244,8 @@ function actionFields(ctx, n, env, field) {
       pre.textContent = q.output;
       field('output', pre);
     }
-    for (const s of n.source || []) field('written by', [s.tool, s.path && `${s.path}${s.line ? `:${s.line}` : ''}`].filter(Boolean).join(' · '));
+    for (const w of q.writer || []) field('written by', [`${w.emitter} ${w.version}`, w.target && `for ${w.target}`, w.stamp].filter(Boolean).join(' · '));
+    for (const s of n.source || []) field('line', [s.path, s.line].filter(Boolean).join(':'));
   }
   return Promise.resolve();
 }

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.14.0
+  version: 0.14.1
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -35,7 +35,7 @@ tags:
   - name: emitters
     description: Emitters and the layers they produced (docs/design.md 44). An emitter is a card of type emitter in one of the tenant's feeds, served under the card's own id, or the module a mounted layer's ontology names when no feed holds its card. Read-only.
   - name: ledger
-    description: Ledger chains and their verify (docs/design.md 45). Source agent is the agent's ledger, read from the mounted layer that holds LedgerEntry nodes under ledger:<seq> ids; source portal is the tenant's own push ledger, tenants/<tenant>/ledger.jsonl, whose lines carry seq and prev since 0.10.0. Read-only.
+    description: Ledger chains and their verify (docs/design.md 45). Source agent is the agent's ledger, read from the mounted layer that holds LedgerEntry nodes under ledger:<seq> ids; source portal is the tenant's ledger, tenants/<tenant>/ledger.jsonl, whose lines carry seq and prev since 0.10.0 (pushes, action requests and the Runner's results, one chain and one seq space, docs/design.md 50), read again from the file's tail on every read. Read-only.
   - name: environments
     description: The environments graph (docs/design.md 46). Every node of an environment.* Kind under an env:compose/, env:container/, env:image/ or env:network/ id in the mounted layers, as their layers emit them, with every edge of a mounted layer that touches one and the node at its other end. Read-only; Portal reads env, tags and group from the nodes and infers none.
   - name: alerts
@@ -45,9 +45,10 @@ tags:
       Actions on containers (docs/design.md 50). Portal asks, the Runner executes, the ledger records, the graph shows the gap.
       A request is one action.request line of tenants/<tenant>/ledger.jsonl (kind, id ledger:<seq>, action, subject, principal,
       requested, status, then seq and prev), written as the token's principal; Portal never executes anything. Portal.Agent's
-      Runner answers with an action.result entry of the agent's ledger (request the request's ledger:<seq>, status done or
-      failed, started, finished, exit, output), which Portal reads from the mounted ledger layer only, never from an alert
-      layer's copies.
+      Runner answers with an action.result line of the same file (kind, id ledger:<seq>, request the request's ledger:<seq>,
+      status done or failed, started, finished, exit, output, source, then seq and prev), appended under the same file lock
+      with the same seq and prev: one ledger, one chain. Portal reads results from that file only, never from a mounted
+      layer or an alert layer's copies.
   - name: feeds
     description: Where the tenant publishes Graph.Node manifest cards (an OCI registry or a NuGet v3 feed), what each holds, and the push. Every push is one line of tenants/<tenant>/ledger.jsonl.
 paths:
@@ -567,7 +568,7 @@ paths:
     get:
       operationId: getLedger
       tags: [ledger]
-      summary: One chain's entries, newest first, one page, as an envelope (module Portal) rooted at its Ledger node (as listLedgers serves it, with entries, the count matching run, and next, the before of the next page). Each entry is a LedgerEntry node (seq, stamp, prev, hash), joined from the chain by has-entry and to the entry before by prev when both are on the page. An agent entry keeps its layer's id, ledger:<seq>, with event, run, runLayer (the mounted runs layer holding that Run) and its records edge to the Run or Step by the runs layer's id, which ends in that layer; a portal entry is ui:ledger:portal/<seq>, with by, feed, card, version, result and message, or, for an action request, as listActions serves it. An action result of the agent chain carries what listActions serves on it too. 404 for a source listLedgers does not serve.
+      summary: One chain's entries, newest first, one page, as an envelope (module Portal) rooted at its Ledger node (as listLedgers serves it, with entries, the count matching run, and next, the before of the next page). Each entry is a LedgerEntry node (seq, stamp, prev, hash), joined from the chain by has-entry and to the entry before by prev when both are on the page. An agent entry keeps its layer's id, ledger:<seq>, with event, run, runLayer (the mounted runs layer holding that Run) and its records edge to the Run or Step by the runs layer's id, which ends in that layer; a portal entry is a line of the tenant's ledger, ledger:<seq> by its position, with by, feed, card, version, result and message, or, for an action request or result, as listActions serves it. 404 for a source listLedgers does not serve.
       parameters:
         - { name: limit, in: query, required: false, description: "Entries per page, 1 to 1000; 100 when absent.", schema: { type: integer } }
         - { name: before, in: query, required: false, description: "Only entries whose seq is lower: the next of the page before.", schema: { type: integer } }
@@ -589,7 +590,7 @@ paths:
     get:
       operationId: getLedgerEntry
       tags: [ledger]
-      summary: One entry as an envelope (module Portal) rooted at it, as getLedger serves it, with its chain (has-entry), the entry before it (prev) and, for an agent entry, its records edge. An action request comes with its result (answered-by), and an action result with its request (answers), when the other chain holds it (docs/design.md 50). 404 for a source listLedgers does not serve or a seq the chain lacks.
+      summary: One entry as an envelope (module Portal) rooted at it, as getLedger serves it, with its chain (has-entry), the entry before it (prev) and, for an agent entry, its records edge. An action request comes with its result (answered-by), and an action result with its request (answers), when the tenant's ledger holds it (docs/design.md 50). 404 for a source listLedgers does not serve or a seq the chain lacks.
       responses:
         "200":
           description: The entry, its chain and the entry before it (module Portal).
@@ -688,13 +689,14 @@ paths:
       summary: >-
         The tenant's action requests, newest first, as an envelope (module Portal) rooted at ui:actions (Kind Actions: count,
         and requested, done and failed, the requests by outcome), joined to each request by has-action. A request is the
-        LedgerEntry of its line in Portal's own chain, ui:ledger:portal/<seq>, as getLedgerEntry serves it: event
-        action.request, lineId (the ledger:<seq> its line carries), action, subject, principal, by, status (requested, as
-        written) and outcome (requested until a result names it, then the result's status), with resultId and resultSeq when
-        one does. Its result is the agent chain's LedgerEntry under the id its layer gave it, ledger:<seq>: event
-        action.result, request, status, started, finished, exit, output, requestSeq, and the node's source block as the layer
-        gives it; joined answered-by (request to result) and answers (result to request). When several results name one
-        request, the newest. Read from the mounted ledger layer only. Empty when no request was made.
+        LedgerEntry of its line in the tenant's ledger, under the id the line carries, ledger:<seq>, as getLedgerEntry serves
+        it: event action.request, action, subject, principal, by, status (requested, as written) and outcome (requested
+        until a later result line names it, then the result's status), with resultId and resultSeq when one does. Its result
+        is the LedgerEntry of the Runner's line in the same chain, ledger:<seq>: event action.result, request, status,
+        started, finished, exit, output, requestSeq, writer (the line's source, a one-item list of emitter, version, target
+        and stamp) and a source block naming that emitter, ledger.jsonl and the line; joined answered-by (request to result)
+        and answers (result to request). When several results name one request, the newest. Read from ledger.jsonl only,
+        lines appended after boot included. Empty when no request was made.
       responses:
         "200":
           description: The requests and their results (module Portal).
@@ -710,7 +712,7 @@ paths:
         Ask for an action on a container: logs, stop or restart, on a subject env:container/<project>/<service>. The principal
         is the token's, never the body's: a contributor or admin (403 for a reader, and for a token from before 0.5.0, which
         belongs to no principal; 401 without a token). Appends one action.request line to tenants/<tenant>/ledger.jsonl,
-        chained like every line, and returns it as written; its id is ledger:<seq>, and its entry page
+        under the file lock, after reading the lines appended since (the Runner's among them), chained like every line, and returns it as written; its id is ledger:<seq>, and its entry page
         /<tenant>/ledger/portal/<seq>. Any other action, or a subject that is no container id, is 422. Portal executes nothing.
       requestBody:
         required: true
@@ -735,7 +737,7 @@ paths:
     get:
       operationId: getAction
       tags: [actions]
-      summary: One action request as an envelope (module Portal) rooted at it, as listActions serves it, with its result and the answered-by and answers edges when the ledger layer holds one. 404 when that line of the tenant's ledger is no action request.
+      summary: One action request as an envelope (module Portal) rooted at it, as listActions serves it, with its result and the answered-by and answers edges when the tenant's ledger holds one. 404 when that line of the tenant's ledger is no action request.
       responses:
         "200":
           description: The request and its result (module Portal).

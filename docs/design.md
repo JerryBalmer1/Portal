@@ -8,7 +8,7 @@ Everything on screen is a graph in the Graph.Node envelope (`graph/1`, module `P
 
 ## 2. No write to any data layer, ever
 
-A mounted layer is read from disk or from a request body, validated, and held in memory read-only. No route writes it, patches it or appends to it, in memory or on disk; `GET /api/layers/{name}/nodes` returns a filtered copy. The only files the binary writes are under `-artifacts`: `snaps/<stamp>.graph.json` and `snaps/ontology.yaml` (since 0.2.0 nothing under `state/`, entry 20). Since 0.5.0 (entry 38) it also writes the tenant's two identity files, `tenants/<tenant>/principals.yaml` and `tokens.yaml`, on an admin's Add principal and Revoke; neither is a data layer. Since 0.6.0 (entry 40) it appends one line per push to the tenant's `tenants/<tenant>/ledger.jsonl` (since 0.14.0, entry 50, also one per action request: Portal asks, it runs nothing), and sends a pushed card to a feed (an OCI registry or a NuGet feed) over HTTP; neither a ledger nor a feed is a data layer. Pester "never writes to a mounted layer" hashes the fixture before and after. This is Graph.Node design 11's "a layer is never edited" seen from a consumer.
+A mounted layer is read from disk or from a request body, validated, and held in memory read-only. No route writes it, patches it or appends to it, in memory or on disk; `GET /api/layers/{name}/nodes` returns a filtered copy. The only files the binary writes are under `-artifacts`: `snaps/<stamp>.graph.json` and `snaps/ontology.yaml` (since 0.2.0 nothing under `state/`, entry 20). Since 0.5.0 (entry 38) it also writes the tenant's two identity files, `tenants/<tenant>/principals.yaml` and `tokens.yaml`, on an admin's Add principal and Revoke; neither is a data layer. Since 0.6.0 (entry 40) it appends one line per push to the tenant's `tenants/<tenant>/ledger.jsonl` (since 0.14.0, entry 50, also one per action request: Portal asks, it runs nothing; since 0.14.1, entry 51, the file is one ledger the Runner appends its results to as well, under the same lock, and Portal only reads those), and sends a pushed card to a feed (an OCI registry or a NuGet feed) over HTTP; neither a ledger nor a feed is a data layer. Pester "never writes to a mounted layer" hashes the fixture before and after. This is Graph.Node design 11's "a layer is never edited" seen from a consumer.
 
 ## 3. PORTAL_MODE=production hides Designer and nothing else
 
@@ -854,31 +854,31 @@ The brief: on Environments → Graph, right-click a container to get Logs, Stop 
 - A request line, which Portal writes: `kind: action.request`, `id: ledger:<seq>`, `action` (logs, stop or restart), `subject` (`env:container/<project>/<service>`), `principal`, `requested`, `status: requested`.
 - A result line, which the Runner writes and Portal only reads: `kind: action.result`, `id: ledger:<seq>`, `request` (the request's `ledger:<seq>`), `status` (done or failed), `started`, `finished`, `exit`, `output`, and a source block.
 
+Since 0.14.1 both lines live in one file, `tenants/<t>/ledger.jsonl`: one ledger, one chain, one seq space (entry 51 has the choices).
+
 The work asked for:
 - `POST`, `GET .../actions` and `GET .../actions/{seq}`.
 - The menu items, on containers only.
 - An Actions page at `/{t}/actions`.
 - The ledger entry page showing both kinds of line, linked both ways.
-- Action lines read from the ledger layer only.
+- Action lines read from the ledger layer only (0.14.0; since 0.14.1, from the tenant's ledger only).
 - A fixture with one done, one failed and one unanswered request.
 - Tests, and this entry.
 
 **The four roles as they stand in code.**
 - **Portal asks, as a principal.** `POST /api/tenants/<t>/actions` (`server.PostAction`) takes `{action, subject}` and nothing else. The principal is the token's, from the middleware's context (`principal(r)`). `tenant.RequestAction` appends the line through `record`, the push's write path, and returns it. Nothing in Portal starts, stops or reads a container.
-- **The Runner executes.** Portal.Agent's Claude.Agent.Runner reads the requests and writes `action.result` lines into the agent's own ledger. That is its code, not Portal's.
-- **The ledger records.** The request is a line of `tenants/<t>/ledger.jsonl`, chained like every line since 0.10.0. The result is an entry of the agent's ledger, which reaches Portal only through the mounted ledger layer (`store.AgentLedger`).
+- **The Runner executes.** Portal.Agent's Claude.Agent.Runner reads the requests from `tenants/<t>/ledger.jsonl` and appends its `action.result` lines to the same file, under the same lock, with the same `seq` and `prev`. That is its code, not Portal's.
+- **The ledger records.** Request and result are lines of `tenants/<t>/ledger.jsonl`, chained like every line since 0.10.0: one ledger. The agent's own ledger, and so its ledger layer, carries no action lines.
 - **The graph shows the gap.** Each request is served as its LedgerEntry with an `outcome`: `requested` until a result names it, then the result's status. Request and result are joined by `answered-by` and `answers`. The Actions page lists what is still `requested`.
 
 Asked, and Jerry chose:
 
-- **Split chains.** Portal writes only its own `ledger.jsonl`, so a request's `ledger:<seq>` is that file's seq. The agent ledger's entries are already `ledger:<seq>` in another seq space, so `ledger:7` could name two lines, and one envelope serving both would hold one id twice. Jerry chose:
-  - The request line carries `id: ledger:<seq>` exactly as the contract says. Graph.Node 0.3.3 shares `ledger:` with Portal (entry 48).
-  - Results are read from the agent ledger layer only.
-  - Served nodes keep their chain ids: the request is `ui:ledger:portal/<seq>`, with the contract id as the property `lineId`; the result is `ledger:<seq>` as its layer gave it. No envelope holds one id twice.
+- **Split chains (0.14.0, undone in 0.14.1).** In 0.14.0 Portal served the request as `ui:ledger:portal/<seq>` (the contract id as `lineId`) and read results from the agent ledger layer only. Portal.Agent's final shape put both lines in the tenant's file instead, so 0.14.1 took the option 0.14.0 passed over:
+  - **One ledger.** The Runner appends its results to the tenant's `ledger.jsonl`, and Portal reads the file's tail before every read and every append.
+  - Every line of that file is served as `ledger:<seq>`, its position, which is the id an action line carries. `ui:ledger:portal/<seq>` and `lineId` are gone.
+  - Results are read from `ledger.jsonl` only, never from a mounted layer or an alert layer's copy.
 
-  The options passed over:
-  - One ledger: the Runner appends its results to the tenant's `ledger.jsonl`, and Portal re-reads the file on each request.
-  - Requests through the layer only: a new request stays invisible until the next ledger emit.
+  The option still passed over: requests through the layer only, where a new request stays invisible until the next ledger emit.
 
 Choices made without asking:
 
@@ -888,7 +888,7 @@ Choices made without asking:
   - `tenant.LedgerEntry` gains `Action` (`json:"-"`). `record` writes an action as its `ActionRequest`, and the boot reads a line whose `kind` is `action.request` as one.
   - A request line that breaks the contract stops the boot, naming the line, as a bad push line does (entry 40). That covers an unknown action, a subject that is no container, an id that is not `ledger:<n>`, a missing principal, time or status, or an extra member.
   - Push lines are unchanged. Every reader of push lines already skips a line whose `result` is empty.
-- **One writer at a time.** `record` now takes `ledgerMu` around reading the last line and appending the new one. A push still holds `pushMu` across its duplicate check and the feed call, but an ask does not wait up to two minutes behind a push.
+- **One writer at a time.** `record` takes `ledgerMu` around reading the last line and appending the new one. A push still holds `pushMu` across its duplicate check and the feed call, but an ask does not wait up to two minutes behind a push. Since 0.14.1 it also takes the file's lock, the Runner's (entry 51).
 - **Who may ask.**
   - Contributor or admin, as any write (the middleware: 401 without a token, 403 for a reader).
   - A token from before 0.5.0 is 403: it belongs to no principal, and the line names one.
@@ -897,18 +897,16 @@ Choices made without asking:
   - `action` is exactly one of the three, case-sensitive.
   - `subject` passes the lifted registry's `env:` check and starts `env:container/`. Anything else is 422.
   - Portal does not check that a mounted layer holds the container: the Runner answers for what it can reach, and a failed result says so.
-- **Reading a result** (`store.AgentLedger`).
-  - An entry of the ledger layer whose properties carry `kind: action.result` is a result. Portal serves `event: action.result` and the contract's fields: `request`, `status`, `started`, `finished`, `exit` and `output`.
-  - The node's own Graph.Node `source` refs are the source block, kept on the served node.
-  - The agent chain comes only from a layer `holdsLedger` accepts, which excludes alert layers (entry 47). So an alert layer's copy of a result answers nothing: copies only, as before.
-  - **Not read yet from a real layer.** Portal.Agent's ledger emitter (Claude.Agent.Ledger 0.1.0, its layer of 2026-10-11T19:43:18Z) writes a line's kind as `entryKind` and copies none of a line's body. A real `action.result` is read once the layer carries `kind` and the result fields, as the contract names them. Nothing reads `entryKind` in its place.
+- **Reading a result** (0.14.1: `tenant.decodeResult`, served by `server.portalChain`).
+  - A line of `ledger.jsonl` whose `kind` is `action.result` is a result. Portal serves `event: action.result` and the contract's fields: `request`, `status`, `started`, `finished`, `exit` and `output`, with the line's source as `writer` and a node source block naming its emitter, `ledger.jsonl` and the line.
+  - A mounted layer's `action.result` node, the agent ledger layer's or an alert layer's copy, answers nothing. Copies only for alert layers, as before (entry 47).
 - **The join** (`server.joinActions`, run wherever the chains are built, so every ledger route carries it):
-  - A result answers the request whose line carries the id its `request` names. With several, the newest wins, so a retry's result overrides an earlier one.
+  - A result answers the request before it in the chain whose id its `request` names. With several, the newest wins, so a retry's result overrides an earlier one.
   - The request gets `outcome`, `resultId` and `resultSeq`, and the result gets `requestSeq`.
-  - **Known limit.** The id is the only key the contract gives, so a `ledger.jsonl` started over reuses `ledger:1`, and an old result in the agent ledger would answer the new request. The result carries neither subject nor action to cross-check. If that matters, the contract needs the request's hash or subject on the result (proposal for Portal.Agent, not made here).
+  - **Id reuse after a reset is no problem on one chain.** A `ledger.jsonl` started over reuses `ledger:1`, but a reset drops requests and results alike: no old result is left to answer the new request. (In 0.14.0, with results in the agent ledger, one could.)
 - **Served shapes.**
   - **Kind `Actions`**, `ui:actions`, with `count`, `requested`, `done` and `failed`, joined by `has-action` to each request, newest first.
-  - **LedgerEntry gains** `lineId`, `action`, `subject`, `principal`, `status`, `outcome`, `resultId`, `resultSeq`, `request`, `requestSeq`, `started`, `finished`, `exit` and `output`. `event` now also names Portal's `action.request`.
+  - **LedgerEntry gains** `action`, `subject`, `principal`, `status`, `outcome`, `resultId`, `resultSeq`, `request`, `requestSeq`, `started`, `finished`, `exit`, `output` and (0.14.1) `writer`. `event` now also names `action.request` and `action.result` in the portal chain. (0.14.0's `lineId` is gone in 0.14.1.)
   - **New edges** `answered-by` (request to result) and `answers` (back).
   - **Ledger entry route.** `getLedgerEntry` serves the other half beside the entry, with both edges.
   - **One request.** `getAction` is one request, with its result when there is one; 404 when that line is no request.
@@ -921,20 +919,19 @@ Choices made without asking:
   - Stop and Restart ask first in an in-page dialog, not the browser's `confirm()`, with Cancel focused and Escape or a click outside as Cancel. Logs does not ask.
 - **After the ask**, a notice (a toast, since 0.14.0 able to hold a node) reads `asked: <action> <subject> · ledger:<seq>` for 20 seconds. The id links `/<t>/ledger/portal/<seq>`.
 - **The Actions page.** It is Environments/Actions, `{ id: actions, path: environments/actions, view: actions }`, last under Environments, served at `/<t>/actions` like `/<t>/agents` (entry 43). It is `web/actions.js`.
-  - **Rows:** action (linking the entry), subject (linking the graph with it selected), principal, requested, status and result (linking the agent entry).
+  - **Rows:** action (linking the entry), subject (linking the graph with it selected), principal, requested, status and result (linking the result's entry, in the same chain).
   - **Principal links** go to the Users row marked by `#<id>` (`principals.js` now marks it), an agent's page for type agent, or plain text with why for a principal `principals.yaml` lacks.
   - **Status colours:** requested in the warning amber (the gap), done green and failed red with a red bar on the row.
   - A click anywhere on a row but a link opens the request's entry. The toolbar reads `<n> actions · <r> requested · <d> done · <f> failed`.
   - No boot rule was added: `/<t>/actions` is two segments, so no shell route competes with it.
 - **The entry page** (`ledger.js`).
-  - **A request** shows its action, subject (linked), line id, status, outcome, `answered by` (the result's link, or `nothing yet: ...`) and principal (linked).
-  - **A result** shows `answers` (the request's link, or why not), status, started, finished, exit, the output in a `pre` block, and `written by` from its source block.
-  - **The portal chain's list** shows `<action> · <outcome>`, the subject and who asked.
-- **Fixtures.**
-  - The ledger layer fixture (entry 45's synthetic one) gains entries 56 and 57, chained after 55 with real SHA-256s of synthetic stream-contract lines. 56 is logs, done, exit 0, answering `ledger:1`. 57 is restart, failed, exit 1, answering `ledger:2`. Both carry a source block `Claude.Agent.Runner · ledger.jsonl:<n>`. Its root moves to 57 (count 14, last 57), and its ontology declares the result fields.
-  - The broken copy is unchanged (12 entries, 44 to 55).
-  - `tests/fixtures/ledger/actions.ledger.jsonl` is a tenant ledger of three chained requests by `ui:principal:root`: 1 logs on the agent, 2 restart on mitm, and 3 stop on the ledger keeper, which nothing answers.
-- **CLAUDE.md and entry 2** say the ledger takes an action request too. The binary still writes the same three files and nothing more.
+  - **A request** shows its action, subject (linked), status, outcome, `answered by` (the result's link, or `nothing yet: ...`) and principal (linked).
+  - **A result** shows `answers` (the request's link, or why not), status, started, finished, exit, the output in a `pre` block, `written by` from its `writer` (emitter, version, tenant, stamp) and `line` from its source block.
+  - **The portal chain's list** shows `<action> · <outcome>`, the subject and who asked for a request, and `<status> · answers <request>` and the emitter for a result.
+- **Fixtures** (as of 0.14.1).
+  - The ledger layer fixture is entry 45's again: 12 entries, 44 to 55, no action lines. 0.14.0's entries 56 and 57 are gone with the split chains.
+  - `tests/fixtures/ledger/actions.ledger.jsonl` is a tenant ledger, one chain: three requests by `ui:principal:root` (1 logs on the agent, 2 restart on mitm, 3 stop on the ledger keeper, which nothing answers), then the Runner's results, 4 answering 1 (done, exit 0) and 5 answering 2 (failed, exit 1), in the Runner's member order with `source` a one-item list.
+- **CLAUDE.md and entry 2** say the ledger takes an action request too, and since 0.14.1 that it is one ledger the Runner appends to as well. The binary still writes the same three files and nothing more.
 - **Not added.**
   - A PowerShell wrapper (the brief asks for routes, a page and tests).
   - Paging the actions list.
@@ -946,7 +943,7 @@ Choices made without asking:
     - the ask's 401, 403 for a reader and a legacy token, 422 for eight bad asks, and 400 for a body naming a principal;
     - the principal from the token, and the line on disk member for member, chained;
     - the join: done, failed and the gap, edges, one request, 404, both entry pages;
-    - an alert layer's copy answering nothing, alone or after the ledger layer;
+    - a layer's result answering nothing (0.14.1: a ledger layer's, and an alert layer's copy);
     - a restart reading request lines among pushes, and a bad request line stopping the boot;
     - the menu's containers being the API's subjects over the real environment layer, with every other `env:` node refused.
   - **Pester (tag `Actions`):**
@@ -957,5 +954,32 @@ Choices made without asking:
     - the menu on a container (and not on compose or an image), Logs at once, Restart cancelled, Stop confirmed, and the notice's link;
     - greyed for anonymous on an Instances row.
 
-    The Ledger and Environments graph blocks follow the fixture (14 entries) and the container's three new items.
+    The Environments graph block follows the container's three new items.
 - **Version 0.14.0:** new operations, a Kind, edges and a page, and a line kind in the ledger.
+
+## 51. One ledger, one seq space (0.14.1)
+
+Portal.Agent's final shape, now committed (Runner 0.2.0, its design 9 and 10): `action.request` and `action.result` both live in `tenants/<t>/ledger.jsonl` as one chain, appended by Portal and by the Runner with the same lock, `seq` and `prev`. The agent ledger layer carries no action lines. 0.14.1 undoes 0.14.0's split chains (entry 50).
+
+What was asked, as built:
+- **A request is served under its own id**, `ledger:<seq>`. `ui:ledger:portal/<seq>` and `lineId` are dropped.
+- **The loader accepts `action.result` lines** (`tenant.decodeResult`): `kind`, `id`, `request`, `status`, `started`, `finished`, `exit`, `output`, `source`, `seq`, `prev`, and nothing else. Results are read from `ledger.jsonl`, never from the mounted agent layer or any copy. The copies-only rule for alert layers is unchanged.
+- **`record` re-reads the tail under the file lock** before computing `seq` and `prev`. Go's `TestLinesAppendedAfterBootAreReadAndChainedTo` appends a line between boot and record; `TestRecordWaitsForTheRunnersLock` holds the lock while an ask waits.
+- **Reads see lines appended after boot.** `Tenant.Ledger` and `Tenant.LedgerLines` read the tail first, so the ledger page, the actions page and the join see the Runner's lines without a restart.
+- **The entryKind note** (entry 50's "Not read yet from a real layer") is removed, since results no longer come from that layer.
+- **Id reuse after a reset** is no problem on one chain, since a reset drops both sides (entry 50's join).
+
+Choices made without asking:
+- **`source` is a one-item list, or the one object.** The brief names a one-item list. The committed Runner (`Add-ActionResult`, and its tests) writes one object `{emitter, version, target, stamp}`. Portal reads either as the list of one, with all four members set and no others, so the Runner's real output boots. A list of any other length is refused. Portal.Agent may want to settle the shape; Portal takes both until then.
+- **Every line of `ledger.jsonl` is `ledger:<position>`**, pushes included, as the Runner's `Read-TenantLedger` numbers them. An action line whose own id names another seq is served at its position, with `written` saying the seq its id names, and so is a `seq-gap` break (entry 45). The served id therefore always names its line.
+- **The agent chain's ids are `ledger:<seq>` too**, in another seq space: `ledger:5` names one line in each chain, told apart by `source`. No route serves both chains in one envelope. An alert's `about` a `ledger:<seq>` still resolves to the agent chain (entry 47), and Alerts 0.5.0's `action-failed` draws no `about` edge, for this reason (its design 11). Telling the two apart by id is still open, for Graph.Node and Portal.
+- **The lock is the Runner's.** The Runner opens the file with `FileShare.None`. Portal's `openLocked` opens it with no sharing on Windows (`CreateFile`, share mode 0), retrying a sharing violation every 50 ms for up to 30 s, as the Runner does; on Unix it takes `flock(LOCK_EX)`, which is what .NET does there for `FileShare.None`. While either holds the file, the other waits.
+- **Reads take no file lock.** A read opens the file shared and takes the lines after the last one it read, up to the last LF, so a line being written is left for the next read. On Windows, while the Runner holds the file, the open fails and the ledger is served as last read.
+- **`record` ends a torn last line.** Under the lock nothing is being written, so a last line without its LF is a line. Portal writes an LF before its own line when the file does not end in one, as the Runner does.
+- **A reset is a file shorter than what was read, or no file.** It is read again from the start. A file rewritten to the same length or longer is not noticed until restart.
+- **A bad line appended after boot** stops `record` with the line's error (500), and the reads stop before it. Only the boot stops the binary.
+- **A result answers only a request before it** in the chain. The Runner's guard (its design 10) makes that the only kind it writes.
+- **The entry page of a result** shows `written by` (emitter, version, tenant, stamp) and `line` (`ledger.jsonl:<n>`). The chain's list shows `<status> · answers <request>` and the emitter.
+- **The ledger layer fixture** is entry 45's again (12 entries, 44 to 55), as committed in 0.10.0. The tenant fixture gains the two results.
+- **Version 0.14.1:** no operation, Kind or edge changes. `LedgerEntry` loses `lineId` and gains `writer`, and the portal chain's ids change.
+

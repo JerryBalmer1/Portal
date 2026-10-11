@@ -10,7 +10,7 @@
 6. Fixtures and tests.
 7. A design.md entry, version 0.14.0.
 
-Decisions: docs/design.md 50. Everything is edited and staged only; nothing is committed, pushed or tagged. `tenants/default/portal.yaml` is left as found: modified and unstaged. No screenshots or demo were made, so the dev-mode rule did not apply. Every manual check here runs on a throwaway tenant in mode `demo`.
+Decisions: docs/design.md 50. **Updated for 0.14.1** (docs/design.md 51): one ledger, one seq space; see the section at the end. Where this report names 0.14.0's split chains, ids or fixture, 0.14.1 replaced them. Everything is edited and staged only; nothing is committed, pushed or tagged. `tenants/default/portal.yaml` is left as found: modified and unstaged. No screenshots or demo were made, so the dev-mode rule did not apply. Every manual check here runs on a throwaway tenant in mode `demo`.
 
 ## The one question asked
 
@@ -44,8 +44,7 @@ Jerry chose **split chains**:
 
 ## Not matching the brief, or worth knowing
 
-- **A real Runner's result is not read yet.** Portal.Agent's ledger emitter today writes a line's kind as `entryKind` and copies none of the body. Its latest layer is `ledger-layers/2026-10-11T19-43-18Z`, Claude.Agent.Ledger 0.1.0. Portal reads `kind: action.result` and the result fields under the contract's names, so a real result shows once the emitted layer carries them. I added no fallback to `entryKind`, in line with design 48's "no mapping".
-- **The join keys on the id alone.** The contract gives a result nothing but `request: ledger:<seq>`. A tenant whose `ledger.jsonl` is started over reuses `ledger:1`, and an old result in the agent ledger would then "answer" the new request. Writing manual check 1.23 is how this showed up. Proposal for Portal.Agent, not made: put the request line's hash (or subject and action) on the result, so Portal can cross-check.
+- **The join keys on the id alone**, which is enough since 0.14.1: request and result are lines of one chain, so a reset of `ledger.jsonl` drops both sides and no old result is left to answer a reused `ledger:1`.
 - **The three items also appear on an Instances row's menu**, not only on the graph. It is the same node menu (design 46), and the items come from `nodemenu.items`.
 - **The three items are `<button>`s, not `<a>`s**, since they go nowhere. Design 46's "every item a link" still holds for the four that link.
 - **The confirm is an in-page dialog**, not `window.confirm()`, with Cancel focused and Escape as Cancel. Headless Chrome tests can drive it; a native confirm would block them.
@@ -101,23 +100,23 @@ Jerry chose **split chains**:
 
 ## What to click (check-list)
 
-Start the page with manual check **2.16**: a demo tenant, the actions fixture as its ledger, and the runs, ledger and environment layers mounted. It prints a token for the avatar. Then:
+Start the page with manual check **2.16**: a demo tenant, the actions fixture as its ledger, and the runs, ledger and environment layers mounted. It prints a token for the avatar. Then (ids as of 0.14.1):
 
 - [ ] **Environments → Actions** (last in the rail) at `/default/actions`.
   - The toolbar reads `3 actions · 1 requested · 1 done · 1 failed`.
-  - Rows 3, 2, 1: `stop … requested` (amber, no result), `restart … failed` (red bar, result `ledger:57`), `logs … done` (green, result `ledger:56`).
+  - Rows 3, 2, 1: `stop … requested` (amber, no result), `restart … failed` (red bar, result `ledger:5`), `logs … done` (green, result `ledger:4`).
 - [ ] Click the **subject** of row 2. The graph opens with mitm selected.
 - [ ] Back, then click **`root`**. Identity/Users opens with root's row marked.
-- [ ] Back, then click **row 2 anywhere but a link**. `/default/ledger/portal/2` opens: action `restart`, `line id` `ledger:2`, outcome `failed`, `answered by` `ledger:57`.
-- [ ] Click **`ledger:57`**. `answers` links `ledger:2 (portal 2)`, status `failed` in red, exit `1`, the output in a monospace box, and `written by` `Claude.Agent.Runner · ledger.jsonl:57`.
+- [ ] Back, then click **row 2 anywhere but a link**. `/default/ledger/portal/2` opens: action `restart`, outcome `failed`, `answered by` `ledger:5`.
+- [ ] Click **`ledger:5`**. `answers` links `ledger:2`, status `failed` in red, exit `1`, the output in a monospace box, `written by` `Emitter.Ledger 0.4.0 · for default · 2026-10-09T02:50:59.400Z` and `line` `ledger.jsonl:5`.
 - [ ] Before signing in, open **Environments → Graph** and right-click the **agent** container. You should see Details, Show graph, Runs, Ledger, a rule, then **Logs, Stop, Restart greyed**. Hover shows `sign in to write`.
 - [ ] Right-click the **compose node**, an **image** and a **network**: there are no action items on any of them.
-- [ ] Give the avatar the printed token. Right-click **agent → Logs**: there is no dialog, and a notice says `asked: logs env:container/claude-agent-dev/agent · ledger:4`. Its link opens the entry, with `answered by: nothing yet: …`.
+- [ ] Give the avatar the printed token. Right-click **agent → Logs**: there is no dialog, and a notice says `asked: logs env:container/claude-agent-dev/agent · ledger:6`. Its link opens the entry, with `answered by: nothing yet: …`.
 - [ ] Right-click **mitm → Restart**: a dialog `Restart mitm (…)?` opens with Cancel focused. Press **Escape** or click **Cancel**: there is no notice and no new line.
-- [ ] Right-click **mitm → Stop**, then choose **Stop**. The notice reads `… · ledger:5`. Environments → Actions now reads `5 actions · 3 requested · 1 done · 1 failed`.
+- [ ] Right-click **mitm → Stop**, then choose **Stop**. The notice reads `… · ledger:7`. Environments → Actions now reads `5 actions · 3 requested · 1 done · 1 failed`.
 - [ ] **Keyboard:** focus a container, press **Shift+F10**, then **End**. Focus lands on **Restart**; **Escape** closes the menu.
 - [ ] **Environments → Instances**: right-click a container row. The same three items appear.
-- [ ] The ledger file `%TEMP%\portal-check-2.16-tenants\default\ledger.jsonl` (while the check runs) has lines 4 and 5 naming `ui:principal:root`, in the contract's member order.
+- [ ] The ledger file `%TEMP%\portal-check-2.16-tenants\default\ledger.jsonl` (while the check runs) has lines 6 and 7 naming `ui:principal:root`, in the contract's member order.
 - [ ] **API**: run manual check **1.23** and compare with its Expect.
 
 Nothing in these steps stops or restarts a container: no Runner reads these requests here.
@@ -132,3 +131,20 @@ Nothing in these steps stops or restarts a container: no Runner reads these requ
 The `Actions` block's first run caught two of its own assertions failing under strict mode (absent properties) and one regex on a newline. The tests were fixed; nothing in the product changed for them.
 
 Manual checks 1.20 and 1.23 were run as written; their Expects are what I saw. Check 2.16 (the page) has not been clicked by hand. Its Expect is what Pester's `Actions` block asserts in headless Chrome, and its by-hand steps are the check-list above.
+
+## 0.14.1: one ledger, one seq space
+
+Portal.Agent's committed shape puts `action.request` and `action.result` in `tenants/<t>/ledger.jsonl`, one chain both writers append to under the same lock. Portal now serves every line there as `ledger:<seq>`, reads results from that file only, and reads the file's tail before every read and under the lock before every append (docs/design.md 51). Go 114, Pester 125, `Invoke-Build` `Build succeeded. 6 tasks, 0 errors, 0 warnings`.
+
+### Click-through: the result path
+
+With manual check **2.16** running (the page above), play the Runner by hand:
+
+- [ ] Right-click **agent → Logs** as root. The notice reads `asked: … · ledger:6`; its entry says `answered by: nothing yet: no later action.result in the tenant's ledger names ledger:6`.
+- [ ] Append the Runner's answer to `%TEMP%\portal-check-2.16-tenants\default\ledger.jsonl` while the portal runs, as manual check **1.23** does: an `action.result` line with `"id":"ledger:7"`, `"request":"ledger:6"`, `"seq":7` and `prev` the SHA-256 of line 6, ending in an LF.
+- [ ] **Reload** `/default/actions`, with no restart. Row 6 reads `done` in green with result `ledger:7`, and the toolbar counts one more done.
+- [ ] Click **`ledger:7`**. `answers` links `ledger:6`; `written by` names the emitter, version, tenant and stamp from the line's `source`; `line` reads `ledger.jsonl:7`.
+- [ ] **Ledger → Entries → portal**: line 7 reads `done · answers ledger:6`, and the chain is still `valid`.
+- [ ] Ask once more: the notice reads `ledger:8`, chained to the Runner's line (its `prev` is line 7's hash).
+
+Manual check 1.23 runs the same path over the API and was run as written; its Expect is the output seen. Nobody has clicked this by hand; Pester's `Actions` block asserts the page side in headless Chrome.

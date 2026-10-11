@@ -4,7 +4,7 @@
   "module": "Portal.Agent",
   "version": "0.1.0",
   "layer": "2026-10-09T02:51:00Z",
-  "root": "ledger:57",
+  "root": "ledger:55",
   "nodes": [
     {
       "id": "ledger:44",
@@ -156,64 +156,12 @@
         "stamp": "2026-10-09T02:50:55Z",
         "event": "keeper.check",
         "prev": "1ae5aa52d870d9f59901d6a210c35dd9d06b0b938a5c1cac21332076668984a8",
-        "hash": "887b1e87c08c2da1198c7b942552fcc5fd34092b0ea57e2d0b652a10c0c10ecf"
-      }
-    },
-    {
-      "id": "ledger:56",
-      "kind": "LedgerEntry",
-      "name": "56 action.result",
-      "properties": {
-        "seq": 56,
-        "stamp": "2026-10-09T02:50:59Z",
-        "event": "action.result",
-        "prev": "887b1e87c08c2da1198c7b942552fcc5fd34092b0ea57e2d0b652a10c0c10ecf",
-        "hash": "9d23a9a9d17d71589d11d9051c04aeb012a3fc8b482da45bf53b390bceefc423",
-        "kind": "action.result",
-        "request": "ledger:1",
-        "status": "done",
-        "started": "2026-10-09T02:50:58.6Z",
-        "finished": "2026-10-09T02:50:58.9Z",
-        "exit": 0,
-        "output": "2026-10-09T02:50:44Z agent: egress check passed (direct blocked)\n2026-10-09T02:50:44Z agent: claude -p started\n2026-10-09T02:50:55Z agent: stopped\n"
-      },
-      "source": [
-        {
-          "tool": "Claude.Agent.Runner",
-          "path": "ledger.jsonl",
-          "line": 56
-        }
-      ]
-    },
-    {
-      "id": "ledger:57",
-      "kind": "LedgerEntry",
-      "name": "57 action.result",
-      "properties": {
-        "seq": 57,
-        "stamp": "2026-10-09T02:51:00Z",
-        "event": "action.result",
-        "prev": "9d23a9a9d17d71589d11d9051c04aeb012a3fc8b482da45bf53b390bceefc423",
-        "hash": "4981f70f5bcb84c509687999e3c617a2e1a3b96d278abb55c71869f5f96968b5",
-        "kind": "action.result",
-        "request": "ledger:2",
-        "status": "failed",
-        "started": "2026-10-09T02:50:59.1Z",
-        "finished": "2026-10-09T02:50:59.4Z",
-        "exit": 1,
-        "output": "Error response from daemon: container claude-agent-dev-mitm-1 is marked for removal and cannot be started\n",
+        "hash": "887b1e87c08c2da1198c7b942552fcc5fd34092b0ea57e2d0b652a10c0c10ecf",
         "valid": true,
-        "count": 14,
+        "count": 12,
         "first": 44,
-        "last": 57
-      },
-      "source": [
-        {
-          "tool": "Claude.Agent.Runner",
-          "path": "ledger.jsonl",
-          "line": 57
-        }
-      ]
+        "last": 55
+      }
     }
   ],
   "edges": [
@@ -336,25 +284,13 @@
       "kind": "prev",
       "from": "ledger:55",
       "to": "ledger:54"
-    },
-    {
-      "id": "ledger:56|ledger:55|prev",
-      "kind": "prev",
-      "from": "ledger:56",
-      "to": "ledger:55"
-    },
-    {
-      "id": "ledger:57|ledger:56|prev",
-      "kind": "prev",
-      "from": "ledger:57",
-      "to": "ledger:56"
     }
   ],
   "counts": {
-    "nodes": 14,
-    "edges": 22,
+    "nodes": 12,
+    "edges": 20,
     "byKind": {
-      "LedgerEntry": 14
+      "LedgerEntry": 12
     }
   }
 }

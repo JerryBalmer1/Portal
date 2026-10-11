@@ -62,6 +62,8 @@ type Tenant struct {
 	tokens      []token
 	ledger      []LedgerEntry
 	ledgerRaw   [][]byte
+	ledgerEnd   int64
+	ledgerLines int
 	pushMu      sync.Mutex
 	ledgerMu    sync.Mutex
 }
@@ -150,7 +152,7 @@ func Load(o Options) (*Tenant, error) {
 	if t.Connections, err = loadConnections(filepath.Join(dir, "connections.yaml"), t.principals); err != nil {
 		return nil, err
 	}
-	if t.ledger, t.ledgerRaw, err = loadLedger(filepath.Join(dir, LedgerFile)); err != nil {
+	if t.ledger, t.ledgerRaw, t.ledgerEnd, t.ledgerLines, err = loadLedger(filepath.Join(dir, LedgerFile)); err != nil {
 		return nil, err
 	}
 	if ps := checkEmitterCards(t.Menu, t.ledger); len(ps) > 0 {

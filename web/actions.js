@@ -8,9 +8,11 @@
 //
 // Environments/Actions, at /<tenant>/actions: the requests from GET
 // .../actions, newest first, one row each (action, subject, principal,
-// requested, status, result). Status is requested until the ledger layer
-// holds a result naming the request, then that result's status. A row
-// opens the request's entry page, where a result's output is shown.
+// requested, status, result). Status is requested until a later line of
+// the tenant's ledger is the Runner's result naming the request, then that
+// result's status; request and result are entries of the one chain,
+// ledger:<seq>. A row opens the request's entry page, where a result's
+// output is shown.
 import { toast } from '/static/toast.js';
 
 // ask asks for action on node n. ctx: {client, navigate, ledgerHref}.
@@ -136,7 +138,7 @@ export function mount(el, ctx) {
       row.dataset.seq = String(q.seq);
       row.dataset.outcome = q.outcome;
       row.className = 'pt-action-row';
-      row.title = `request ${q.lineId}: its entry is ${entry}`;
+      row.title = `request ${n.id}: its entry is ${entry}`;
       row.insertCell().appendChild(go(ctx, entry, q.action));
       const graph = ctx.nodeLinks.graphHref(q.subject);
       row.insertCell().appendChild(graph ? go(ctx, graph, q.subject) : document.createTextNode(q.subject));
@@ -154,7 +156,7 @@ export function mount(el, ctx) {
       st.textContent = q.outcome;
       row.insertCell().appendChild(st);
       const rc = row.insertCell();
-      if (q.resultSeq) rc.appendChild(go(ctx, ctx.ledgerHref('agent', q.resultSeq), q.resultId));
+      if (q.resultSeq) rc.appendChild(go(ctx, ctx.ledgerHref('portal', q.resultSeq), q.resultId));
       // A click anywhere on the row but a link opens the request's entry.
       row.addEventListener('click', (ev) => {
         if (ev.target.closest('a') || ev.button !== 0) return;

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.14.1 — 2026-10-11
+
+- **One ledger, one seq space** (docs/design.md 51). Portal.Agent's committed shape: `action.request` and `action.result` both live in `tenants/<t>/ledger.jsonl` as one chain, appended by Portal and by the Runner with the same lock, `seq` and `prev`. 0.14.0's split chains are undone.
+  - A request is served under its own id, `ledger:<seq>`; every line of the portal chain is `ledger:<position>`. `ui:ledger:portal/<seq>` and `lineId` are gone.
+  - The loader reads `action.result` lines (`kind`, `id`, `request`, `status`, `started`, `finished`, `exit`, `output`, `source`, `seq`, `prev`; nothing else). `source` is a one-item list, or the one object Runner 0.2.0 writes, read as the list of one. A result is served with `writer` (that source) and a source block naming its emitter, `ledger.jsonl` and the line.
+  - Results come from `ledger.jsonl` only, never from a mounted layer or an alert layer's copy. A result answers only a request before it.
+- **`record` takes the Runner's lock** (no sharing on Windows, `flock` on Unix, 30 s at most) and reads the file's tail under it before computing `seq` and `prev`. It ends a torn last line with an LF before its own.
+- **Reads see lines appended after boot.** Every ledger read takes the lines after the last one it read, up to the last LF; a shorter or missing file is a reset. The ledger page, the actions page and the join show the Runner's results without a restart.
+- **Pages.** A result's entry page shows `written by` (emitter, version, tenant, stamp) and `line`; the portal chain's list shows `<status> · answers <request>`. A request's page loses `line id`.
+- **Fixtures.** The ledger layer fixture is 0.10.0's again (12 entries, 44 to 55, no action lines). `actions.ledger.jsonl` gains the Runner's results 4 (answering 1, done) and 5 (answering 2, failed).
+- **Go** 112 to 114: `TestLinesAppendedAfterBootAreReadAndChainedTo` and `TestRecordWaitsForTheRunnersLock` are new; `TestActionResultsAreReadFromTheLedgerLayerOnly` is now `TestActionResultsAreReadFromTheTenantLedgerOnly`.
+- **Pester** 124 to 125: the `Actions` block gains an It for a result the Runner appends while Portal runs.
+
 ## 0.14.0 — 2026-10-11
 
 - **Actions on containers: Portal asks, the Runner executes, the ledger records, the graph shows the gap** (docs/design.md 50).

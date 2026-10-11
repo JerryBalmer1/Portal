@@ -35,7 +35,7 @@ func (s *Server) chains() []*store.Chain {
 	if ok {
 		out = append(out, agent)
 	}
-	joinActions(portal, agent)
+	joinActions(portal)
 	return append(out, portal)
 }
 
@@ -48,23 +48,44 @@ func (s *Server) chain(source string) (*store.Chain, bool) {
 	return nil, false
 }
 
-// portalChain is ledger.jsonl as a chain: each line is the entry
-// ui:ledger:portal/<n>, n its line number, with the hash of its bytes.
+// portalChain is ledger.jsonl as a chain, its tail read first: each line
+// is the entry ledger:<n>, n its position from 1, with the hash of its
+// bytes. One chain and one seq space (docs/design.md 50): an action
+// request's id and its result's are the ids their lines carry, which name
+// their positions; a line whose id names another seq is served at its
+// position, and written says the seq it names.
 func (s *Server) portalChain() *store.Chain {
 	c := &store.Chain{Source: tenant.SourcePortal}
 	for i, l := range s.t.LedgerLines() {
 		n := i + 1
-		e := store.ChainEntry{ID: tenant.PortalEntryID(n), Seq: n, Stamp: l.At, Prev: l.Prev, Hash: l.Hash, Unchained: l.Seq == 0,
+		e := store.ChainEntry{ID: tenant.LedgerID(n), Seq: n, Stamp: l.At, Prev: l.Prev, Hash: l.Hash, Unchained: l.Seq == 0,
 			Props: map[string]any{"by": l.Name, "feed": l.Feed, "result": l.Result, "message": l.Message}}
 		if l.Seq != 0 && l.Seq != n {
 			e.Written = l.Seq
 		}
 		if a := l.Action; a != nil {
-			// An action request (docs/design.md 50): its line's own members,
-			// lineId the id it carries.
-			e.Props = map[string]any{"event": a.Kind, "lineId": a.ID, "action": a.Action, "subject": a.Subject,
+			// An action request: its line's own members.
+			e.Props = map[string]any{"event": a.Kind, "action": a.Action, "subject": a.Subject,
 				"principal": a.Principal, "by": l.Name, "status": a.Status}
 			e.Name = a.Action + " " + a.Subject
+			if w, _ := tenant.LedgerSeq(a.ID); e.Written == 0 && w != n {
+				e.Written = w
+			}
+			c.Entries = append(c.Entries, e)
+			c.Stamp = l.At
+			continue
+		}
+		if r := l.Answer; r != nil {
+			// An action result, the Runner's: its line's own members, and
+			// its source as the line names it (writer) and as a source
+			// block on the node, the file and line it is.
+			e.Props = map[string]any{"event": r.Kind, "request": r.Request, "status": r.Status, "started": r.Started,
+				"finished": r.Finished, "exit": *r.Exit, "output": *r.Output, "writer": r.Source}
+			e.Name = r.Status + " " + r.Request
+			e.Source = []graph.Source{{Tool: r.Source[0].Emitter, Path: tenant.LedgerFile, Line: n}}
+			if w, _ := tenant.LedgerSeq(r.ID); e.Written == 0 && w != n {
+				e.Written = w
+			}
 			c.Entries = append(c.Entries, e)
 			c.Stamp = l.At
 			continue
@@ -258,24 +279,31 @@ func (s *Server) GetLedgerEntry(w http.ResponseWriter, r *http.Request, name api
 	env.Nodes = append(env.Nodes, root)
 	runLayer := s.runLayers()
 	addEntries(env, c, root.ID, entries, runLayer)
-	s.addAnswer(env, e, runLayer)
+	s.addAnswer(env, c, e, runLayer)
 	env.Recount()
 	writeJSON(w, http.StatusOK, env)
 }
 
-// addAnswer puts the other half of an action into env beside e: a
-// request's result, joined answered-by, or a result's request, joined
-// answers, when the other chain holds it (docs/design.md 50).
-func (s *Server) addAnswer(env *graph.Envelope, e store.ChainEntry, runLayer map[string]string) {
-	portal, agent, pairs := s.actionPairs()
+// addAnswer puts the other half of an action into env beside e, an entry
+// of c: a request's result, joined answered-by, or a result's request,
+// joined answers, when the tenant's ledger holds it (docs/design.md 50).
+// Both halves are lines of that one chain; an agent entry has none.
+func (s *Server) addAnswer(env *graph.Envelope, c *store.Chain, e store.ChainEntry, runLayer map[string]string) {
+	if c.Source != tenant.SourcePortal {
+		return
+	}
+	portal, pairs := s.actionPairs()
 	for _, p := range pairs {
 		if p.res == nil || (p.req.ID != e.ID && p.res.ID != e.ID) {
 			continue
 		}
+		other := p.req
 		if p.req.ID == e.ID {
-			env.Nodes = append(env.Nodes, entryNode(agent, *p.res, runLayer))
-		} else {
-			env.Nodes = append(env.Nodes, entryNode(portal, p.req, runLayer))
+			other = *p.res
+		}
+		// The entry before e is in env already, joined by prev.
+		if _, in := env.NodeIndex()[other.ID]; !in {
+			env.Nodes = append(env.Nodes, entryNode(portal, other, runLayer))
 		}
 		env.Edges = append(env.Edges, graph.NewEdge(p.req.ID, p.res.ID, "answered-by"), graph.NewEdge(p.res.ID, p.req.ID, "answers"))
 		return

@@ -17,52 +17,44 @@ import (
 
 // Actions (docs/design.md 50): four roles. Portal asks, as the principal
 // the token names, by appending an action.request line to the tenant's
-// ledger.jsonl; Portal.Agent's Runner executes it and records an
-// action.result line in the agent's ledger; the ledger layer brings that
-// line back, and Portal reads it from there only; the graph shows the gap,
-// a request with no result yet. Portal never executes anything.
+// ledger.jsonl; Portal.Agent's Runner executes it and appends an
+// action.result line to the same file, under the same lock, chained by the
+// same seq and prev; the graph shows the gap, a request with no result
+// yet. Portal never executes anything.
 //
-// The two lines live in two chains, so each keeps the node id its chain
-// gives it: the request ui:ledger:portal/<seq> (with lineId, the
-// ledger:<seq> its line carries), the result ledger:<seq> as its layer gave
-// it. The result's request names the request's lineId; the join puts the
-// other's seq on each, and answered-by and answers join them where both
-// are served.
+// One ledger, one seq space: the request and its result are entries of
+// Portal's chain under the ids their lines carry, ledger:<seq>. The
+// result's request names the request's id; the join puts the other's seq
+// on each, and answered-by and answers join them where both are served.
+// Results are read from ledger.jsonl only, never from a mounted layer.
 
 // ActionsID is the actions list's node id.
 const ActionsID = "ui:actions"
 
-// joinActions puts what the join knows on both chains' entries: a request
-// gets outcome (requested, or its result's status), and resultId and
-// resultSeq when the agent chain holds a result naming it (the newest, when
-// several do); a result gets requestSeq when Portal's chain holds the
-// request it names. agent is nil while no ledger layer is mounted.
-func joinActions(portal, agent *store.Chain) {
+// joinActions puts what the join knows on the chain's action entries,
+// oldest first: a request gets outcome (requested, or its result's
+// status), and resultId and resultSeq when a later line is a result naming
+// it (the newest, when several do); a result gets requestSeq when it names
+// a request before it.
+func joinActions(portal *store.Chain) {
 	requests := map[string]int{}
 	for i, e := range portal.Entries {
-		if e.Props["event"] == tenant.ActionRequestKind {
-			requests[e.Props["lineId"].(string)] = i
-			portal.Entries[i].Props["outcome"] = tenant.ActionRequested
-		}
-	}
-	if agent == nil {
-		return
-	}
-	for _, r := range agent.Entries {
-		if r.Props["event"] != store.ActionResultKind {
-			continue
-		}
-		id, _ := r.Props["request"].(string)
-		i, ok := requests[id]
-		if !ok {
-			continue
-		}
-		q := portal.Entries[i]
-		r.Props["requestSeq"] = q.Seq
-		// Entries are oldest first: a later result overrides an earlier one.
-		q.Props["resultId"], q.Props["resultSeq"] = r.ID, r.Seq
-		if st, ok := r.Props["status"].(string); ok && st != "" {
-			q.Props["outcome"] = st
+		switch e.Props["event"] {
+		case tenant.ActionRequestKind:
+			requests[e.ID] = i
+			e.Props["outcome"] = tenant.ActionRequested
+		case tenant.ActionResultKind:
+			id, _ := e.Props["request"].(string)
+			j, ok := requests[id]
+			if !ok {
+				continue
+			}
+			q := portal.Entries[j]
+			e.Props["requestSeq"] = q.Seq
+			q.Props["resultId"], q.Props["resultSeq"] = e.ID, e.Seq
+			if st, ok := e.Props["status"].(string); ok && st != "" {
+				q.Props["outcome"] = st
+			}
 		}
 	}
 }
@@ -74,39 +66,34 @@ type actionPair struct {
 }
 
 // actionPairs is every request in Portal's chain, newest first, each with
-// its result from the agent chain; the chains as joined.
-func (s *Server) actionPairs() (portal, agent *store.Chain, out []actionPair) {
-	for _, c := range s.chains() {
-		if c.Source == tenant.SourcePortal {
-			portal = c
-		} else {
-			agent = c
-		}
-	}
+// its result from the same chain; the chain as joined.
+func (s *Server) actionPairs() (portal *store.Chain, out []actionPair) {
+	portal = s.portalChain()
+	joinActions(portal)
 	for _, e := range portal.Entries {
 		if e.Props["event"] != tenant.ActionRequestKind {
 			continue
 		}
 		p := actionPair{req: e}
-		if seq, ok := e.Props["resultSeq"].(int); ok && agent != nil {
-			if r, ok := agent.Entry(seq); ok {
+		if seq, ok := e.Props["resultSeq"].(int); ok {
+			if r, ok := portal.Entry(seq); ok {
 				p.res = &r
 			}
 		}
 		out = append(out, p)
 	}
 	slices.Reverse(out)
-	return portal, agent, out
+	return portal, out
 }
 
 // addPair puts a request, its result and the two edges between them into
 // env.
-func addPair(env *graph.Envelope, portal, agent *store.Chain, p actionPair, runLayer map[string]string) {
+func addPair(env *graph.Envelope, portal *store.Chain, p actionPair, runLayer map[string]string) {
 	env.Nodes = append(env.Nodes, entryNode(portal, p.req, runLayer))
 	if p.res == nil {
 		return
 	}
-	env.Nodes = append(env.Nodes, entryNode(agent, *p.res, runLayer))
+	env.Nodes = append(env.Nodes, entryNode(portal, *p.res, runLayer))
 	env.Edges = append(env.Edges, graph.NewEdge(p.req.ID, p.res.ID, "answered-by"), graph.NewEdge(p.res.ID, p.req.ID, "answers"))
 }
 
@@ -114,7 +101,7 @@ func (s *Server) ListActions(w http.ResponseWriter, r *http.Request, name api.Te
 	if !s.tenantOK(w, name) {
 		return
 	}
-	portal, agent, pairs := s.actionPairs()
+	portal, pairs := s.actionPairs()
 	counts := map[string]int{tenant.ActionRequested: 0, "done": 0, "failed": 0}
 	for _, p := range pairs {
 		if o, ok := p.req.Props["outcome"].(string); ok {
@@ -130,7 +117,7 @@ func (s *Server) ListActions(w http.ResponseWriter, r *http.Request, name api.Te
 	env.Nodes = append(env.Nodes, root)
 	runLayer := s.runLayers()
 	for _, p := range pairs {
-		addPair(env, portal, agent, p, runLayer)
+		addPair(env, portal, p, runLayer)
 		env.Edges = append(env.Edges, graph.NewEdge(root.ID, p.req.ID, "has-action"))
 	}
 	env.Recount()
@@ -141,7 +128,7 @@ func (s *Server) GetAction(w http.ResponseWriter, r *http.Request, name api.Tena
 	if !s.tenantOK(w, name) {
 		return
 	}
-	portal, agent, pairs := s.actionPairs()
+	portal, pairs := s.actionPairs()
 	i := slices.IndexFunc(pairs, func(p actionPair) bool { return p.req.Seq == seq })
 	if i < 0 {
 		writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("line %d of tenant %s's ledger is no action request; it holds %d", seq, name, len(pairs)), nil)
@@ -149,7 +136,7 @@ func (s *Server) GetAction(w http.ResponseWriter, r *http.Request, name api.Tena
 	}
 	env := servedEnvelope(time.Now().UTC().Format(store.StampLayout))
 	env.Root = pairs[i].req.ID
-	addPair(env, portal, agent, pairs[i], s.runLayers())
+	addPair(env, portal, pairs[i], s.runLayers())
 	env.Recount()
 	writeJSON(w, http.StatusOK, env)
 }
