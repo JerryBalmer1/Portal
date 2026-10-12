@@ -10,44 +10,10 @@ import "github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 // seen in two layers keeps its first in mount order, as NodesOfKind does, a
 // node with no stamp gets stamp.layer from its layer, and an alert layer's
 // copies of its subjects are left out (its alerts are kept). An edge is kept
-// once, and only when both its ends are among the nodes kept.
+// once, and only when both its ends are among the nodes kept. Since 0.16.0
+// it is the query (docs/design.md 54) with every node a start, no kind, the
+// source set, depth 0 and no cap.
 func (p *Portal) TenantGraph(source string) (nodes []graph.Node, edges []graph.Edge) {
-	var layers []*Layer
-	for _, l := range p.Layers() {
-		if source == "" || (l.Env.Source != nil && l.Env.Source.Emitter == source) {
-			layers = append(layers, l)
-		}
-	}
-	kept := map[string]bool{}
-	for _, l := range layers {
-		copies := IsAlertLayer(l.Env)
-		for _, n := range l.Env.Nodes {
-			if kept[n.ID] || (copies && n.Kind != AlertKind) {
-				continue
-			}
-			kept[n.ID] = true
-			if n.Stamp == nil {
-				n.Stamp = &graph.Stamp{Layer: l.Env.Layer}
-			}
-			nodes = append(nodes, n)
-		}
-	}
-	seen := map[string]bool{}
-	for _, l := range layers {
-		for _, e := range l.Env.Edges {
-			if !kept[e.From] || !kept[e.To] {
-				continue
-			}
-			id := e.ID
-			if id == "" {
-				id = graph.EdgeID(e.From, e.To, e.Kind)
-			}
-			if seen[id] {
-				continue
-			}
-			seen[id] = true
-			edges = append(edges, e)
-		}
-	}
-	return nodes, edges
+	r, _ := p.GraphQuery(Walk{Source: source, Depth: 0})
+	return r.Nodes, r.Edges
 }

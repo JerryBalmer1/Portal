@@ -33,7 +33,11 @@
 # other), graph the tenant graph (every node and edge of the mounted layers,
 # at /<tenant>/graph; ?source=<emitter> keeps the layers whose source block
 # names that emitter, so the filter is a link; docs/design.md 53; the graph
-# service's other pages keep /<tenant>/graph/<page>). A page's children are the
+# service's other pages keep /<tenant>/graph/<page>). A page with query: true
+# (Explore) has the query bar on top: from, follow, direction, depth and until,
+# the URL's query string, whose result (GET .../query) is drawn in place of its
+# screen while the URL holds a query; every graph node's right-click Query from
+# here opens it (docs/design.md 54). A page's children are the
 # tabs of its item page, /<tenant>/<service>/<page>/<id>.
 #
 # feeds are where cards (Graph.Node manifest cards: manifest.yaml and the
@@ -77,7 +81,7 @@ menu:
     icon: graph
     path: graph
     children:
-      - { id: explore, label: Explore, path: graph/explore, view: screen, screen: "ui:canvas" }
+      - { id: explore, label: Explore, path: graph/explore, view: screen, screen: "ui:canvas", query: true }
       - { id: nodes, label: Nodes, path: graph/nodes, view: graph }
       - { id: kinds, label: Kinds, path: graph/kinds, kind: graph.kind }
       - { id: taxonomy, label: Taxonomy, path: graph/taxonomy, kind: graph.taxonomy }

@@ -6,14 +6,16 @@
 // Graph.Node source block names that emitter, and the edges between them;
 // the page passes it on to the API and shows it as a chip whose X links to
 // /<tenant>/graph. The filter is the URL's, never the page's state, so a
-// filtered graph is a link (the Catalogue's Show graph is one). Nothing here
-// writes.
+// filtered graph is a link (the Catalogue's Show graph is one). A
+// right-click on a node opens Query from here (docs/design.md 54); Explore's
+// query result is drawn by draw too. Nothing here writes.
 /* global cytoscape */
 import { label, splitAlpha, styleFor, wheelZoomSpeed } from '/static/canvas.js';
+import { wireCanvas } from '/static/nodemenu.js';
 
 const WHEEL_STEP = 0.2;
 
-// mount draws into el. ctx: {client, toolbar, config, navigate, sourceGraphHref}.
+// mount draws into el. ctx: {client, toolbar, config, navigate, sourceGraphHref, nodeLinks}.
 export function mount(el, ctx) {
   el.classList.add('pt-fill');
   const source = new URLSearchParams(location.search).get('source') || '';
@@ -85,7 +87,7 @@ export function filterChip(source, clearHref, navigate) {
 
 // merged is every mounted layer's ontology as one, the first Kind wins in
 // mount order: the tenant graph's nodes keep their layers' Kinds.
-function merged(ontology) {
+export function merged(ontology) {
   const out = { kinds: {}, edgeKinds: {} };
   for (const ont of Object.values((ontology && ontology.layers) || {})) {
     for (const key of ['kinds', 'edgeKinds']) {
@@ -95,7 +97,9 @@ function merged(ontology) {
   return out;
 }
 
-function draw(h, ctx, g, ont) {
+// draw puts envelope g into h.wrap with Cytoscape, coloured by ont, and
+// wires Query from here on its nodes. ctx: {config, nodeLinks, navigate}.
+export function draw(h, ctx, g, ont) {
   const root = document.createElement('div');
   root.className = 'pt-graph-root';
   h.wrap.appendChild(root);
@@ -106,6 +110,7 @@ function draw(h, ctx, g, ont) {
   const tok = (name) => splitAlpha(cs.getPropertyValue(name).trim() || cs.color);
   h.cy.style(styleFor(ont, tok('--gr-text'), tok('--gr-text-muted'), tok('--gr-fallback'), cs.fontFamily));
   h.cy.layout({ name: 'cose', animate: false, fit: true }).run();
+  wireCanvas(h.cy, root, ctx.nodeLinks, ctx.navigate);
   const fit = () => {
     if (h.gone || !root.clientWidth || !root.clientHeight) return;
     h.cy.resize();
@@ -115,4 +120,5 @@ function draw(h, ctx, g, ont) {
   h.ro.observe(root);
   requestAnimationFrame(fit);
   root.dataset.drawn = `${g.nodes.length}/${g.edges.length}`;
+  return root;
 }

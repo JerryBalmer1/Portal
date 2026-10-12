@@ -71,6 +71,7 @@
         "view": { "enum": ["table", "screen", "connections", "users", "agents", "tokens", "feeds", "layers", "emitters", "ledger", "environments-graph", "alerts", "actions", "graph"] },
         "screen": { "type": "string", "pattern": "^ui:.+", "description": "With view screen: the screen node drawn." },
         "sections": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "query": { "type": "boolean", "description": "With view screen: the query bar on top (docs/design.md 54); its result replaces the screen while the URL holds a query." },
         "filter": { "type": "array", "items": { "$ref": "#/$defs/id" } },
         "dock": { "enum": ["top", "bottom"] },
         "children": { "type": "array", "items": { "$ref": "#/$defs/item" } }

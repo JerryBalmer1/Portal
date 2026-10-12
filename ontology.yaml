@@ -1,5 +1,5 @@
 module: Portal
-version: 0.15.0
+version: 0.16.0
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -75,6 +75,7 @@ kinds:
       - { name: view, type: string, description: "table (absent means table), screen, connections, users, agents, tokens, feeds, layers, emitters or ledger: which page renderer draws it." }
       - { name: screen, type: string, description: "With view screen: the screen node the page draws (ui:canvas, ui:designer)." }
       - { name: sections, type: array, description: "With view screen on a Designer: the section slugs drawn; absent means all." }
+      - { name: query, type: boolean, description: "With view screen: true puts the query bar (GET /api/tenants/{tenant}/query) on top, its result drawn in place of the screen while the URL holds a query (docs/design.md 54). Absent means false." }
       - { name: filter, type: array, description: "Values of properties.kind the page offers as toolbar filters (Instances: container, compose, kubernetes, host)." }
   Principal:
     description: Who may hold a bearer token in a tenant, and with what role (docs/design.md 38). Read from tenants/<tenant>/principals.yaml and served by GET /api/tenants/{tenant}/principals; never on the screen graph. A token in tokens.yaml belongs to one. An admin adds one through POST .../principals, of a role at most its own (attenuation).

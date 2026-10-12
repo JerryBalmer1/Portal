@@ -24,7 +24,9 @@
 // requests at /<tenant>/actions, each opening its ledger entry; a
 // container's node menu asks for one (docs/design.md 50), or the tenant graph
 // at /<tenant>/graph, ?source=<emitter> keeping one emitter's layers
-// (docs/design.md 53). The route is the URL, /<tenant>/<service>/<page>[/<id>],
+// (docs/design.md 53); a Page whose query is true (Graph/Explore) has the
+// query bar on top, its result drawn in place of the screen while the URL
+// holds a query (docs/design.md 54). The route is the URL, /<tenant>/<service>/<page>[/<id>],
 // /<tenant>/layers/<name>, /<tenant>/agents[/<name>], /<tenant>/actions,
 // /<tenant>/emitters[/<name>], /<tenant>/ledger[/<source>[/<seq>]] or /<tenant>/graph[?source=<emitter>], so a deep link survives a refresh. Which service is expanded, whether the rail is
 // collapsed and what the search box holds are the viewer's pointers, like a
@@ -44,6 +46,7 @@ import * as envgraph from '/static/envgraph.js';
 import * as alerts from '/static/alerts.js';
 import * as actions from '/static/actions.js';
 import * as graphView from '/static/graph.js';
+import * as query from '/static/query.js';
 import { icon } from '/static/icons.js';
 import { refusal } from '/static/toast.js';
 
@@ -190,6 +193,14 @@ function sourceGraphHref(source) {
   return `/${encodeURIComponent(tenant)}/graph${source ? `?source=${encodeURIComponent(source)}` : ''}`;
 }
 
+// queryHref is the query bar's Page (the one whose query is true) querying
+// from id, /<tenant>/graph/explore?from=<id> (docs/design.md 54); null when
+// the menu has no such page.
+function queryHref(id) {
+  const page = [...menu.pages.values()].find((p) => p.properties.query === true);
+  return page ? `${href(page.properties.path)}?${new URLSearchParams({ from: id })}` : null;
+}
+
 // alertHref is an alert's page, /<tenant>/compliance/alerts/<fingerprint>,
 // or with no fingerprint the alerts page itself, its query from q (a
 // URLSearchParams or an object); null when the menu has no page whose view
@@ -215,7 +226,7 @@ function principalHref(id, type, name) {
 // for an action on a container as the viewer, refusal says why the viewer
 // may not (docs/design.md 50).
 const nodeLinks = {
-  kindHref, graphHref, layerHref: (name) => (name ? layerHref(name) : null), agentHref, ledgerHref, alertHref,
+  kindHref, graphHref, layerHref: (name) => (name ? layerHref(name) : null), agentHref, ledgerHref, alertHref, queryHref,
   act: (action, n, confirm) => actions.ask({ client, navigate, ledgerHref }, action, n, confirm),
   refusal: () => refusal(who),
 };
@@ -722,6 +733,10 @@ function drawPage(svc, page, r) {
     drawItem(page, r);
     return;
   }
+  if (view === 'screen' && page.properties.query === true) {
+    drawExplore(page);
+    return;
+  }
   if (view === 'screen') {
     drawScreen(page);
     return;
@@ -815,9 +830,26 @@ function drawItem(page, r) {
   current = { mod: nodes, handle: nodes.mount(pane, { ...pageCtx(chosen.page), toolbar: tabBar }) };
 }
 
-// drawScreen draws the screen node a page names, with the open view's layer
-// and the screen graph's own counts in the toolbar (docs/design.md 33).
-async function drawScreen(page) {
+// drawExplore is a Page with the query bar (docs/design.md 54): the bar,
+// then the query's result while the URL holds one, else the page's screen.
+function drawExplore(page) {
+  ui.content.classList.add('pt-fill');
+  const q = new URLSearchParams(location.search);
+  const at = href(page.properties.path);
+  const body = document.createElement('div');
+  body.className = 'pt-explore';
+  ui.content.append(query.bar(q, (search) => navigate(search ? `${at}?${search}` : at)), body);
+  if (!query.asked(q)) {
+    drawScreen(page, body);
+    return;
+  }
+  current = { mod: query, handle: query.mount(body, { ...pageCtx(page), q }) };
+}
+
+// drawScreen draws the screen node a page names into el (the page's content
+// when absent), with the open view's layer and the screen graph's own counts
+// in the toolbar (docs/design.md 33).
+async function drawScreen(page, el = ui.content) {
   const id = page.properties.screen;
   ui.content.classList.add('pt-fill');
   let screen;
@@ -826,10 +858,10 @@ async function drawScreen(page) {
   try {
     [screen, ontology, layers] = await Promise.all([client.getScreen(), client.getOntology(), client.listLayers()]);
   } catch (err) {
-    ui.content.appendChild(errorCard(err));
+    el.appendChild(errorCard(err));
     return;
   }
-  if (ui.title.dataset.page !== page.id) return;
+  if (ui.title.dataset.page !== page.id || !el.isConnected) return;
   const ix = screenView.index(screen);
   const node = ix.nodes.get(id);
   const name = node && screenView.sourceLayer(ix, node);
@@ -860,14 +892,14 @@ async function drawScreen(page) {
     ro.textContent = `read-only: ${readOnly}`;
     ui.toolbar.appendChild(ro);
   }
-  ui.content.replaceChildren();
+  el.replaceChildren();
   if (!node) {
-    ui.content.appendChild(errorCard({ code: 'not_on_screen', message: `${id} is not on the screen${screen.nodes.some((n) => n.kind === 'Category' && n.name === 'Designer') ? ' (PORTAL_MODE=production hides the Designer)' : ''}` }));
+    el.appendChild(errorCard({ code: 'not_on_screen', message: `${id} is not on the screen${screen.nodes.some((n) => n.kind === 'Category' && n.name === 'Designer') ? ' (PORTAL_MODE=production hides the Designer)' : ''}` }));
     return;
   }
-  const ctx = { client, bus, config, screen, ontology, layers, ix, readOnly, sections: page.properties.sections, refresh: () => drawScreen(page) };
+  const ctx = { client, bus, config, screen, ontology, layers, ix, readOnly, sections: page.properties.sections, nodeLinks, navigate, refresh: () => drawScreen(page, el) };
   screenView.destroyAll();
-  screenView.draw(ctx, node, ui.content);
+  screenView.draw(ctx, node, el);
 }
 
 function errorCard(err) {

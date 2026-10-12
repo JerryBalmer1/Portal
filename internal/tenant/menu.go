@@ -33,7 +33,7 @@ func BuildMenu(config map[string]any, stamp string) (*graph.Envelope, error) {
 			n := graph.Node{ID: id, Kind: "Service", Name: label, Properties: map[string]any{"path": path, "order": i}}
 			if depth > 0 {
 				n.Kind = "Page"
-				for from, to := range map[string]string{"kind": "nodeKind", "view": "view", "screen": "screen", "sections": "sections", "filter": "filter"} {
+				for from, to := range map[string]string{"kind": "nodeKind", "view": "view", "screen": "screen", "sections": "sections", "filter": "filter", "query": "query"} {
 					if v, ok := item[from]; ok {
 						n.Properties[to] = v
 					}

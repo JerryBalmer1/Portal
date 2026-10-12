@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.15.0
+  version: 0.16.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -39,7 +39,7 @@ tags:
   - name: environments
     description: The environments graph (docs/design.md 46). Every node of an environment.* Kind under an env:compose/, env:container/, env:image/ or env:network/ id in the mounted layers, as their layers emit them, with every edge of a mounted layer that touches one and the node at its other end. Read-only; Portal reads env, tags and group from the nodes and infers none.
   - name: graph
-    description: The tenant graph (docs/design.md 53). Every node and edge of the mounted layers as one envelope, as their layers emit them; source keeps the nodes of the layers whose Graph.Node source block names one emitter. Read-only.
+    description: The tenant graph (docs/design.md 53). Every node and edge of the mounted layers as one envelope, as their layers emit them; source keeps the nodes of the layers whose Graph.Node source block names one emitter. Read-only. Since 0.16.0 one breadth-first query (docs/design.md 54) answers multi-hop questions across them, and the tenant graph is that query with every node a start and depth 0.
   - name: alerts
     description: Alerts (docs/design.md 47), read from every mounted layer holding nodes of Kind alert under the id alert:<fingerprint>, 64 lower-case hex (Portal.Agent's alert layer); any other id is no alert, and nothing maps one (docs/design.md 48), each with an about edge to its subject and a raised-in edge to its Run. A fingerprint in two layers is served from the later stamp. Read-only; Portal never writes an alert.
   - name: actions
@@ -670,6 +670,56 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/query:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: queryTenantGraph
+      tags: [graph]
+      summary: >-
+        A breadth-first walk over every mounted layer at once, in memory (docs/design.md 54), as an envelope (module Portal,
+        no ontology of its own: its nodes keep their layers' Kinds) with paths and query beside nodes and edges. The walk
+        reads the same nodes and edges getTenantGraph serves: the first id wins in mount order, a node with no stamp gets
+        stamp.layer from its layer, an alert layer's copies are left out, and source keeps the layers whose source block
+        names that emitter. It starts at the from ids, or at every node of kind, and goes one hop at a time for every
+        start together, each start with its own visited set, along the edges whose kind follow names, in direction, to
+        depth hops. A node of Kind until is kept and not expanded (a start always is). A node enters the result only when
+        every where filter matches it, and only then is it expanded; a start that fails one is left out. The result's edges
+        are every edge between two of its nodes, whichever way the walk went. When the result would pass limit nodes the
+        walk stops: truncated is true and truncatedAt the hop it stopped on. paths holds, for each start, the id chain to
+        each node the walk stopped at: until matched, depth ran out, or nothing new lay beyond it. Empty is 200 with empty
+        lists, never 404. 400 when neither from nor kind is given or both are, a from id no node has (the message names
+        it), a direction other than out, in or both, a depth outside 0 to 10, a limit outside 1 to 5000, or a where
+        that is not key=value.
+      parameters:
+        - { name: from, in: query, required: false, description: "Start node ids, comma-separated. Required unless kind is given.", schema: { type: string } }
+        - { name: kind, in: query, required: false, description: "Start at every node of this Kind instead of from.", schema: { type: string } }
+        - { name: follow, in: query, required: false, description: "Edge kinds to walk, comma-separated; absent or empty, every kind.", schema: { type: string } }
+        - { name: direction, in: query, required: false, description: "out (the edges from a node; the default), in (the edges to it) or both.", schema: { type: string, enum: [out, in, both] } }
+        - { name: depth, in: query, required: false, description: "Hops at most, 0 to 10; 3 when absent. 0 is the starts alone.", schema: { type: integer } }
+        - { name: until, in: query, required: false, description: "Stop at nodes of this Kind: they are in the result, their neighbours are not.", schema: { type: string } }
+        - name: where
+          in: query
+          required: false
+          description: >-
+            Repeatable key=value, every one must match a node for it to enter the result (and be expanded). The key is
+            id, kind or name, else a dotted path into the node's properties (facet.key, or properties.facet.key); the
+            value is matched exactly against a string, or a number or boolean as JSON writes it. A list or a map never
+            matches.
+          schema: { type: array, items: { type: string } }
+          style: form
+          explode: true
+        - $ref: "#/components/parameters/GraphSource"
+        - { name: limit, in: query, required: false, description: "Nodes at most, 1 to 5000; 500 when absent.", schema: { type: integer } }
+      responses:
+        "200":
+          description: What the walk reached, the edges between it, the paths and the query as resolved (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GraphQuery" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/tenants/{tenant}/alerts:
@@ -1417,6 +1467,35 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Finding" }
         counts: { $ref: "#/components/schemas/Counts" }
+    GraphQuery:
+      description: >-
+        A Graph.Node envelope (graph/1; members beside an envelope's are allowed) with what queryTenantGraph adds: paths,
+        query, and truncated with truncatedAt when the node cap was hit.
+      allOf:
+        - $ref: "#/components/schemas/Envelope"
+        - type: object
+          required: [paths, query, truncated]
+          properties:
+            paths:
+              type: array
+              description: For each start, the id chain from it to each node the walk stopped at.
+              items: { type: array, items: { type: string } }
+            truncated: { type: boolean, description: "True when limit stopped the walk." }
+            truncatedAt: { type: integer, description: "With truncated, the hop the walk stopped on (0: among the starts)." }
+            query:
+              type: object
+              description: The parameters as resolved, defaults filled in.
+              required: [from, follow, direction, depth, where, limit]
+              properties:
+                from: { type: array, items: { type: string } }
+                kind: { type: string }
+                follow: { type: array, items: { type: string } }
+                direction: { type: string, enum: [out, in, both] }
+                depth: { type: integer }
+                until: { type: string }
+                where: { type: array, items: { type: string } }
+                source: { type: string }
+                limit: { type: integer }
     Node:
       type: object
       description: A Graph.Node node. A display key is refused (Graph.Node), and so are display properties on any Kind but State and Theme (portal).

@@ -1,15 +1,20 @@
 // The node menu (docs/design.md 46): what right-click, Shift+F10 or the
 // context-menu key opens on a node of the environments graph or a row of an
 // environment page, and, with its own items, on a row of the alerts page
-// (docs/design.md 47). Four items, each a link: Details (the node's item page),
-// Show graph (/<tenant>/environments/graph#<id>), Runs and Ledger. An item
+// (docs/design.md 47). Five items, each a link: Details (the node's item page),
+// Show graph (/<tenant>/environments/graph#<id>), Runs, Ledger and Query
+// from here. An item
 // the node has no edge for is greyed, with why in its title, never hidden.
 // What each links to is read from the environments graph's edges
 // (GET .../environments/graph), never stored. Arrow keys, Home and End move
 // through it, Enter follows, Escape and Tab close it. On a container, and
 // only there, three more items ask for an action (docs/design.md 50): Logs,
 // Stop and Restart, buttons, since they go nowhere; each asks through
-// links.act, greyed with why while the viewer may not write.
+// links.act, greyed with why while the viewer may not write. Since 0.16.0
+// every node of every graph page has Query from here (docs/design.md 54):
+// Graph/Explore's query bar from that node, /<tenant>/graph/explore?from=<id>;
+// a Cytoscape graph (Graph/Nodes, Explore's Canvases and its result) opens a
+// menu of that item alone on a right-click (wireCanvas).
 
 let openMenu = null;
 
@@ -83,6 +88,7 @@ export function items(n, g, links) {
     { label: 'Show graph', href: links.graphHref(n.id), why: 'the menu has no environments graph' },
     { label: 'Runs', href: runsHref, why: n.kind === 'Principal' ? 'no has-run edge: it holds no mounted run' : 'no hosts edge to a mounted run' },
     ledgerItem(runs, links, run ? 'the agent ledger records nothing of this run' : 'no hosts edge to a mounted run'),
+    queryItem(n.id, links),
   ];
   if (isContainer(n) && links.act) {
     const why = links.refusal ? links.refusal() : '';
@@ -97,6 +103,24 @@ export function ledgerItem(runs, links, why) {
   const counted = runs.find((r) => Number(r.properties?.ledger) > 0);
   const href = counted && links.ledgerHref('agent') ? `${links.ledgerHref('agent')}?run=${encodeURIComponent(counted.id)}` : null;
   return { label: 'Ledger', href, why };
+}
+
+// queryItem is Query from here: the query bar's page from id, greyed with
+// why when the menu has no page with a query bar.
+export function queryItem(id, links) {
+  return { label: 'Query from here', href: links.queryHref ? links.queryHref(id) : null, why: 'the menu has no page with a query bar' };
+}
+
+// wireCanvas opens a menu of Query from here on a right-click on a node of
+// cy, drawn in root, whose own context menu it keeps closed.
+export function wireCanvas(cy, root, links, navigate) {
+  if (!links) return;
+  root.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  cy.on('cxttap', 'node', (ev) => {
+    const d = ev.target.data();
+    const n = { id: d.id, kind: d.kind, name: d.label };
+    open(ev.originalEvent, n, null, links, navigate, root, [queryItem(n.id, links)]);
+  });
 }
 
 // open draws the menu for n at the event's point (or beside from, the

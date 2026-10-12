@@ -28,6 +28,7 @@ export const ROUTES = Object.freeze({
   getLedgerEntry: { method: 'GET', path: '/api/tenants/{tenant}/ledger/{source}/{seq}' },
   getEnvironmentGraph: { method: 'GET', path: '/api/tenants/{tenant}/environments/graph' },
   getTenantGraph: { method: 'GET', path: '/api/tenants/{tenant}/graph' },
+  queryTenantGraph: { method: 'GET', path: '/api/tenants/{tenant}/query' },
   listActions: { method: 'GET', path: '/api/tenants/{tenant}/actions' },
   postAction: { method: 'POST', path: '/api/tenants/{tenant}/actions' },
   getAction: { method: 'GET', path: '/api/tenants/{tenant}/actions/{seq}' },
@@ -77,7 +78,9 @@ export function createClient(tenant, base = '') {
     const path = r.path.replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(all[k]));
     const url = new URL(base + path, window.location.href);
     for (const [k, v] of Object.entries(query || {})) {
-      if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
+      // A list is a repeated parameter (where=a=1&where=b=2).
+      if (Array.isArray(v)) for (const x of v) url.searchParams.append(k, x);
+      else if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
     }
     const init = { method: r.method, headers: { Accept: 'application/json' } };
     const token = getToken();
@@ -131,6 +134,10 @@ export function createClient(tenant, base = '') {
     getEnvironmentGraph: () => call('getEnvironmentGraph'),
     // getTenantGraph({source}): source keeps one emitter's layers, by their source block (docs/design.md 53).
     getTenantGraph: ({ source } = {}) => call('getTenantGraph', { query: { source } }),
+    // queryTenantGraph(q): the walk (docs/design.md 54); q holds from, kind, follow, direction, depth, until, where (a
+    // list), source and limit as the API takes them.
+    queryTenantGraph: ({ from, kind, follow, direction, depth, until, where, source, limit } = {}) =>
+      call('queryTenantGraph', { query: { from, kind, follow, direction, depth, until, where, source, limit } }),
     listActions: () => call('listActions'),
     // postAction asks; who asks is the token's principal, never the body's (docs/design.md 50).
     postAction: (action, subject) => call('postAction', { body: { action, subject } }),

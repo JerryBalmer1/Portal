@@ -4,11 +4,12 @@
 // changed: data comes from GET /api/layers/{name}/nodes, display from that
 // layer's ontology in GET /api/ontology (a Kind with no display colour is
 // grey, --gr-fallback), labels are Graph.Node templates ({name},
-// {properties.x}), tapping a node selects it for Detail widgets, and
-// Graph.Node 0.2.0 display (circle and square, size, edge style) maps onto
-// Cytoscape.
+// {properties.x}), tapping a node selects it for Detail widgets, a
+// right-click opens Query from here (docs/design.md 54), and Graph.Node
+// 0.2.0 display (circle and square, size, edge style) maps onto Cytoscape.
 /* global cytoscape */
 import { parseSource } from '/static/client.js';
+import { wireCanvas } from '/static/nodemenu.js';
 
 const SHAPES = new Set([
   'ellipse', 'triangle', 'round-triangle', 'rectangle', 'round-rectangle',
@@ -77,6 +78,7 @@ export function mount(el, ctx) {
     h.cy.on('tap', 'node', (ev) => {
       ctx.bus.dispatchEvent(new CustomEvent('select', { detail: { layer: src.layer, id: ev.target.id() } }));
     });
+    wireCanvas(h.cy, root, ctx.nodeLinks, ctx.navigate);
     // Rendered colour, for the smoke check and the report: n/m nodes took a
     // colour from the layer ontology; the rest are grey.
     const kinds = ont.kinds || {};

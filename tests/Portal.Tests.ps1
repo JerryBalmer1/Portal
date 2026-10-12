@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.15.0 and needs PowerShell 7.4' {
+    It 'is version 0.16.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.15.0'
+        $m.ModuleVersion | Should -Be '0.16.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,10 +302,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.15.0, the twenty-two Kinds, the twenty-three edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.16.0, the twenty-two Kinds, the twenty-three edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.15\.0$'
+        $text | Should -Match '(?m)^version: 0\.16\.0$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry', 'Alerts', 'Alert', 'Actions') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in', 'has-alert', 'about', 'raised-in', 'has-action', 'answered-by', 'answers') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.15.0'
+        $s.version | Should -Be '0.16.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -526,6 +526,54 @@ Describe 'Live portal' {
         $stats.Groups[1].Value | Should -Be 'filesystem'
         $stats.Groups[2].Value | Should -Be "filesystem · $($fs.counts.nodes) nodes · $($fs.counts.edges) edges · $($fs.stamp)"
         $dom | Should -Match ([regex]::Escape(">screen $(@($s.nodes).Count) · $(@($s.edges).Count) · "))
+    }
+    It 'Graph/Explore''s query bar draws GET .../query from the URL, round-trips to the same URL, and the result passes graphnode validate' {
+        # docs/design.md 54. The query string is the bar's fields in the API's order, as URLSearchParams writes them.
+        $qs = 'from=fs%3Asrc&follow=contains&direction=out&depth=1&until=File'
+        $api = Send $Url GET "/api/tenants/default/query?$qs"
+        $api.Status | Should -Be 200
+        @($api.Body.nodes.id) | Should -Be @('fs:src', 'fs:src/Graph.Emitter.FileSystem')
+        @($api.Body.edges.id) | Should -Be @('fs:src|fs:src/Graph.Emitter.FileSystem|contains')
+        @($api.Body.paths | ForEach-Object { $_ -join '>' }) | Should -Be @('fs:src>fs:src/Graph.Emitter.FileSystem')
+        ($api.Body.query | ConvertTo-Json -Compress) | Should -Be '{"from":["fs:src"],"follow":["contains"],"direction":"out","depth":1,"until":"File","where":[],"limit":500}'
+        $api.Body.truncated | Should -BeFalse
+        # Test-Graph -Strict's schema check is the graphnode binary's validate, lifted at the pinned tag (docs/design.md 4).
+        $file = Join-Path $TestDrive 'query.graph.json'
+        Set-Content -LiteralPath $file -Encoding utf8NoBOM -NoNewline -Value (Invoke-WebRequest "$Url/api/tenants/default/query?$qs" -Headers $Auth).Content
+        $out = & $GraphNodeBin validate $file
+        $LASTEXITCODE | Should -Be 0 -Because ($out -join "`n")
+        # A from no node has is 400, named; nothing reached is 200.
+        $bad = Send $Url GET '/api/tenants/default/query?from=fs%3Anope'
+        "$($bad.Status) $($bad.Body.message)" | Should -Be '400 from: no node fs:nope in the mounted layers'
+        (Send $Url GET '/api/tenants/default/query?kind=Nope').Body.nodes | Should -BeNullOrEmpty
+
+        $wait = 'const wait = async (f) => { for (let t = 0; t < 160; t++) { const v = f(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); } throw new Error("timed out: " + f); };'
+        $r = Invoke-PageScript $Url "/default/graph/explore?$qs" '' ("(async () => { $wait " +
+            'const s = await wait(() => document.querySelector("#query-stats[data-nodes]")); await wait(() => document.querySelector(".pt-graph-root[data-drawn]")); ' +
+            'const f = document.querySelector("form[data-form=query]"); const out = { before: location.pathname + location.search, stats: s.textContent }; ' +
+            'out.fields = [...f.elements].filter((x) => x.name).map((x) => `${x.name}=${x.value}`); ' +
+            'out.paths = [...document.querySelectorAll(".pt-paths li")].map((li) => li.dataset.path + "|" + [...li.querySelectorAll("button.pt-path-id")].map((b) => b.dataset.id).join(",")); ' +
+            'f.requestSubmit(); await new Promise((r) => setTimeout(r, 300)); out.after = location.pathname + location.search; ' +
+            # A right-click on a drawn node is Query from here; it goes to Explore from that node.
+            'const root = document.querySelector(".pt-graph-root"); root._cyreg.cy.getElementById("fs:src/Graph.Emitter.FileSystem").emit("cxttap"); ' +
+            'const m = await wait(() => document.querySelector(".pt-nodemenu")); out.menu = [...m.querySelectorAll("[role=menuitem]")].map((x) => `${x.textContent}|${x.getAttribute("href")}`); ' +
+            'm.querySelector("[data-item=query-from-here]").click(); await wait(() => location.search.includes("Graph.Emitter")); ' +
+            'const t = await wait(() => document.querySelector("#query-stats[data-nodes]")); out.next = location.pathname + location.search + " " + t.dataset.nodes; ' +
+            # No query in the URL: the bar over Explore's Canvases, as before.
+            'document.querySelector("a.pt-page[data-page=\"ui:rail:graph:explore\"]").click(); await wait(() => document.querySelector(".pt-explore .gr-box[data-id]")); ' +
+            'out.plain = location.pathname + location.search + " " + !!document.querySelector("form[data-form=query]") + " " + !document.querySelector("#query-stats"); ' +
+            'return JSON.stringify(out); })()')
+        if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
+        $o = $r | ConvertFrom-Json
+        $o.before | Should -Be "/default/graph/explore?$qs"
+        $o.after | Should -Be $o.before
+        $o.stats | Should -Be '2 nodes · 1 edges · 1 paths'
+        $o.fields | Should -Be @('from=fs:src', 'follow=contains', 'direction=out', 'depth=1', 'until=File')
+        $o.paths | Should -Be @('fs:src>fs:src/Graph.Emitter.FileSystem|fs:src,fs:src/Graph.Emitter.FileSystem')
+        $o.menu | Should -Be @('Query from here|/default/graph/explore?from=fs%3Asrc%2FGraph.Emitter.FileSystem')
+        $n = @((Send $Url GET '/api/tenants/default/query?from=fs%3Asrc%2FGraph.Emitter.FileSystem').Body.nodes).Count
+        $o.next | Should -Be "/default/graph/explore?from=fs%3Asrc%2FGraph.Emitter.FileSystem $n"
+        $o.plain | Should -Be '/default/graph/explore True True'
     }
     It 'an anonymous collapse is 401 and the canvas still draws the graph, its collapse disabled' {
         $r = Invoke-WebRequest "$Url/api/tenants/default/nodes/ui:canvas" -Method PATCH -ContentType 'application/json' `
@@ -1975,8 +2023,9 @@ Describe 'Environments graph' {
         $r | Should -Be 'true true true'
     }
 
-    It 'right-click on a graph node and on an Instances row opens Details, Show graph, Runs and Ledger as links, greyed where no edge leads, keyboard too' {
+    It 'right-click on a graph node and on an Instances row opens Details, Show graph, Runs, Ledger and Query from here as links, greyed where no edge leads, keyboard too' {
         $runQ = [uri]::EscapeDataString($EgRun)
+        $q = '/default/graph/explore?from='
         # The keyboard's contextmenu (Shift+F10, the menu key) comes at 0,0: the menu opens beside the focused node.
         $r = Invoke-PageScript $EgUrl '/default/environments/graph' '' ("(async () => { $EgWait $EgItems " +
             'const svg = await wait(() => document.querySelector("svg.pt-eg[data-settled=true]")); const out = {}; ' +
@@ -1994,20 +2043,25 @@ Describe 'Environments graph' {
             'm = await wait(() => document.querySelector(".pt-nodemenu")); out.principal = items(m); ' +
             "node('$EgRun')" + '.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 9, clientY: 9 })); ' +
             'm = await wait(() => document.querySelector(".pt-nodemenu")); out.run = items(m); ' +
+            # Query from here: Explore with the query bar from the node (docs/design.md 54).
+            'm.querySelector("[data-item=query-from-here]").click(); const qs = await wait(() => document.querySelector("#query-stats[data-nodes]")); ' +
+            'out.query = location.pathname + location.search + " " + document.querySelector("form[data-form=query] input[name=from]").value + " " + qs.dataset.nodes + " " + document.getElementById("title").textContent; ' +
             'return JSON.stringify(out); })()')
         if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
         $o = $r | ConvertFrom-Json
         $o.compose | Should -Be @('Details|/default/environments/instances/env%3Acompose%2Fclaude-agent-dev|', 'Show graph|/default/environments/graph#env%3Acompose%2Fclaude-agent-dev|',
-            "Runs|/default/layers/agent-runs#$runQ|", "Ledger|/default/ledger/agent?run=$runQ|")
-        "$($o.first) / $($o.second) / $($o.last) / $($o.closed) / $($o.back)" | Should -Be 'Details / Show graph / Ledger / True / env:compose/claude-agent-dev'
+            "Runs|/default/layers/agent-runs#$runQ|", "Ledger|/default/ledger/agent?run=$runQ|", "Query from here|${q}env%3Acompose%2Fclaude-agent-dev|")
+        "$($o.first) / $($o.second) / $($o.last) / $($o.closed) / $($o.back)" | Should -Be 'Details / Show graph / Query from here / True / env:compose/claude-agent-dev'
         # A container also gets Logs, Stop and Restart (docs/design.md 50), greyed here: the page is anonymous.
         $o.mitm | Should -Be @('Details|/default/environments/instances/env%3Acontainer%2Fclaude-agent-dev%2Fmitm|', 'Show graph|/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fmitm|', 'Runs||true', 'Ledger||true',
-            'Logs||true', 'Stop||true', 'Restart||true')
+            "Query from here|${q}env%3Acontainer%2Fclaude-agent-dev%2Fmitm|", 'Logs||true', 'Stop||true', 'Restart||true')
         $o.titles | Should -Be @('no hosts edge to a mounted run', 'no hosts edge to a mounted run', 'sign in to write', 'sign in to write', 'sign in to write')
         "$($o.path)$($o.hash) $($o.selected)" | Should -Be '/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fmitm env:container/claude-agent-dev/mitm'
         # dev-bootstrap holds no run here (root mounted them): no has-run edge, so its pages are greyed.
-        $o.principal | Should -Be @('Details||true', 'Show graph|/default/environments/graph#ui%3Aprincipal%3Adev-bootstrap|', 'Runs||true', 'Ledger||true')
-        $o.run | Should -Be @("Details|/default/layers/agent-runs#$runQ|", "Show graph|/default/environments/graph#$runQ|", "Runs|/default/layers/agent-runs#$runQ|", "Ledger|/default/ledger/agent?run=$runQ|")
+        $o.principal | Should -Be @('Details||true', 'Show graph|/default/environments/graph#ui%3Aprincipal%3Adev-bootstrap|', 'Runs||true', 'Ledger||true', "Query from here|${q}ui%3Aprincipal%3Adev-bootstrap|")
+        $o.run | Should -Be @("Details|/default/layers/agent-runs#$runQ|", "Show graph|/default/environments/graph#$runQ|", "Runs|/default/layers/agent-runs#$runQ|", "Ledger|/default/ledger/agent?run=$runQ|", "Query from here|$q$runQ|")
+        $n = @((Invoke-RestMethod "$EgUrl/api/tenants/default/query?from=$runQ").nodes).Count
+        $o.query | Should -Be "$q$runQ $EgRun $n Explore"
 
         # The Instances row: the same menu; Show graph opens the graph with that node selected.
         $r = Invoke-PageScript $EgUrl '/default/environments/instances' '' ("(async () => { $EgWait $EgItems " +
@@ -2019,7 +2073,7 @@ Describe 'Environments graph' {
             'out.title = document.getElementById("title").textContent; return JSON.stringify(out); })()')
         $o = $r | ConvertFrom-Json
         $o.agent | Should -Be @('Details|/default/environments/instances/env%3Acontainer%2Fclaude-agent-dev%2Fagent|', 'Show graph|/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fagent|', 'Runs||true', 'Ledger||true',
-            'Logs||true', 'Stop||true', 'Restart||true')
+            "Query from here|${q}env%3Acontainer%2Fclaude-agent-dev%2Fagent|", 'Logs||true', 'Stop||true', 'Restart||true')
         $o.label | Should -Be 'agent (claude-agent:dev) (environment.instance)'
         "$($o.at) $($o.selected) $($o.title)" | Should -Be '/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fagent env:container/claude-agent-dev/agent Graph'
     }
@@ -2164,10 +2218,10 @@ Describe 'Actions' -Tag 'Actions' {
             'return JSON.stringify(out); })()')
         if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
         $o = $r | ConvertFrom-Json
-        $o.container | Should -Be @('Details|A|', 'Show graph|A|', 'Runs|A|true', 'Ledger|A|true', 'Logs|BUTTON|', 'Stop|BUTTON|', 'Restart|BUTTON|')
+        $o.container | Should -Be @('Details|A|', 'Show graph|A|', 'Runs|A|true', 'Ledger|A|true', 'Query from here|A|', 'Logs|BUTTON|', 'Stop|BUTTON|', 'Restart|BUTTON|')
         "$($o.sep) $($o.last) $($o.dialog) $($o.asked) $($o.link)" | Should -Be 'True Restart False ledger:7 /default/ledger/portal/7'
-        $o.compose | Should -Be @('Details|A|', 'Show graph|A|', 'Runs|A|true', 'Ledger|A|true')
-        $o.image | Should -Be @('Details|A|', 'Show graph|A|', 'Runs|A|true', 'Ledger|A|true')
+        $o.compose | Should -Be @('Details|A|', 'Show graph|A|', 'Runs|A|true', 'Ledger|A|true', 'Query from here|A|')
+        $o.image | Should -Be @('Details|A|', 'Show graph|A|', 'Runs|A|true', 'Ledger|A|true', 'Query from here|A|')
         "$($o.question) / $($o.focus) / $($o.cancelled) / $($o.second) / $($o.at)" | Should -Be 'Restart mitm (mitmproxy/mitmproxy:12.2.3)? / cancel / 1 / ledger:8 / /default/ledger/portal/8'
         # Cancel wrote nothing: line 7 is the logs, line 8 the stop, both as root.
         $lines = @(Get-Content -LiteralPath (Join-Path $AcTd 'ledger.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })

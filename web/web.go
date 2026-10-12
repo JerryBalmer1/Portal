@@ -33,6 +33,7 @@ var static = map[string]string{
 	"ledger.js":        "ledger.js",
 	"envgraph.js":      "envgraph.js",
 	"graph.js":         "graph.js",
+	"query.js":         "query.js",
 	"nodemenu.js":      "nodemenu.js",
 	"alerts.js":        "alerts.js",
 	"actions.js":       "actions.js",

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.0 — 2026-10-12
+
+- **The tenant graph query** (docs/design.md 54). `GET .../query` (`queryTenantGraph`) walks every mounted layer at once, breadth-first and in memory, and answers with an envelope (module Portal) plus `paths` and `query`.
+  - Starts are `from` (ids, comma-separated) or every node of `kind`. The walk follows the edge kinds `follow` names, `out` (the default), `in` or `both`, to `depth` hops (3; 0 to 10).
+  - A node of Kind `until` is kept and not expanded. A node enters the result only when every `where` (`key=value`: `id`, `kind`, `name` or a dotted path into `properties`) matches it, and only then is it expanded.
+  - `source` keeps one emitter's layers, entry 53's rule. `limit` caps the nodes (500; 1 to 5000) and sets `truncated` and `truncatedAt`.
+  - Edges are every edge between two result nodes. `paths` runs from each start to each node the walk stopped at.
+  - Empty is 200. An unknown `from` is 400 `unknown_node`, naming the id. A bad parameter is 400 `bad_request`.
+- **One walk, two calls.** `store.RunWalk` reads the graph through `store.Adjacency`: `Neighbours(id, direction, follow)` and `NodesOfKind(kind)`. Those two calls are what a SQLite or graph-store adapter implements. `memGraph` is the in-memory one.
+- **`GET .../graph?source=` is the query** with every node a start, the source set and depth 0. The behaviour is unchanged, and its tests are unchanged.
+- **Graph/Explore's query bar** (`web/query.js`, `query: true` on the Page). The bar's fields are `from`, `follow`, `direction`, `depth` and `until`; the URL holds them, so a query is a link and round-trips.
+  - While the URL holds a query, the result is drawn with the tenant graph's renderer, its paths listed under it (an id selects and centres its node). Without one, the Canvases are drawn as before.
+- **Query from here** on every graph page. It is the node menu's fifth item, on the environments graph and environment rows. On a right-click of any Cytoscape node (Graph/Nodes, Explore's Canvases and Explore's result), it is a menu of its own.
+- **`docs/api/query.md`**: every parameter, and worked examples against the dev tenant's layers. The examples are a container's network neighbours, a Terraform module's resources, and the agent ledger chain in both directions. The tenant ledger's `action.result` lines are no mounted layer, so the walk cannot reach them.
+- **Go** 117 to 119: `TestQueryWalksTheTenantGraph` (a chain a → b → c → d at depth 1, 2 and 3, `until`, `direction=in` and `both`, `where`, two starts, `kind`, truncation, `source`, the 400s, empty 200) and `TestTenantGraphIsTheQueryAtDepthZero`. The spec walk covers the new operation.
+- **Pester** 128 to 129: the Live portal block checks Explore's bar. It runs the API call and `graphnode validate`, the page's result and paths, the bar's round trip to the same URL, a Cytoscape right-click's Query from here, and plain Explore. The Environments graph and Actions blocks' menus gain Query from here, clicked through to Explore.
+
 ## 0.15.0 — 2026-10-11
 
 - **The tenant graph** (docs/design.md 53). `GET .../graph` (`getTenantGraph`) serves every node and edge of the mounted layers as one envelope, module Portal, the nodes keeping their layers' Kinds; the first id wins in mount order, and an edge is kept when both its ends are.
