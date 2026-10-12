@@ -3,14 +3,19 @@
 // card of type emitter or a mounted layer's source block gives, and one per
 // module of layers with no source block: name (a link to its page), status,
 // the card's version and the source.version its layers carry, the card's
-// facets, the card (a link to its row on the feeds page) and how many layers.
-// Status and facet chips filter the rows and keep the filter in the URL
+// facets, the card (a link to its row on the feeds page), how many layers and
+// how many nodes the tenant graph filtered to its name holds (docs/design.md
+// 53). Right-click (or Shift+F10) on a row opens its menu (nodemenu.js): Show
+// graph, /<tenant>/graph?source=<name>, and Open card, its page below; each
+// greyed with why where it leads nowhere. Status and facet chips filter the rows and keep the filter in the URL
 // (?status=, ?facet=), so a filtered list is a link; the banner's search
 // filters them too. Each emitter's page, /<tenant>/emitters/<name>, from GET
 // .../emitters/{name}, is its source: built from the card (module, version,
 // repo, url, emits) with the layers that name it, newest first, each with its
-// source block's version, target and stamp. Nothing here writes.
+// source block's version, target and stamp, and Show graph beside the
+// version. Nothing here writes.
 import { chips } from '/static/nodes.js';
+import * as nodemenu from '/static/nodemenu.js';
 
 // STATUSES are the status chips, in the order the roll call reads.
 export const STATUSES = Object.freeze(['ok', 'version-mismatch', 'no-layers', 'no-card', 'unstamped']);
@@ -24,7 +29,7 @@ const WHY = {
   unstamped: 'The module of mounted layers with no source block. Never matched to a card.',
 };
 
-// mount draws the roll call into el. ctx: {client, toolbar, bus, navigate, emitterHref, cardHref}.
+// mount draws the roll call into el. ctx: {client, toolbar, bus, navigate, emitterHref, cardHref, sourceGraphHref}.
 export function mount(el, ctx) {
   const q = new URLSearchParams(location.search);
   const filter = { status: q.get('status') || '', facet: q.get('facet') || '' };
@@ -53,7 +58,7 @@ export function mount(el, ctx) {
     }
     const t = document.createElement('table');
     t.className = 'pt-table pt-emitters';
-    head(t, ['name', 'status', 'version', 'layer versions', 'facets', 'card', 'layers']);
+    head(t, ['name', 'status', 'version', 'layer versions', 'facets', 'card', 'layers', 'nodes']);
     const body = t.createTBody();
     const rows = [];
     for (const em of ems) {
@@ -73,7 +78,8 @@ export function mount(el, ctx) {
       const card = row.insertCell();
       if (em.kind === 'Card') card.appendChild(cardLink(ctx, em));
       row.insertCell().textContent = p.layers;
-      rows.push({ row, status: p.status, facets: fs, text: `${name} ${p.status} ${p.version || ''} ${(p.layerVersions || []).join(' ')} ${fs.join(' ')} ${p.module || ''}`.toLowerCase() });
+      row.insertCell().textContent = Number(p.nodes) || 0;
+      rows.push({ row, em, status: p.status, facets: fs, text: `${name} ${p.status} ${p.version || ''} ${(p.layerVersions || []).join(' ')} ${fs.join(' ')} ${p.module || ''}`.toLowerCase() });
     }
     // Chips: every status, then the facets the cards emit.
     const facets = [...new Set(rows.flatMap((r) => r.facets))].sort();
@@ -102,12 +108,40 @@ export function mount(el, ctx) {
     ctx.bus.addEventListener('search', onSearch);
     h.off = () => { ctx.bus.removeEventListener('search', onSearch); for (const g of groups) g.remove(); };
     apply();
+    withMenu(t, rows, ctx);
     wrap.appendChild(t);
   }).catch((err) => fail(wrap, err));
   return h;
 }
 
-// open draws one emitter's source into el: its card and its layers. ctx: {client, toolbar, bus, name, navigate, layerHref, cardHref}.
+// menuItems is a roll-call row's menu, each {label, href, why}: Show graph,
+// the tenant graph filtered to the emitter's name, greyed for an unstamped
+// module, whose layers no source filter matches; Open card, the emitter's
+// page built from its card, greyed where no feed holds one.
+export function menuItems(em, links) {
+  const name = nameOf(em);
+  const unstamped = em.properties.status === 'unstamped';
+  const graph = unstamped ? null : links.sourceGraphHref(name);
+  return [
+    { label: 'Show graph', href: graph, why: unstamped ? 'unstamped: its layers carry no source block, so no source filter matches them' : 'the menu has no tenant graph' },
+    { label: 'Open card', href: em.kind === 'Card' ? links.emitterHref(name) : null, why: unstamped ? 'unstamped: no card is matched to a module' : 'no feed of the tenant holds a card of this name' },
+  ];
+}
+
+// withMenu opens a row's menu on right-click (or Shift+F10).
+function withMenu(t, rows, ctx) {
+  t.dataset.menu = 'emitter';
+  t.addEventListener('contextmenu', (ev) => {
+    const row = ev.target.closest('tr[data-emitter]');
+    const r = row && rows.find((x) => x.row === row);
+    if (!r) return;
+    ev.preventDefault();
+    const at = { clientX: ev.clientX, clientY: ev.clientY };
+    nodemenu.open(at, r.em, { nodes: [], edges: [] }, {}, ctx.navigate, row.querySelector('a') || row, menuItems(r.em, ctx));
+  });
+}
+
+// open draws one emitter's source into el: its card and its layers. ctx: {client, toolbar, bus, name, navigate, layerHref, cardHref, sourceGraphHref}.
 export function open(el, ctx) {
   const box = document.createElement('div');
   box.className = 'pt-tab-pane';
@@ -173,14 +207,16 @@ export function open(el, ctx) {
 }
 
 export function destroy(h) {
+  nodemenu.close(false);
   h.off();
   h.wrap.remove();
 }
 
 // source is the emitter's card as a definition list, its emits as a table:
-// module, version, repo (a link to url), url (Open in source), the card
-// (a link to its row on the feeds page) and status. A no-card name or an
-// unstamped module has no card and says so.
+// module, version with Show graph beside it, repo (a link to url), url (Open
+// in source), the card (a link to its row on the feeds page) and status. A
+// no-card name has no card and says so, Show graph beside its name; an
+// unstamped module has neither.
 function source(ctx, me) {
   const p = me.properties;
   const card = document.createElement('div');
@@ -194,9 +230,12 @@ function source(ctx, me) {
     dd.dataset.field = label;
     if (value instanceof Node) dd.appendChild(value); else dd.textContent = value ?? '';
     dl.append(dt, dd);
+    return dd;
   };
   if (me.kind !== 'Card') {
-    row(me.kind === 'Emitter' && p.status === 'unstamped' ? 'module' : 'emitter', me.name);
+    const unstamped = p.status === 'unstamped';
+    const named = row(unstamped ? 'module' : 'emitter', me.name);
+    if (!unstamped) showGraph(ctx, me, named);
     row('status', statusBadge(p.status));
     if (p.layerVersions) row('layer versions', p.layerVersions.join(', '));
     row('card', p.status === 'unstamped' ? 'none: its layers carry no source block, so no card is matched' : 'none: no feed of the tenant holds a card of this name');
@@ -204,7 +243,7 @@ function source(ctx, me) {
     return card;
   }
   row('module', p.module || '');
-  row('version', p.version);
+  showGraph(ctx, me, row('version', p.version));
   if (p.status === 'version-mismatch') {
     const s = document.createElement('span');
     s.className = 'pt-mismatch';
@@ -247,6 +286,20 @@ function source(ctx, me) {
   }
   card.appendChild(t);
   return card;
+}
+
+// showGraph appends Show graph to el: a plain link to the tenant graph
+// filtered to the emitter's name, as the roll call's menu has it; nothing
+// when the menu has no tenant graph.
+function showGraph(ctx, em, el) {
+  const name = nameOf(em);
+  const to = ctx.sourceGraphHref && ctx.sourceGraphHref(name);
+  if (!to) return;
+  const a = go(ctx, to, 'Show graph');
+  a.className = 'pt-show-graph';
+  a.dataset.source = name;
+  a.title = `${Number(em.properties.nodes) || 0} nodes in the tenant graph from the layers whose source block names ${name}`;
+  el.appendChild(a);
 }
 
 // emittersOf is the envelope's roll call, Card and Emitter nodes, in

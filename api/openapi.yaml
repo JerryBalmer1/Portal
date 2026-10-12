@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.14.2
+  version: 0.15.0
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -38,6 +38,8 @@ tags:
     description: Ledger chains and their verify (docs/design.md 45). Source agent is the agent's ledger, read from the mounted layer that holds LedgerEntry nodes under ledger:<seq> ids; source portal is the tenant's ledger, tenants/<tenant>/ledger.jsonl, whose lines carry seq and prev since 0.10.0 (pushes, action requests and the Runner's results, one chain and one seq space, docs/design.md 50), read again from the file's tail on every read. Read-only.
   - name: environments
     description: The environments graph (docs/design.md 46). Every node of an environment.* Kind under an env:compose/, env:container/, env:image/ or env:network/ id in the mounted layers, as their layers emit them, with every edge of a mounted layer that touches one and the node at its other end. Read-only; Portal reads env, tags and group from the nodes and infers none.
+  - name: graph
+    description: The tenant graph (docs/design.md 53). Every node and edge of the mounted layers as one envelope, as their layers emit them; source keeps the nodes of the layers whose Graph.Node source block names one emitter. Read-only.
   - name: alerts
     description: Alerts (docs/design.md 47), read from every mounted layer holding nodes of Kind alert under the id alert:<fingerprint>, 64 lower-case hex (Portal.Agent's alert layer); any other id is no alert, and nothing maps one (docs/design.md 48), each with an about edge to its subject and a raised-in edge to its Run. A fingerprint in two layers is served from the later stamp. Read-only; Portal never writes an alert.
   - name: actions
@@ -233,6 +235,26 @@ paths:
       summary: The shell page (index.html) listing the tenant's action requests, drawn under the menu's Page whose view is actions (Environments/Actions). Two segments, so no shell route competes. A request's own page is its ledger entry's, /<tenant>/ledger/portal/<seq>. 404 when tenant is not this process's tenant.
       parameters:
         - $ref: "#/components/parameters/Tenant"
+      responses:
+        "200":
+          description: index.html
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /{tenant}/graph:
+    get:
+      operationId: getGraphPage
+      tags: [page, graph]
+      summary: >-
+        The shell page (index.html) drawing the tenant graph (getTenantGraph), under the menu's Page whose view is graph (Graph/Nodes).
+        Two segments, so no shell route competes; the Graph service's pages keep /<tenant>/graph/<page>. The page passes its
+        source query parameter on to getTenantGraph and shows it as a chip whose X links to /<tenant>/graph, so a filtered
+        graph is a link (/<tenant>/graph?source=Emitter.Terraform). 404 when tenant is not this process's tenant.
+      parameters:
+        - $ref: "#/components/parameters/Tenant"
+        - $ref: "#/components/parameters/GraphSource"
       responses:
         "200":
           description: index.html
@@ -521,7 +543,7 @@ paths:
     get:
       operationId: listEmitters
       tags: [emitters]
-      summary: The tenant's emitters as an envelope (module Portal), one per name seen in a card or a layer's source block, matched by that block and never by name mangling (docs/design.md 49). An emitter is named by its card (Emitter.Agent); a mounted layer belongs to the emitter its Graph.Node source block names (source.emitter equal to the card name). An emitter some feed holds a card of is that Card node, under the card's own id ui:card:<feed>/<name>@<version> as listFeeds serves it (the newest push when several cards name it; module, repo, url and emits when the push recorded them), with emitter (its name), status, layers (how many mounted layers name it) and layerVersions (the source.version of those layers, distinct, sorted). status is ok when every such layer's source.version is the card's version, version-mismatch when one differs, no-layers when none names it. A name a layer's source.emitter gives with no card in any feed is an Emitter node, ui:emitter:<name>, status no-card. A layer with no source block is never matched to a card; it is listed under its envelope's module as an Emitter node, ui:module:<module>, status unstamped. Every mounted layer is a Layer node, ui:layer:<name> (emitter, module, version, stamp, node and edge counts, mountedBy, path, and its source block when it has one), joined Layer to its emitter by produced-by and back by has-layer. Ordered by name, an unstamped module after an emitter of the same name.
+      summary: The tenant's emitters as an envelope (module Portal), one per name seen in a card or a layer's source block, matched by that block and never by name mangling (docs/design.md 49). An emitter is named by its card (Emitter.Agent); a mounted layer belongs to the emitter its Graph.Node source block names (source.emitter equal to the card name). An emitter some feed holds a card of is that Card node, under the card's own id ui:card:<feed>/<name>@<version> as listFeeds serves it (the newest push when several cards name it; module, repo, url and emits when the push recorded them), with emitter (its name), status, layers (how many mounted layers name it), nodes (how many nodes getTenantGraph serves with source set to its name; 0 for an unstamped module, whose layers no source filter matches) and layerVersions (the source.version of those layers, distinct, sorted). status is ok when every such layer's source.version is the card's version, version-mismatch when one differs, no-layers when none names it. A name a layer's source.emitter gives with no card in any feed is an Emitter node, ui:emitter:<name>, status no-card. A layer with no source block is never matched to a card; it is listed under its envelope's module as an Emitter node, ui:module:<module>, status unstamped. Every mounted layer is a Layer node, ui:layer:<name> (emitter, module, version, stamp, node and edge counts, mountedBy, path, and its source block when it has one), joined Layer to its emitter by produced-by and back by has-layer. Ordered by name, an unstamped module after an emitter of the same name.
       responses:
         "200":
           description: The emitters and the layers they produced (module Portal).
@@ -621,6 +643,30 @@ paths:
       responses:
         "200":
           description: The environment nodes, their one-hop neighbours and the edges between them (module Portal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/tenants/{tenant}/graph:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: getTenantGraph
+      tags: [graph]
+      summary: >-
+        The tenant graph as an envelope (module Portal, no ontology of its own: its nodes keep their layers' Kinds). Every node
+        of every mounted layer, the first id wins in mount order, and a node with no stamp gets stamp.layer from its layer, as
+        listNodes serves them; then every edge of a mounted layer with both ends among those nodes, an edge id seen twice kept
+        once. With source, only the layers whose Graph.Node source block (design 20) names that emitter are read: source.emitter
+        equal to source, exact and case-sensitive, as listEmitters matches a layer to its card (docs/design.md 49, 53). Its nodes
+        are kept, and an edge only when both its ends are; a layer with no source block never matches. Empty, not 404, when
+        nothing matches. listEmitters' nodes is this envelope's node count for each emitter's name.
+      parameters:
+        - $ref: "#/components/parameters/GraphSource"
+      responses:
+        "200":
+          description: The nodes and edges of the mounted layers, or of one emitter's (module Portal).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Envelope" }
@@ -1057,6 +1103,12 @@ components:
       in: path
       required: true
       description: The tenant this process serves (PORTAL_TENANT, default "default"). Any other is 404.
+      schema: { type: string }
+    GraphSource:
+      name: source
+      in: query
+      required: false
+      description: An emitter's name, a card's (Emitter.Terraform). Keeps the nodes of the mounted layers whose source.emitter is exactly this, and the edges between them. Absent or empty, every mounted layer.
       schema: { type: string }
     NodeId:
       name: id

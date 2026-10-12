@@ -407,6 +407,16 @@ body.pt-rail-collapsed { --pt-rail-w: 52px; }
 .pt-toast { padding: 10px 14px; border-radius: 8px; border: var(--gr-border); background: var(--gr-card); color: var(--gr-text); font-size: 13px; white-space: pre-wrap; box-shadow: 0 6px 24px rgba(0,0,0,0.45); }
 .pt-toast[data-code="unauthorized"] { border-color: var(--gr-bad); }
 
+/* The tenant graph (docs/design.md 53): Cytoscape fills the card, as the
+   Canvas fills its panel; the source filter is a chip whose X clears it. */
+.pt-graph { flex: 1; position: relative; min-height: 480px; overflow: hidden; }
+.pt-graph-root { position: absolute; inset: 0; }
+.pt-filter { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-radius: 999px; border: var(--gr-border); border-color: var(--gr-accent); background: var(--gr-surface); color: var(--gr-text-muted); font-size: 12px; }
+.pt-filter b { color: var(--gr-text); font-weight: 600; }
+.pt-filter-clear { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; color: var(--gr-text-muted); text-decoration: none; }
+.pt-filter-clear:hover, .pt-filter-clear:focus-visible { background: var(--gr-card); color: var(--gr-text); }
+.pt-show-graph { margin-left: 10px; }
+
 /* The environments graph (docs/design.md 46). Colour is an instance's kind,
    shape its Kind; a node one edge away is smaller and dimmer. Hulls are the
    env a node carries: dev in the dev bar's amber, qa blue, prod green, and

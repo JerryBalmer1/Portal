@@ -90,6 +90,7 @@ func (s *Server) emitters(stamp string) []emitter {
 				return e.layers[i].Name < e.layers[j].Name
 			})
 			e.node.Properties["layers"] = len(e.layers)
+			e.node.Properties["nodes"] = e.nodeCount(s.p)
 			e.node.Properties["status"] = e.status()
 			if vs := e.layerVersions(); len(vs) > 0 {
 				e.node.Properties["layerVersions"] = vs
@@ -122,6 +123,17 @@ func (e emitter) status() string {
 		}
 	}
 	return statusOK
+}
+
+// nodeCount is how many nodes the tenant graph filtered to the emitter's
+// name holds (docs/design.md 53), the count /<tenant>/graph?source=<name>
+// draws; 0 for an unstamped module, whose layers no source filter matches.
+func (e emitter) nodeCount(p *store.Portal) int {
+	if e.unstamped {
+		return 0
+	}
+	nodes, _ := p.TenantGraph(e.name)
+	return len(nodes)
 }
 
 // layerVersions is the source.version of the emitter's layers, distinct and

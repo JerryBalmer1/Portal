@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.14.2 and needs PowerShell 7.4' {
+    It 'is version 0.15.0 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.14.2'
+        $m.ModuleVersion | Should -Be '0.15.0'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,10 +302,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.14.2, the twenty-two Kinds, the twenty-three edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.15.0, the twenty-two Kinds, the twenty-three edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.14\.2$'
+        $text | Should -Match '(?m)^version: 0\.15\.0$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry', 'Alerts', 'Alert', 'Actions') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in', 'has-alert', 'about', 'raised-in', 'has-action', 'answered-by', 'answers') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.14.2'
+        $s.version | Should -Be '0.15.0'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -1645,11 +1645,11 @@ Describe 'Emitters' -Tag 'Emitters' {
         $dom | Should -Match '<span class="pt-count">11 emitters · 2 ok · 1 version-mismatch · 6 no-layers · 1 no-card · 1 unstamped</span>'
         $dom | Should -Match ('<tr data-emitter="Emitter.Environment" data-status="version-mismatch"><td><a href="/default/emitters/Emitter.Environment">Emitter.Environment</a></td>' +
             '<td><span class="pt-status" data-status="version-mismatch" title="[^"]+">version-mismatch</span></td><td>0.3.0</td><td class="pt-mismatch">0.3.0, 0.4.0</td><td>environment, alerts</td>' +
-            '<td><a href="/default/artifacts/feeds#' + [regex]::Escape([uri]::EscapeDataString($EnvCard)) + '" class="pt-card-link" data-card="' + [regex]::Escape($EnvCard) + '">Emitter.Environment@0.3.0</a></td><td>2</td></tr>')
+            '<td><a href="/default/artifacts/feeds#' + [regex]::Escape([uri]::EscapeDataString($EnvCard)) + '" class="pt-card-link" data-card="' + [regex]::Escape($EnvCard) + '">Emitter.Environment@0.3.0</a></td><td>2</td><td>10</td></tr>')
         $dom | Should -Match '<tr data-emitter="Emitter.Agent" data-status="ok">.*?<td>0.1.4</td><td>0.1.4</td><td>instructions, runs</td>'
-        $dom | Should -Match '<tr data-emitter="Emitter.Terraform" data-status="no-layers">.*?<td>0.17.1</td><td></td><td>schema, resources, variables, modules</td>.*?<td>0</td></tr>'
-        $dom | Should -Match '<tr data-emitter="Emitter.Unlisted" data-status="no-card"><td><a href="/default/emitters/Emitter.Unlisted">Emitter.Unlisted</a></td><td><span class="pt-status" data-status="no-card"[^>]*>no-card</span></td><td></td><td>1.0.0</td><td></td><td></td><td>1</td></tr>'
-        $dom | Should -Match '<tr data-emitter="Graph.Emitter.FileSystem" data-status="unstamped"><td><a href="/default/emitters/Graph.Emitter.FileSystem">Graph.Emitter.FileSystem</a></td><td><span class="pt-status" data-status="unstamped"[^>]*>unstamped</span></td><td></td><td></td><td></td><td></td><td>1</td></tr>'
+        $dom | Should -Match '<tr data-emitter="Emitter.Terraform" data-status="no-layers">.*?<td>0.17.1</td><td></td><td>schema, resources, variables, modules</td>.*?<td>0</td><td>0</td></tr>'
+        $dom | Should -Match '<tr data-emitter="Emitter.Unlisted" data-status="no-card"><td><a href="/default/emitters/Emitter.Unlisted">Emitter.Unlisted</a></td><td><span class="pt-status" data-status="no-card"[^>]*>no-card</span></td><td></td><td>1.0.0</td><td></td><td></td><td>1</td><td>12</td></tr>'
+        $dom | Should -Match '<tr data-emitter="Graph.Emitter.FileSystem" data-status="unstamped"><td><a href="/default/emitters/Graph.Emitter.FileSystem">Graph.Emitter.FileSystem</a></td><td><span class="pt-status" data-status="unstamped"[^>]*>unstamped</span></td><td></td><td></td><td></td><td></td><td>1</td><td>0</td></tr>'
         $dom | Should -Match '<div class="pt-chips" role="group" aria-label="filter by status" data-chips="status">'
         $dom | Should -Match '<div class="pt-chips" role="group" aria-label="filter by facet" data-chips="facet">'
         foreach ($f in 'alerts', 'environment', 'filesystem', 'host', 'instructions', 'ledger', 'modules', 'organization', 'references', 'repository', 'resources', 'runs', 'schema', 'variables') {
@@ -1677,7 +1677,8 @@ Describe 'Emitters' -Tag 'Emitters' {
         $dom | Should -Match '<h1 class="pt-title" id="title"[^>]*>Emitter.Environment</h1>'
         $dom | Should -Match '<span class="pt-badge" id="emitter-stats"[^>]*>2 layers</span>'
         $dom | Should -Match '<dd data-field="module">Claude.Agent.Orchestrator</dd>'
-        $dom | Should -Match '<dd data-field="version">0.3.0</dd>'
+        # Show graph beside the version: the tenant graph filtered to the card's name (docs/design.md 53).
+        $dom | Should -Match '<dd data-field="version">0\.3\.0<a href="/default/graph\?source=Emitter\.Environment" class="pt-show-graph" data-source="Emitter\.Environment" title="10 nodes in the tenant graph from the layers whose source block names Emitter\.Environment">Show graph</a></dd>'
         $dom | Should -Match '<dd data-field="layer versions"><span class="pt-mismatch">0.3.0, 0.4.0</span></dd>'
         $dom | Should -Match '<dd data-field="repo"><a href="https://github.com/JerryBalmer1/Portal.Agent" target="_blank" rel="noopener noreferrer">Portal.Agent</a></dd>'
         $dom | Should -Match '<dd data-field="url"><a href="https://github.com/JerryBalmer1/Portal.Agent" target="_blank" rel="noopener noreferrer" class="pt-open-source">Open in source</a></dd>'
@@ -1689,14 +1690,71 @@ Describe 'Emitters' -Tag 'Emitters' {
         $dom | Should -Match 'href="/default/emitters" class="pt-page" data-page="ui:rail:emitters:catalogue" aria-current="page"'
         $dom = Get-PageDom $EmUrl '/default/emitters/Emitter.Terraform'
         $dom | Should -Match '<dd data-field="module">Graph.Emitter.Terraform</dd>'
+        $dom | Should -Match '<dd data-field="version">0\.17\.1<a href="/default/graph\?source=Emitter\.Terraform" class="pt-show-graph" data-source="Emitter\.Terraform" title="0 nodes[^"]*">Show graph</a></dd>'
         $dom | Should -Match '<tr data-facet="variables"><td>variables</td>'
         $dom | Should -Match '<h2>No layers mounted</h2>'
         $dom = Get-PageDom $EmUrl '/default/emitters/Emitter.Unlisted'
-        $dom | Should -Match '<dd data-field="emitter">Emitter.Unlisted</dd><dt>status</dt><dd data-field="status"><span class="pt-status" data-status="no-card"'
+        $dom | Should -Match '<dd data-field="emitter">Emitter.Unlisted<a href="/default/graph\?source=Emitter\.Unlisted" class="pt-show-graph" data-source="Emitter\.Unlisted" title="12 nodes[^"]*">Show graph</a></dd><dt>status</dt><dd data-field="status"><span class="pt-status" data-status="no-card"'
         $dom | Should -Match '<tr data-layer="ledger-old" title="Portal.Agent 0.1.0"><td><a href="/default/layers/ledger-old">ledger-old</a></td><td>1.0.0</td><td>default</td>'
         $dom = Get-PageDom $EmUrl '/default/emitters/Graph.Emitter.FileSystem'
         $dom | Should -Match '<dd data-field="module">Graph.Emitter.FileSystem</dd><dt>status</dt><dd data-field="status"><span class="pt-status" data-status="unstamped"'
+        $dom | Should -Not -Match 'pt-show-graph'
         $dom | Should -Match '<tr data-layer="filesystem" title="Graph.Emitter.FileSystem 0.1.0"><td><a href="/default/layers/filesystem">filesystem</a></td><td></td><td></td><td>2026-10-09T00:51:29Z</td><td>\d+</td><td>\d+</td><td></td></tr>'
+    }
+    It 'the roll call counts each emitter''s nodes as GET .../graph?source= serves them, edges pruned to the filtered set' {
+        $api = Invoke-RestMethod "$EmUrl/api/tenants/default/emitters"
+        @($api.nodes | Where-Object { $_.kind -in 'Card', 'Emitter' } | ForEach-Object { "$($_.name) $($_.properties.nodes)" }) | Should -Be @(
+            'Emitter.Agent 12', 'Emitter.AzureDevOps 0', 'Emitter.Environment 10', 'Emitter.FileSystem 0', 'Emitter.Git 0', 'Emitter.Ledger 12',
+            'Emitter.Network 0', 'Emitter.Reference 0', 'Emitter.Terraform 0', 'Emitter.Unlisted 12', 'Graph.Emitter.FileSystem 0')
+        foreach ($name in 'Emitter.Agent', 'Emitter.Environment', 'Emitter.Ledger', 'Emitter.Unlisted', 'Emitter.Terraform') {
+            $g = Invoke-RestMethod "$EmUrl/api/tenants/default/graph?source=$name"
+            $n = ($api.nodes | Where-Object { $_.kind -in 'Card', 'Emitter' -and $_.name -eq $name }).properties.nodes
+            @($g.nodes).Count | Should -Be $n -Because $name
+            $ids = @{}; foreach ($x in $g.nodes) { $ids[$x.id] = $true }
+            foreach ($e in $g.edges) { ($ids[$e.from] -and $ids[$e.to]) | Should -BeTrue -Because "$name edge $($e.id)" }
+        }
+        # Edge pruning: the ledger's records edges into Emitter.Agent's run are in the whole graph, not in Emitter.Ledger's.
+        $records = 'ledger:46|agent:run/2026-10-09T02:50:43.7976027Z|records'
+        @((Invoke-RestMethod "$EmUrl/api/tenants/default/graph").edges.id) | Should -Contain $records
+        $led = Invoke-RestMethod "$EmUrl/api/tenants/default/graph?source=Emitter.Ledger"
+        "$(@($led.nodes).Count) $(@($led.edges).Count)" | Should -Be '12 11'
+        @($led.edges.id) | Should -Not -Contain $records
+        # Exact and case-sensitive.
+        @((Invoke-RestMethod "$EmUrl/api/tenants/default/graph?source=emitter.environment").nodes).Count | Should -Be 0
+    }
+    It 'Catalogue rows open a menu whose Show graph is the tenant graph filtered to the card name, drawn with the filter as a chip that clears it' {
+        $wait = 'const wait = async (f) => { for (let t = 0; t < 160; t++) { const v = f(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); } throw new Error("timed out: " + f); };'
+        $items = 'const items = (m) => [...m.querySelectorAll("[role=menuitem]")].map((x) => `${x.textContent}|${x.getAttribute("href") || ""}|${x.getAttribute("aria-disabled") || ""}`);'
+        $r = Invoke-PageScript $EmUrl '/default/emitters' '' ("(async () => { $wait $items " +
+            'const menu = async (name) => { const row = await wait(() => document.querySelector(`tr[data-emitter="${name}"]`)); const b = row.cells[1].getBoundingClientRect(); ' +
+            'row.cells[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: b.x + 4, clientY: b.y + 4 })); return wait(() => document.querySelector(".pt-nodemenu")); }; ' +
+            'const out = {}; let m = await menu("Graph.Emitter.FileSystem"); out.unstamped = items(m); out.why = [...m.querySelectorAll("[aria-disabled]")].map((x) => x.title); ' +
+            'm.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); ' +
+            'm = await menu("Emitter.Unlisted"); out.unlisted = items(m); m.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); ' +
+            'm = await menu("Emitter.Environment"); out.env = items(m); out.label = m.getAttribute("aria-label"); ' +
+            'm.querySelector("[data-item=show-graph]").click(); ' +
+            'let s = await wait(() => document.querySelector("#graph-stats[data-nodes]")); await wait(() => document.querySelector(".pt-graph-root[data-drawn]")); ' +
+            'out.at = location.pathname + location.search; out.stats = s.textContent; out.title = document.getElementById("title").textContent; ' +
+            'const chip = document.querySelector(".pt-filter[data-filter=source]"); out.chip = chip ? chip.dataset.value + "|" + chip.querySelector("a").getAttribute("href") : ""; ' +
+            'out.rail = document.querySelector("a.pt-page[aria-current=page]").dataset.page; ' +
+            'chip.querySelector("a").click(); s = await wait(() => { const x = document.querySelector("#graph-stats[data-nodes]"); return x && !document.querySelector(".pt-filter") ? x : null; }); ' +
+            'out.cleared = location.pathname + location.search; out.all = Number(s.dataset.nodes); return JSON.stringify(out); })()')
+        if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
+        $o = $r | ConvertFrom-Json
+        $o.env | Should -Be @('Show graph|/default/graph?source=Emitter.Environment|', 'Open card|/default/emitters/Emitter.Environment|')
+        $o.label | Should -Be 'Emitter.Environment (Card)'
+        $o.unlisted | Should -Be @('Show graph|/default/graph?source=Emitter.Unlisted|', 'Open card||true')
+        $o.unstamped | Should -Be @('Show graph||true', 'Open card||true')
+        $o.why | Should -Be @('unstamped: its layers carry no source block, so no source filter matches them', 'unstamped: no card is matched to a module')
+        "$($o.at) | $($o.stats) | $($o.title) | $($o.chip) | $($o.rail)" | Should -Be '/default/graph?source=Emitter.Environment | 10 nodes · 9 edges | Nodes | Emitter.Environment|/default/graph | ui:rail:graph:nodes'
+        $o.cleared | Should -Be '/default/graph'
+        $o.all | Should -Be @((Invoke-RestMethod "$EmUrl/api/tenants/default/graph").nodes).Count
+        # No match is the normal empty state, with the chip: a link, not an error.
+        $dom = Get-PageDom $EmUrl '/default/graph?source=Emitter.Terraform'
+        $dom | Should -Match '<span class="pt-count" id="graph-stats" data-nodes="0" data-edges="0">0 nodes · 0 edges</span><span class="pt-filter" data-filter="source" data-value="Emitter.Terraform">source: <b>Emitter.Terraform</b><a class="pt-filter-clear" href="/default/graph" title="clear the source filter" aria-label="clear the source filter Emitter.Terraform">×</a></span>'
+        $dom | Should -Match '<div class="pt-card pt-empty-state"><h2>No nodes</h2><p>No mounted layer''s source block names Emitter.Terraform\.'
+        $dom | Should -Not -Match 'pt-error-card'
+        $dom | Should -Match 'href="/default/graph" class="pt-page" data-page="ui:rail:graph:nodes" aria-current="page"'
     }
     It 'a layer page names the emitter its source block names, with that version and the status, or its module unstamped' {
         $dom = Get-PageDom $EmUrl '/default/layers/agent-runs'

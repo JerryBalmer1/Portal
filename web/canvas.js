@@ -124,12 +124,12 @@ function restyle(h, ont) {
 
 // Cytoscape ignores the alpha of an rgba() colour, so it travels separately
 // as text-opacity, line-opacity and the like.
-function splitAlpha(c) {
+export function splitAlpha(c) {
   const m = /^rgba\(\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([^)]+)\)$/i.exec(c);
   return m ? { rgb: `rgb(${m[1]},${m[2]},${m[3]})`, alpha: Number(m[4]) } : { rgb: c, alpha: 1 };
 }
 
-function styleFor(ont, text, muted, grey, font) {
+export function styleFor(ont, text, muted, grey, font) {
   const s = [
     {
       selector: 'node',

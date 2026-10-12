@@ -1,5 +1,5 @@
 module: Portal
-version: 0.14.2
+version: 0.15.0
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -119,7 +119,7 @@ kinds:
       - { name: order, type: integer, description: "Position in the config's feeds list." }
       - { name: tokenEnv, type: string, description: "The environment variable holding the feed's API key; never the key." }
   Card:
-    description: A Graph.Node manifest card as one feed holds it, from the tenant's ledger (tenants/<tenant>/ledger.jsonl, one line per push). Its name is the card's name. Joined from its Feed by has-card in GET .../feeds. A card of type emitter is an emitter (docs/design.md 44, 49), served under the same id by GET .../emitters with emitter, status, layers and layerVersions, joined by has-layer to the layers whose source block names it.
+    description: A Graph.Node manifest card as one feed holds it, from the tenant's ledger (tenants/<tenant>/ledger.jsonl, one line per push). Its name is the card's name. Joined from its Feed by has-card in GET .../feeds. A card of type emitter is an emitter (docs/design.md 44, 49), served under the same id by GET .../emitters with emitter, status, layers, nodes and layerVersions, joined by has-layer to the layers whose source block names it.
     idRule: "ui:card:<feed id>/<card name>@<version>"
     properties:
       - { name: feed, type: string, required: true, description: "The feed id." }
@@ -136,6 +136,7 @@ kinds:
       - { name: emitter, type: string, description: "GET .../emitters only: the emitter the card is, by the card's own name, as a layer's source.emitter names it (docs/design.md 49)." }
       - { name: status, type: string, description: "GET .../emitters only: ok (every layer naming it carries the card's version in its source block), version-mismatch (one carries another) or no-layers (none names it)." }
       - { name: layers, type: integer, description: "GET .../emitters only: how many mounted layers name the emitter in their source block." }
+      - { name: nodes, type: integer, description: "GET .../emitters only: how many nodes GET .../graph?source=<its name> serves, the nodes of those layers, each id once (docs/design.md 53)." }
       - { name: layerVersions, type: array, description: "GET .../emitters only: the source.version of those layers, distinct, sorted; absent with no layers." }
   Emitter:
     description: A roll-call row of GET /api/tenants/{tenant}/emitters that is no card (docs/design.md 44, 49). Either a name mounted layers' source blocks give (source.emitter) that no feed holds a card of, status no-card; or the module of mounted layers with no source block, status unstamped, never matched to a card. An emitter with a card is that Card; this Kind exists only because a Card is a push to a feed (feed, version, hash, pushed), which a name or a module alone has none of. Never on the screen graph.
@@ -143,6 +144,7 @@ kinds:
     properties:
       - { name: status, type: string, required: true, description: "no-card (layers name it in their source block; no feed holds its card) or unstamped (the module of layers with no source block)." }
       - { name: layers, type: integer, required: true, description: "How many mounted layers it stands for." }
+      - { name: nodes, type: integer, required: true, description: "no-card: how many nodes GET .../graph?source=<its name> serves (docs/design.md 53); unstamped: 0, since no source filter matches a layer with no source block." }
       - { name: layerVersions, type: array, description: "no-card only: the source.version of its layers, distinct, sorted." }
   Layer:
     description: A mounted data layer, as GET /api/tenants/{tenant}/emitters serves it (docs/design.md 44), joined to the emitter that produced it by produced-by. Its page is /<tenant>/layers/<name>. Never on the screen graph; a path mount's record there is its Mount.

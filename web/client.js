@@ -27,6 +27,7 @@ export const ROUTES = Object.freeze({
   getLedger: { method: 'GET', path: '/api/tenants/{tenant}/ledger/{source}' },
   getLedgerEntry: { method: 'GET', path: '/api/tenants/{tenant}/ledger/{source}/{seq}' },
   getEnvironmentGraph: { method: 'GET', path: '/api/tenants/{tenant}/environments/graph' },
+  getTenantGraph: { method: 'GET', path: '/api/tenants/{tenant}/graph' },
   listActions: { method: 'GET', path: '/api/tenants/{tenant}/actions' },
   postAction: { method: 'POST', path: '/api/tenants/{tenant}/actions' },
   getAction: { method: 'GET', path: '/api/tenants/{tenant}/actions/{seq}' },
@@ -128,6 +129,8 @@ export function createClient(tenant, base = '') {
     getLedger: (source, { limit, before, run } = {}) => call('getLedger', { params: { source }, query: { limit, before, run } }),
     getLedgerEntry: (source, seq) => call('getLedgerEntry', { params: { source, seq } }),
     getEnvironmentGraph: () => call('getEnvironmentGraph'),
+    // getTenantGraph({source}): source keeps one emitter's layers, by their source block (docs/design.md 53).
+    getTenantGraph: ({ source } = {}) => call('getTenantGraph', { query: { source } }),
     listActions: () => call('listActions'),
     // postAction asks; who asks is the token's principal, never the body's (docs/design.md 50).
     postAction: (action, subject) => call('postAction', { body: { action, subject } }),

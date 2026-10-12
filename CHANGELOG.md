@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.0 — 2026-10-11
+
+- **The tenant graph** (docs/design.md 53). `GET .../graph` (`getTenantGraph`) serves every node and edge of the mounted layers as one envelope, module Portal, the nodes keeping their layers' Kinds; the first id wins in mount order, and an edge is kept when both its ends are.
+- **`?source=<emitter>`** keeps the layers whose Graph.Node source block names that emitter (`source.emitter`, exact and case-sensitive), their nodes, and only the edges between them. No match is an empty envelope, never 404. The filter keys on the emitter's name, not an id prefix: one emitter can own several prefixes, and the source block is what the roll call already matches by.
+- **Graph/Nodes at `/<tenant>/graph`** (`getGraphPage`, `view: graph`, `web/graph.js`), drawn with the vendored Cytoscape. `?source=` is shown as a chip whose X links to `/<tenant>/graph`; the filter is the URL, never page state. No match is the empty state with the chip.
+- **Emitters/Catalogue** gets a `nodes` column (the roll call's new `nodes` property, the count `?source=<name>` serves; 0 for an unstamped module) and a right-click menu on each row, the container menu's code: Show graph (`/<tenant>/graph?source=<name>`) and Open card (`/<tenant>/emitters/<name>`), each greyed with why where it leads nowhere. An emitter's page has Show graph beside its version.
+- **Go** 116 to 117: `TestTenantGraphFiltersBySourceEmitter` (match, no match, edge pruning, the roll call's nodes); the spec walk covers both new operations.
+- **Pester** 126 to 128: the `Emitters` block checks the nodes column in every row, the counts against the API with edge pruning, the menu's hrefs and greyed items, Show graph through to the chip and its X, the empty state, and the Show graph links on the emitter pages.
+
 ## 0.14.2 — 2026-10-11
 
 - **Card files with non-ASCII names** (docs/design.md 52). `POST .../feeds/{feed}/push` decodes a filename sent as RFC 2047 encoded words, as .NET's multipart (PowerShell's) sends a non-ASCII one. Portal.Emitters' Emitter.Terraform push was refused for `=?utf-8?B?...?=`, its `tests/fixtures/hcl/enc-日本/main.tf`.

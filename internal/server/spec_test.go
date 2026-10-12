@@ -45,7 +45,7 @@ const (
 // mountLayerUnscoped, gone since 0.7.0 (410).
 var pageLoaded = map[string]bool{"getIndex": true, "getStatic": true, "getShellPage": true, "getShellItem": true, "getLayerPage": true,
 	"getAgentsPage": true, "getAgentPage": true, "getEmittersPage": true, "getEmitterPage": true, "getLedgerPage": true,
-	"getLedgerSourcePage": true, "getLedgerEntryPage": true, "getActionsPage": true, "mountLayerUnscoped": true}
+	"getLedgerSourcePage": true, "getLedgerEntryPage": true, "getActionsPage": true, "getGraphPage": true, "mountLayerUnscoped": true}
 
 func init() {
 	text := func(r io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
@@ -428,6 +428,12 @@ func TestEveryOperationAgainstSpec(t *testing.T) {
 		{"GET", "/other/environments/graph", "", 404},
 		{"GET", "/api/tenants/default/environments/graph", "", 200},
 		{"GET", "/api/tenants/other/environments/graph", "", 404},
+		{"GET", "/default/graph", "", 200},
+		{"GET", "/default/graph?source=Emitter.Terraform", "", 200},
+		{"GET", "/other/graph", "", 404},
+		{"GET", "/api/tenants/default/graph", "", 200},
+		{"GET", "/api/tenants/default/graph?source=Emitter.Terraform", "", 200},
+		{"GET", "/api/tenants/other/graph", "", 404},
 		{"GET", "/default/compliance/alerts", "", 200},
 		{"GET", "/default/compliance/alerts/" + realAlert, "", 200},
 		{"GET", "/api/tenants/default/alerts", "", 200},

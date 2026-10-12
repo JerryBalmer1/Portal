@@ -30,7 +30,10 @@
 # newest first, with severity, rule and state chips, each at
 # /<tenant>/compliance/alerts/<fingerprint>, and an open count in the banner
 # (docs/design.md 47; the compliance service's page alerts is this view and no
-# other). A page's children are the
+# other), graph the tenant graph (every node and edge of the mounted layers,
+# at /<tenant>/graph; ?source=<emitter> keeps the layers whose source block
+# names that emitter, so the filter is a link; docs/design.md 53; the graph
+# service's other pages keep /<tenant>/graph/<page>). A page's children are the
 # tabs of its item page, /<tenant>/<service>/<page>/<id>.
 #
 # feeds are where cards (Graph.Node manifest cards: manifest.yaml and the
@@ -75,6 +78,7 @@ menu:
     path: graph
     children:
       - { id: explore, label: Explore, path: graph/explore, view: screen, screen: "ui:canvas" }
+      - { id: nodes, label: Nodes, path: graph/nodes, view: graph }
       - { id: kinds, label: Kinds, path: graph/kinds, kind: graph.kind }
       - { id: taxonomy, label: Taxonomy, path: graph/taxonomy, kind: graph.taxonomy }
       - { id: layers, label: Layers, path: graph/layers, view: layers }

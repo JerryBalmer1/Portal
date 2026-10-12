@@ -188,7 +188,7 @@ func TestMenuShape(t *testing.T) {
 	}
 	for id, want := range map[string][]string{
 		"ui:rail:overview":           {"Summary", "Dashboards"},
-		"ui:rail:graph":              {"Explore", "Kinds", "Taxonomy", "Layers"},
+		"ui:rail:graph":              {"Explore", "Nodes", "Kinds", "Taxonomy", "Layers"},
 		"ui:rail:emitters":           {"Catalogue", "Sources", "Runs", "Schemas"},
 		"ui:rail:designer":           {"Sections", "Themes", "Export"},
 		"ui:rail:workflows":          {"All"},
