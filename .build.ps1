@@ -14,11 +14,16 @@
 #                           Invoke-Build Generate     (regenerate internal/gen from api/openapi.yaml)
 #                           Invoke-Build Screenshot   (docs/screenshots/: summary.png, service-connections.png,
 #                                                      explore.png, identity-users.png)
+#                           Invoke-Build Refresh      (everything down and back up in docs/refresh/order.psd1's order,
+#                                                      an approved snap, then the Catalogue against the last Refresh;
+#                                                      -DryRun prints the plan; docs/design.md 56)
 param(
     # Up's port; absent means PORTAL_PORT from .env, else the environment, else 8200. 0 is refused.
     [int] $Port,
     # Up throws when a portal is already running instead of stopping and replacing it.
-    [switch] $NoReplace
+    [switch] $NoReplace,
+    # Refresh prints what each step would do and runs nothing.
+    [switch] $DryRun
 )
 
 $repo     = $PSScriptRoot
@@ -410,6 +415,15 @@ function Find-HeadlessBrowser {
     if ($Prefer -eq 'chrome') { $known = @($known | Where-Object { $_ -like '*chrome.exe' }) + @($known | Where-Object { $_ -notlike '*chrome.exe' }) }
     foreach ($k in $known) { if ($k -and (Test-Path -LiteralPath $k)) { return $k } }
     return $null
+}
+
+# Refresh (docs/design.md 56, docs/refresh/dependency-order.md): checks docs/refresh/order.psd1 against rules R1 to R6,
+# then runs its steps in order, one line each: every dependent's Down, Portal's Down and Dev, each dependent's up task,
+# an approved snap, and GET .../emitters compared with artifacts/refresh/last.json. A step's output goes to
+# artifacts/refresh/<stamp>/. A repo not on disk is skipped and said so. scripts/Refresh-Portal.ps1 runs it from anywhere.
+task Refresh {
+    $m = Import-Module $module -Force -PassThru
+    $null = & $m { param($a) Invoke-PortalRefresh @a } @{ DryRun = [bool]$DryRun }
 }
 
 task . Modules, Build, Test, Smoke, Pester

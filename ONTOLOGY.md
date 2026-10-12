@@ -2,7 +2,7 @@
 
 # Portal ontology
 
-Module `Portal`, version 0.16.1, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here; Run and Decision keep the `agent:` ids Graph.Emitter.Agent gave them, and an agent LedgerEntry the `ledger:<seq>` id its layer gave it; Portal mints no `agent:` node, and since 0.16.1 serves each line of the tenant's ledger as `ledger:tenant/<tenant>/<seq>`, its position, the id an action line carries, Graph.Node's tenant form of `ledger:` since v0.4.2, so it never collides with the agent chain's `ledger:<seq>`; `source` tells the two chains apart), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
+Module `Portal`, version 0.16.2, id prefix `ui:` (registered to Portal in Graph.Node's id registry since v0.2.3, lifted here; Run and Decision keep the `agent:` ids Graph.Emitter.Agent gave them, and an agent LedgerEntry the `ledger:<seq>` id its layer gave it; Portal mints no `agent:` node, and since 0.16.1 serves each line of the tenant's ledger as `ledger:tenant/<tenant>/<seq>`, its position, the id an action line carries, Graph.Node's tenant form of `ledger:` since v0.4.2, so it never collides with the agent chain's `ledger:<seq>`; `source` tells the two chains apart), declared in `ontology.yaml` and validated with `graphnode validate-ontology`. Node, Edge, Envelope, Kind, Layer and Category mean what Graph.Node says (its ONTOLOGY.md); this file adds only the portal's terms.
 
 ## Terminology
 

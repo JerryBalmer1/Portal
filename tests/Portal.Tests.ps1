@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.16.1 and needs PowerShell 7.4' {
+    It 'is version 0.16.2 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.16.1'
+        $m.ModuleVersion | Should -Be '0.16.2'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,10 +302,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.16.1, the twenty-two Kinds, the twenty-six edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.16.2, the twenty-two Kinds, the twenty-six edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.16\.1$'
+        $text | Should -Match '(?m)^version: 0\.16\.2$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry', 'Alerts', 'Alert', 'Actions') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in', 'has-alert', 'about', 'raised-in', 'has-action', 'answered-by', 'answers', 'request', 'subject', 'principal') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.16.1'
+        $s.version | Should -Be '0.16.2'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -2473,5 +2473,215 @@ Describe 'Alerts' {
         Set-Content -LiteralPath (Join-Path $dir 'default' 'portal.yaml') -Value "menu:`n  - id: compliance`n    children: [{ id: alerts, view: table, kind: alert }]"
         { Start-Portal -Port 18201 -Artifacts (Join-Path $TestDrive 'al-bad-art') -Filesystem '' -Tenants $dir -TimeoutSec 5 } |
             Should -Throw '*compliance/alerts is the alerts page*its view is alerts, not "table"*'
+    }
+}
+
+# Invoke-Build Refresh (docs/design.md 56): the order in docs/refresh/order.psd1, its agreement with
+# docs/refresh/dependency-order.md and the repos on disk, rules R1 to R6, and the run loop with its handlers replaced.
+# No dependent's build is run: the siblings are read, never built or run (CLAUDE.md).
+Describe 'Refresh' -Tag 'Refresh' {
+    BeforeAll {
+        $script:OrderFile = Join-Path $Repo 'docs' 'refresh' 'order.psd1'
+        $script:OrderDoc = Get-Content -LiteralPath (Join-Path $Repo 'docs' 'refresh' 'dependency-order.md') -Raw
+        $script:Order = InModuleScope Portal -Parameters @{ P = $OrderFile } { param($P) Get-PortalRefreshOrder -Path $P }
+        # The order as a psd1 again, for a broken copy on disk.
+        function Write-Order([object[]] $Steps, [string] $Path) {
+            $lines = foreach ($s in $Steps) {
+                $kv = @(foreach ($k in 'Id', 'Repo', 'Action', 'File', 'Task', 'Phase') { if ($s.$k) { "$k = '$($s.$k)'" } })
+                $kv += foreach ($k in 'NeedsPortal', 'RestartsPortal', 'PushesLive', 'SkipWithoutDocker') { "$k = `$$([bool]$s.$k)" }
+                "        @{ $($kv -join '; ') }"
+            }
+            Set-Content -LiteralPath $Path -Value ("@{`n    Steps = @(`n$($lines -join "`n")`n    )`n    CardOnly = @('Portal.Ontology', 'Portal.Skills', 'Portal.Tools', 'Portal.Workflows')`n}") -Encoding utf8NoBOM
+            $Path
+        }
+        function Test-Order([object[]] $Steps) { InModuleScope Portal -Parameters @{ S = $Steps } { param($S) Test-PortalRefreshOrder -Steps $S } }
+        # The steps as new objects, so a test can reorder or change them.
+        function Copy-Steps { , @($Order.Steps | ForEach-Object { $_.PSObject.Copy() }) }
+        function Move-Step([object[]] $Steps, [string] $Id, [int] $To) {
+            $list = [System.Collections.Generic.List[object]]::new([object[]]$Steps)
+            $s = $list | Where-Object Id -EQ $Id
+            $null = $list.Remove($s); $list.Insert($To, $s)
+            , $list.ToArray()
+        }
+        # A workspace of fake siblings: Portal.Emitters with its build file, Portal.Tools without one, an unknown
+        # Portal.Extra, and Portal.Agent only with -WithAgent.
+        function New-FakeWorkspace([string] $Name, [switch] $WithAgent) {
+            $ws = Join-Path $TestDrive $Name
+            foreach ($d in 'Portal.Emitters', 'Portal.Tools', 'Portal.Extra') { $null = New-Item -ItemType Directory -Force -Path (Join-Path $ws $d) }
+            Set-Content -LiteralPath (Join-Path $ws 'Portal.Emitters' 'Portal.Emitters.build.ps1') -Value 'task Mount {}'
+            if ($WithAgent) {
+                $null = New-Item -ItemType Directory -Force -Path (Join-Path $ws 'Portal.Agent')
+                Set-Content -LiteralPath (Join-Path $ws 'Portal.Agent' 'Portal.Agent.build.ps1') -Value "task Down {}`ntask Up {}"
+            }
+            $ws
+        }
+        # Handlers that record each call and run nothing; -Fail makes that step's invoke fail.
+        function New-Handlers([System.Collections.Generic.List[string]] $Calls, [string] $Fail, [bool] $Docker = $true) {
+            @{
+                docker    = { $Docker }.GetNewClosure()
+                invoke    = { param($Step, $File, $Log) $Calls.Add($Step.Id); [pscustomobject]@{ Ok = ($Step.Id -ne $Fail); Line = "fake $($Step.Task)"; After = $null } }.GetNewClosure()
+                approve   = { param($Step) $Calls.Add($Step.Id); [pscustomobject]@{ Ok = $true; Line = 'fake snap'; After = $null } }.GetNewClosure()
+                catalogue = { param($Step) $Calls.Add($Step.Id); [pscustomobject]@{ Ok = $true; Line = 'fake catalogue'; After = $null } }.GetNewClosure()
+            }
+        }
+        function Invoke-Refresh([hashtable] $A) {
+            InModuleScope Portal -Parameters @{ A = $A } { param($A) Invoke-PortalRefresh @A 6>$null }
+        }
+    }
+
+    Context 'The declared order' {
+        It 'keeps every rule, R1 to R6' {
+            @(Test-Order $Order.Steps) | Should -BeNullOrEmpty
+        }
+        It 'is the sequence table of dependency-order.md, step for step' {
+            $section = [regex]::Match($OrderDoc, '(?s)## The Refresh sequence\s*\n(.*?)\n## ').Groups[1].Value
+            $rows = @([regex]::Matches($section, '(?m)^\| (\d+) \| ([a-z-]+) \| ([A-Za-z.]+) \| ([^|]+?) \| ([a-z]+) \|') | ForEach-Object {
+                    [pscustomobject]@{ N = [int]$_.Groups[1].Value; Id = $_.Groups[2].Value; Repo = $_.Groups[3].Value; Task = $_.Groups[4].Value.Trim(); Phase = $_.Groups[5].Value }
+                })
+            $rows.Count | Should -Be $Order.Steps.Count
+            for ($i = 0; $i -lt $rows.Count; $i++) {
+                $s = $Order.Steps[$i]
+                $rows[$i].N | Should -Be ($i + 1)
+                $rows[$i].Id | Should -BeExactly $s.Id
+                $rows[$i].Repo | Should -BeExactly $s.Repo
+                $rows[$i].Phase | Should -BeExactly $s.Phase
+                if ($s.Action -eq 'invoke') { $rows[$i].Task | Should -BeExactly $s.Task }
+                else { $rows[$i].Task | Should -Match '^`(POST|GET) \.\.\./' -Because "$($s.Id) is an API call, not a task" }
+            }
+        }
+        It 'lists as card-only exactly the repos the doc gives no build file' {
+            $none = @([regex]::Matches($OrderDoc, '(?m)^\| (Portal\.[A-Za-z]+) \| none \|') | ForEach-Object { $_.Groups[1].Value })
+            @($none | Sort-Object) | Should -Be @($Order.CardOnly | Sort-Object)
+        }
+        It 'names a task its build file defines, for each invoke step whose repo is on disk' {
+            foreach ($s in @($Order.Steps | Where-Object Action -EQ 'invoke')) {
+                $root = if ($s.Repo -eq 'Portal') { $Repo } else { Join-Path $Code $s.Repo }
+                if (-not (Test-Path -LiteralPath $root)) { continue }
+                $file = Join-Path $root $s.File
+                Test-Path -LiteralPath $file | Should -BeTrue -Because "$($s.Id) runs $($s.File) in $($s.Repo)"
+                (Get-Content -LiteralPath $file -Raw) | Should -Match "(?m)^task $($s.Task)\b" -Because "$($s.Id) runs task $($s.Task)"
+            }
+        }
+        It 'finds no build script in a card-only repo on disk' {
+            foreach ($r in $Order.CardOnly) {
+                $dir = Join-Path $Code $r
+                if (-not (Test-Path -LiteralPath $dir)) { continue }
+                @(Get-ChildItem -LiteralPath $dir -File -Filter '*.build.ps1' -Force) | Should -BeNullOrEmpty -Because "$r is card-only in order.psd1"
+            }
+        }
+        It 'names every Portal.* folder on disk' {
+            $named = @($Order.Steps.Repo) + @($Order.CardOnly)
+            foreach ($d in @(Get-ChildItem -LiteralPath $Code -Directory -Filter 'Portal.*')) { $named | Should -Contain $d.Name }
+        }
+        It 'puts emitters-mount, which restarts Portal, before agent-up, which pushes live layers, and approves after both' {
+            $ids = [System.Collections.Generic.List[string]]::new([string[]]$Order.Steps.Id)
+            $ids.IndexOf('emitters-mount') | Should -BeLessThan $ids.IndexOf('agent-up')
+            $ids.IndexOf('agent-up') | Should -BeLessThan $ids.IndexOf('approve')
+            ($Order.Steps | Where-Object Id -EQ 'emitters-mount').RestartsPortal | Should -BeTrue
+            ($Order.Steps | Where-Object Id -EQ 'agent-up').PushesLive | Should -BeTrue
+        }
+    }
+
+    Context 'Rules' {
+        It '<Rule> refuses <Case>' -ForEach @(
+            @{ Rule = 'R1'; Case = 'a down step after an up step'; Break = { param($s) Move-Step $s 'agent-down' 3 } }
+            @{ Rule = 'R2'; Case = 'a down step that needs a portal after portal-down'; Break = { param($s) Move-Step $s 'agent-down' 1 } }
+            @{ Rule = 'R2'; Case = 'an up step before portal-dev'; Break = { param($s) Move-Step $s 'emitters-mount' 2 } }
+            @{ Rule = 'R3'; Case = 'a restart after a live push'; Break = { param($s) Move-Step $s 'emitters-mount' 4 } }
+            @{ Rule = 'R4'; Case = 'no approve after the last live push'; Break = { param($s) , @($s | Where-Object Id -NE 'approve') } }
+            @{ Rule = 'R4'; Case = 'an approve before the live push'; Break = { param($s) Move-Step $s 'approve' 3 } }
+            @{ Rule = 'R5'; Case = 'a repo outside Portal.*'; Break = { param($s) ($s | Where-Object Id -EQ 'agent-up').Repo = 'Graph.Node'; , $s } }
+            @{ Rule = 'R5'; Case = 'a step id used twice'; Break = { param($s) ($s | Where-Object Id -EQ 'agent-up').Id = 'agent-down'; , $s } }
+            @{ Rule = 'R5'; Case = 'an invoke without a task'; Break = { param($s) ($s | Where-Object Id -EQ 'agent-up').Task = ''; , $s } }
+            @{ Rule = 'R6'; Case = 'the catalogue before the last step'; Break = { param($s) Move-Step $s 'catalogue' 5 } }
+        ) {
+            $broken = & $Break (Copy-Steps)
+            $problems = @(Test-Order $broken)
+            @($problems | Where-Object { $_ -like "${Rule}:*" }) | Should -Not -BeNullOrEmpty -Because ($problems -join '; ')
+        }
+        It 'stops Invoke-PortalRefresh before any step runs when the order breaks a rule' {
+            $calls = [System.Collections.Generic.List[string]]::new()
+            $path = Write-Order (Move-Step (Copy-Steps) 'emitters-mount' 4) (Join-Path $TestDrive 'r3.psd1')
+            { Invoke-Refresh @{ OrderPath = $path; Workspace = (New-FakeWorkspace 'ws-r3' -WithAgent); Artifacts = (Join-Path $TestDrive 'r3-art'); Handlers = (New-Handlers $calls) } } |
+                Should -Throw '*breaks the Refresh rules: R3: step emitters-mount restarts the portal after agent-up*'
+            $calls | Should -BeNullOrEmpty
+        }
+    }
+
+    Context 'The run' {
+        It 'runs the steps in the declared order and skips a repo that is not on disk, saying so' {
+            $calls = [System.Collections.Generic.List[string]]::new()
+            $a = @{ Workspace = (New-FakeWorkspace 'ws-noagent'); Artifacts = (Join-Path $TestDrive 'na-art'); Handlers = (New-Handlers $calls) }
+            $out = @(InModuleScope Portal -Parameters @{ A = $a } { param($A) Invoke-PortalRefresh @A 6>&1 })
+            $results = @($out | Where-Object { $_ -isnot [System.Management.Automation.InformationRecord] })
+            $text = @($out | Where-Object { $_ -is [System.Management.Automation.InformationRecord] } | ForEach-Object { "$_" }) -join "`n"
+            @($calls) | Should -Be @('portal-down', 'portal-dev', 'emitters-mount', 'approve', 'catalogue')
+            @($results.Id) | Should -Be @($Order.Steps.Id)
+            ($results | Where-Object Id -EQ 'agent-down').Result | Should -Be 'skipped'
+            ($results | Where-Object Id -EQ 'agent-up').Line | Should -BeLike 'skipped: Portal.Agent not on disk*'
+            $text | Should -Match '\[1/7\] agent-down .*skipped: Portal.Agent not on disk'
+            $text | Should -Match 'Portal.Tools: no build script, nothing to refresh'
+            $text | Should -Match 'Portal.Extra: on disk but not in order.psd1'
+            $text | Should -Match 'Portal.Ontology: not on disk, skipped'
+        }
+        It 'skips agent-down without a Docker engine and still runs agent-up' {
+            $calls = [System.Collections.Generic.List[string]]::new()
+            $results = @(Invoke-Refresh @{ Workspace = (New-FakeWorkspace 'ws-nodocker' -WithAgent); Artifacts = (Join-Path $TestDrive 'nd-art'); Handlers = (New-Handlers $calls -Docker $false) })
+            ($results | Where-Object Id -EQ 'agent-down').Line | Should -BeLike '*Docker engine is not answering*'
+            @($calls) | Should -Be @('portal-down', 'portal-dev', 'emitters-mount', 'agent-up', 'approve', 'catalogue')
+        }
+        It 'stops at the first failing step and names it' {
+            $calls = [System.Collections.Generic.List[string]]::new()
+            { Invoke-Refresh @{ Workspace = (New-FakeWorkspace 'ws-fail' -WithAgent); Artifacts = (Join-Path $TestDrive 'f-art'); Handlers = (New-Handlers $calls -Fail 'emitters-mount') } } |
+                Should -Throw '*Refresh stopped at step 4, emitters-mount (Portal.Emitters Invoke-Build Mount)*'
+            @($calls) | Should -Be @('agent-down', 'portal-down', 'portal-dev', 'emitters-mount')
+        }
+        It 'runs nothing with -DryRun' {
+            $calls = [System.Collections.Generic.List[string]]::new()
+            $results = @(Invoke-Refresh @{ DryRun = $true; Workspace = (New-FakeWorkspace 'ws-dry' -WithAgent); Artifacts = (Join-Path $TestDrive 'd-art'); Handlers = (New-Handlers $calls) })
+            $calls | Should -BeNullOrEmpty
+            @($results.Result | Sort-Object -Unique) | Should -Be @('planned')
+            ($results | Where-Object Id -EQ 'emitters-mount').Line | Should -BeLike '*would run Invoke-Build Mount -File *Portal.Emitters.build.ps1'
+        }
+        It 'runs a task in a child pwsh with its output in the log, and reports a failing one with its tail' {
+            $file = Join-Path $TestDrive 'step.build.ps1'
+            Set-Content -LiteralPath $file -Value "task Fine { 'fine-output' }`ntask Bad { throw 'bad-step-error' }"
+            $ok = InModuleScope Portal -Parameters @{ F = $file; L = (Join-Path $TestDrive 'fine.log') } { param($F, $L) Invoke-PortalRefreshStep -Task Fine -File $F -Log $L }
+            $ok.Ok | Should -BeTrue
+            Get-Content -LiteralPath (Join-Path $TestDrive 'fine.log') -Raw | Should -Match 'fine-output'
+            $bad = InModuleScope Portal -Parameters @{ F = $file; L = (Join-Path $TestDrive 'bad.log') } { param($F, $L) Invoke-PortalRefreshStep -Task Bad -File $F -Log $L }
+            $bad.Ok | Should -BeFalse
+            $bad.Line | Should -Match '^FAILED \(exit [1-9]'
+            $bad.After | Should -Match 'bad-step-error'
+        }
+    }
+
+    Context 'The Catalogue check' {
+        It 'reads Card and Emitter rows from GET .../emitters and leaves Layer nodes out' {
+            $envelope = [pscustomobject]@{ nodes = @(
+                    [pscustomobject]@{ id = 'ui:card:cards-oci/Emitter.Git@0.1.2'; kind = 'Card'; name = 'Emitter.Git'; properties = [pscustomobject]@{ status = 'ok'; version = '0.1.2'; layers = 1; layerVersions = @('0.1.2') } }
+                    [pscustomobject]@{ id = 'ui:emitter:Emitter.Unlisted'; kind = 'Emitter'; name = 'Emitter.Unlisted'; properties = [pscustomobject]@{ status = 'no-card'; layers = 1; layerVersions = @('1.0.0') } }
+                    [pscustomobject]@{ id = 'ui:layer:emitter.git'; kind = 'Layer'; name = 'emitter.git'; properties = [pscustomobject]@{ emitter = 'Emitter.Git'; nodes = 3 } }
+                ) }
+            $rows = @(InModuleScope Portal -Parameters @{ E = $envelope } { param($E) ConvertTo-PortalCatalogueRow -Envelope $E })
+            @($rows.Name) | Should -Be @('Emitter.Git', 'Emitter.Unlisted')
+            $rows[0].Status | Should -Be 'ok'
+            $rows[0].LayerVersions | Should -Be '0.1.2'
+            $rows[1].Version | Should -Be ''
+        }
+        It 'flags a card going <Was> to <Now>: <Flagged>' -ForEach @(
+            @{ Was = 'ok'; Now = 'no-layers'; Flagged = $true }
+            @{ Was = 'ok'; Now = 'version-mismatch'; Flagged = $true }
+            @{ Was = 'ok'; Now = 'ok'; Flagged = $false }
+            @{ Was = 'no-layers'; Now = 'no-layers'; Flagged = $false }
+            @{ Was = 'version-mismatch'; Now = 'version-mismatch'; Flagged = $false }
+            @{ Was = '(new)'; Now = 'no-layers'; Flagged = $false }
+        ) {
+            $prev = if ($Was -ne '(new)') { @([pscustomobject]@{ Name = 'Emitter.A'; Status = $Was }) } else { @() }
+            $cur = @([pscustomobject]@{ Name = 'Emitter.A'; Status = $Now })
+            $r = @(InModuleScope Portal -Parameters @{ P = $prev; C = $cur } { param($P, $C) Compare-PortalCatalogue -Previous $P -Current $C })
+            if ($Flagged) { $r.Count | Should -Be 1; $r[0].Name | Should -Be 'Emitter.A'; $r[0].Now | Should -Be $Now }
+            else { $r | Should -BeNullOrEmpty }
+        }
     }
 }

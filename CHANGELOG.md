@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.16.2 — 2026-10-12
+
+- **`Invoke-Build Refresh`** (docs/design.md 56): everything down and back up in one declared order.
+  - The steps: Portal.Agent `Down`, Portal `Down` and `Dev`, Portal.Emitters `Mount`, Portal.Agent `Up`, one approved snap, then `GET .../emitters` printed as the Catalogue table.
+  - One line per step. Each step runs in a child pwsh, its output in `artifacts/refresh/<stamp>/<n>-<id>.log`.
+  - A repo not on disk is skipped and said so. So are the four card-only repos, which have nothing to run.
+  - `-DryRun` prints the plan and runs nothing.
+- **The order is derived and declared.** `docs/refresh/dependency-order.md` records:
+  - what each Portal repo runs, calls, imports, restarts and pushes;
+  - what each depends on;
+  - the sequence;
+  - eight conflicts, each resolved. The main one: Portal.Emitters `Mount` restarts Portal twice, so it runs before Portal.Agent pushes its live layers.
+
+  `docs/refresh/order.psd1` holds the sequence as data, and Refresh reads only that file. Before it runs anything, it checks the order against six rules (R1 to R6).
+- **The Catalogue check fails, naming the card,** when one that read `ok` in the last Refresh reads `no-layers` or `version-mismatch`. The last passing roll call is `artifacts/refresh/last.json` (gitignored), and a failing one is `failed.json`.
+- **`scripts/Refresh-Portal.ps1`** runs the same from any directory.
+- **README**: a Build subsection, "Refresh: run this after any change in any repo".
+- **Pester** 129 to 159: a `Refresh` block (tag `Refresh`), covering:
+  - the order against the doc and the repos on disk;
+  - each rule on a broken copy;
+  - the run loop over a fake workspace: order, skips, no Docker, the first failure, the dry run;
+  - the child-process runner on a scratch build file;
+  - the Catalogue rows and every regression case.
+- No API, Kind or binary change. The spec's version moves, so `internal/gen` is regenerated.
+
 ## 0.16.1 — 2026-10-12
 
 - **The tenant's action chain under its own ids** (docs/design.md 55). Action lines of `tenants/<tenant>/ledger.jsonl` carry `ledger:tenant/<tenant>/<seq>` (Graph.Node 0.4.2's tenant form of `ledger:`), and a result's `request` names that form. They no longer share strings with the agent chain's `ledger:<seq>`. A line still in the old form is read as this tenant's.
