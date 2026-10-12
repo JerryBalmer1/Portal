@@ -6,4 +6,5 @@ tenants/*/tokens.yaml
 tenants/*/connections.yaml
 tenants/*/principals.yaml
 tenants/*/ledger.jsonl
+tenants/*/ledger.jsonl.*.bak
 tenants/*/data/

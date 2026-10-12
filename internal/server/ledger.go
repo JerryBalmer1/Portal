@@ -49,16 +49,19 @@ func (s *Server) chain(source string) (*store.Chain, bool) {
 }
 
 // portalChain is ledger.jsonl as a chain, its tail read first: each line
-// is the entry ledger:<n>, n its position from 1, with the hash of its
-// bytes. One chain and one seq space (docs/design.md 50): an action
-// request's id and its result's are the ids their lines carry, which name
-// their positions; a line whose id names another seq is served at its
-// position, and written says the seq it names.
+// is the entry ledger:tenant/<tenant>/<n> (docs/design.md 55), n its
+// position from 1, with the hash of its bytes. One chain and one seq space
+// (docs/design.md 50): an action request's id and its result's are the
+// ids their lines carry, which name their positions; a line whose id names
+// another seq is served at its position, and written says the seq it
+// names. A result's request in the legacy ledger:<seq> (a Runner not yet on
+// the namespaced form) is served in this tenant's form; a migrated line's
+// legacyId is served as it is.
 func (s *Server) portalChain() *store.Chain {
 	c := &store.Chain{Source: tenant.SourcePortal}
 	for i, l := range s.t.LedgerLines() {
 		n := i + 1
-		e := store.ChainEntry{ID: tenant.LedgerID(n), Seq: n, Stamp: l.At, Prev: l.Prev, Hash: l.Hash, Unchained: l.Seq == 0,
+		e := store.ChainEntry{ID: s.t.LedgerID(n), Seq: n, Stamp: l.At, Prev: l.Prev, Hash: l.Hash, Unchained: l.Seq == 0,
 			Props: map[string]any{"by": l.Name, "feed": l.Feed, "result": l.Result, "message": l.Message}}
 		if l.Seq != 0 && l.Seq != n {
 			e.Written = l.Seq
@@ -68,7 +71,10 @@ func (s *Server) portalChain() *store.Chain {
 			e.Props = map[string]any{"event": a.Kind, "action": a.Action, "subject": a.Subject,
 				"principal": a.Principal, "by": l.Name, "status": a.Status}
 			e.Name = a.Action + " " + a.Subject
-			if w, _ := tenant.LedgerSeq(a.ID); e.Written == 0 && w != n {
+			if a.LegacyID != "" {
+				e.Props["legacyId"] = a.LegacyID
+			}
+			if _, w, _, _ := tenant.LedgerSeq(a.ID); e.Written == 0 && w != n {
 				e.Written = w
 			}
 			c.Entries = append(c.Entries, e)
@@ -79,11 +85,15 @@ func (s *Server) portalChain() *store.Chain {
 			// An action result, the Runner's: its line's own members, and
 			// its source as the line names it (writer) and as a source
 			// block on the node, the file and line it is.
-			e.Props = map[string]any{"event": r.Kind, "request": r.Request, "status": r.Status, "started": r.Started,
+			request := s.t.NormalizeID(r.Request)
+			e.Props = map[string]any{"event": r.Kind, "request": request, "status": r.Status, "started": r.Started,
 				"finished": r.Finished, "exit": *r.Exit, "output": *r.Output, "writer": r.Source}
-			e.Name = r.Status + " " + r.Request
+			if r.LegacyID != "" {
+				e.Props["legacyId"] = r.LegacyID
+			}
+			e.Name = r.Status + " " + request
 			e.Source = []graph.Source{{Tool: r.Source[0].Emitter, Path: tenant.LedgerFile, Line: n}}
-			if w, _ := tenant.LedgerSeq(r.ID); e.Written == 0 && w != n {
+			if _, w, _, _ := tenant.LedgerSeq(r.ID); e.Written == 0 && w != n {
 				e.Written = w
 			}
 			c.Entries = append(c.Entries, e)

@@ -90,6 +90,15 @@ func (p *Portal) Remount() (mounted []*Layer, failed []error) {
 }
 
 func (p *Portal) mount(m Mount, record bool) (*Layer, error) {
+	if d := p.derivedName(); d != "" && m.Name == d {
+		return nil, fmt.Errorf("%w: layer %s is Portal's own, built from the tenant's ledger (docs/design.md 55); mount under another name", ErrBadRequest, m.Name)
+	}
+	return p.mountLayer(m, record)
+}
+
+// mountLayer is mount without the derived layer's name reserved: the
+// derived layer's own mount (syncDerived) goes through here.
+func (p *Portal) mountLayer(m Mount, record bool) (*Layer, error) {
 	if !layerName.MatchString(m.Name) {
 		return nil, fmt.Errorf("%w: layer name %q must match %s", ErrBadRequest, m.Name, layerName)
 	}
@@ -217,8 +226,10 @@ func resolveLayerPath(path string) (string, error) {
 	return matches[len(matches)-1], nil
 }
 
-// Layers returns the mounted layers in mount order.
+// Layers returns the mounted layers in mount order, the derived layer
+// brought up to date first.
 func (p *Portal) Layers() []*Layer {
+	p.syncDerived()
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]*Layer(nil), p.layers...)
@@ -247,6 +258,7 @@ func (p *Portal) layerHas(name, id string) bool {
 // edges in their direction (all when from is empty), then those of `kind`
 // (all when kind is empty). Edges survive when both ends do.
 func (p *Portal) Query(name, kind, from string) (*graph.Envelope, error) {
+	p.syncDerived()
 	p.mu.Lock()
 	l := p.layer(name)
 	p.mu.Unlock()
@@ -307,6 +319,7 @@ func (p *Portal) Query(name, kind, from string) (*graph.Envelope, error) {
 
 // LayerOntologies maps each mounted layer to its ontology (nil when none).
 func (p *Portal) LayerOntologies() map[string]map[string]any {
+	p.syncDerived()
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	out := make(map[string]map[string]any, len(p.layers))

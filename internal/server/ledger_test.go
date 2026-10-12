@@ -243,14 +243,14 @@ func TestPortalLedgerChainsItsPushes(t *testing.T) {
 	h.do(t, s.URL, "GET", "/api/tenants/default/ledger/agent", "", 404)
 	h.do(t, s.URL, "GET", "/default/ledger/agent", "", 404)
 	one := served(t, h.do(t, s.URL, "GET", "/api/tenants/default/ledger/portal/2", "", 200))
-	e := props(one, "ledger:2")
-	if e["result"] != "pushed" || e["card"] != "Tool.Git" || e["version"] != "0.1.0" || e["by"] != tester || e["feed"] != "cards-oci" || e["prev"] != props(one, "ledger:1")["hash"] {
+	e := props(one, "ledger:tenant/default/2")
+	if e["result"] != "pushed" || e["card"] != "Tool.Git" || e["version"] != "0.1.0" || e["by"] != tester || e["feed"] != "cards-oci" || e["prev"] != props(one, "ledger:tenant/default/1")["hash"] {
 		t.Errorf("entry 2 %v", e)
 	}
-	if props(one, "ledger:1")["unchained"] != true || !hasEdge(one, "ledger:2|ledger:1|prev") {
+	if props(one, "ledger:tenant/default/1")["unchained"] != true || !hasEdge(one, "ledger:tenant/default/2|ledger:tenant/default/1|prev") {
 		t.Errorf("entry 1 is the unchained head, joined by prev")
 	}
-	if props(one, "ledger:1")["prev"] != nil {
+	if props(one, "ledger:tenant/default/1")["prev"] != nil {
 		t.Error("an unchained line names no prev")
 	}
 
@@ -279,7 +279,7 @@ func TestPortalLedgerChainsItsPushes(t *testing.T) {
 		t.Errorf("after one more push %v", c)
 	}
 	page := served(t, h.do(t, s.URL, "GET", "/api/tenants/default/ledger/portal?limit=2", "", 200))
-	if props(page, "ledger:5") == nil || props(page, "ledger:4") == nil || props(page, "ledger:3") != nil || num(props(page, "ui:ledger:portal")["next"]) != 4 {
+	if props(page, "ledger:tenant/default/5") == nil || props(page, "ledger:tenant/default/4") == nil || props(page, "ledger:tenant/default/3") != nil || num(props(page, "ui:ledger:portal")["next"]) != 4 {
 		t.Errorf("portal page of 2: %d nodes", len(page.Nodes))
 	}
 }

@@ -23,7 +23,8 @@ import (
 // yet. Portal never executes anything.
 //
 // One ledger, one seq space: the request and its result are entries of
-// Portal's chain under the ids their lines carry, ledger:<seq>. The
+// Portal's chain under the ids their lines carry,
+// ledger:tenant/<tenant>/<seq> (docs/design.md 55). The
 // result's request names the request's id; the join puts the other's seq
 // on each, and answered-by and answers join them where both are served.
 // Results are read from ledger.jsonl only, never from a mounted layer.

@@ -1,5 +1,5 @@
 module: Portal
-version: 0.16.0
+version: 0.16.1
 kinds:
   Container:
     description: A box on screen that holds Containers and Widgets through contains edges. The root Container is the one no contains edge points at. A Container that is-a the Menu Category is a menu entry, drawn in the top bar and not on the screen; its opens edge names what it shows.
@@ -189,6 +189,7 @@ kinds:
       - { name: prev, type: string, description: "The hash of the line before, as the line names it; absent on an unchained line." }
       - { name: unchained, type: boolean, description: "Source portal: a line written before 0.10.0, without seq and prev." }
       - { name: written, type: integer, description: "Source portal: the seq the line says, by its seq or, on an action line, its id, when it is not the line's position." }
+      - { name: legacyId, type: string, description: "Source portal, an action line migrated at 0.16.1: the id it carried before, ledger:<seq>; its id is now ledger:tenant/<tenant>/<seq> (docs/design.md 55)." }
       - { name: event, type: string, description: "The line's kind: for the agent, its layer's event (agent.start, policy.pre, ...); for the portal chain, action.request on an action request and action.result on the Runner's result (docs/design.md 50)." }
       - { name: run, type: string, description: "Source agent: the Run id it belongs to, when it belongs to a run." }
       - { name: runLayer, type: string, description: "Source agent: the mounted runs layer holding that Run; the run's link is /<tenant>/layers/<runLayer>#<id>." }
@@ -318,6 +319,18 @@ edgeKinds:
     description: answered-by reversed, an action result to the request it names.
     from: [LedgerEntry]
     to: [LedgerEntry]
+  request:
+    description: In the tenant-actions layer, an action result to the request it answers, both lines of the tenant's ledger under ledger:tenant/<tenant>/<seq> (docs/design.md 55).
+    from: [LedgerEntry]
+    to: [LedgerEntry]
+  subject:
+    description: In the tenant-actions layer, an action request to the container it asks about, env:container/<project>/<service>, a node of the environments layer when that is mounted (docs/design.md 55).
+    from: [LedgerEntry]
+    to: [environment.instance]
+  principal:
+    description: In the tenant-actions layer, an action request to the principal that asked (docs/design.md 55).
+    from: [LedgerEntry]
+    to: [Principal]
   has-alert:
     description: The Alerts list to each Alert on its page.
     from: [Alerts]

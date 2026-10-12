@@ -32,10 +32,15 @@ const (
 	// ActionsView draws the actions page: the menu's Page whose view it is
 	// (Environments/Actions), served at /<tenant>/actions.
 	ActionsView = "actions"
-	// ledgerIDPrefix is the prefix of the id every action line carries,
-	// ledger:<seq>: registered to Claude.Agent.Alerts and shared with
-	// Portal since Graph.Node 0.3.3.
+	// ledgerIDPrefix is the prefix of the id every action line carries:
+	// registered to Claude.Agent.Alerts and shared with Portal since
+	// Graph.Node 0.3.3. Since 0.16.1 an action line's id is its tenant's
+	// own chain, ledger:tenant/<tenant>/<seq> (Graph.Node 0.4.2,
+	// docs/design.md 55); ledger:<seq> is the legacy form, migrated at
+	// boot and still read.
 	ledgerIDPrefix = "ledger:"
+	// LedgerTenantPrefix starts a tenant chain's id: graph.LedgerTenantPrefix.
+	LedgerTenantPrefix = graph.LedgerTenantPrefix
 )
 
 // ActionNames are the actions a container may be asked for; ResultStatuses
@@ -48,7 +53,7 @@ var (
 // ActionRequest is one request line of ledger.jsonl, member for member the
 // contract Portal.Agent's Runner reads (kind, id, action, subject,
 // principal, requested, status), then seq and prev, which chain it as every
-// line since 0.10.0 is chained (docs/design.md 45). ID is ledger:<seq>, seq
+// line since 0.10.0 is chained (docs/design.md 45). ID is ledger:tenant/<tenant>/<seq>, seq
 // its line number.
 type ActionRequest struct {
 	Kind      string `json:"kind"`
@@ -60,12 +65,15 @@ type ActionRequest struct {
 	Status    string `json:"status"`
 	Seq       int    `json:"seq"`
 	Prev      string `json:"prev"`
+	// LegacyID is the id the line carried before the 0.16.1 migration,
+	// ledger:<seq>; absent on a line written in the namespaced form.
+	LegacyID string `json:"legacyId,omitempty"`
 }
 
 // ActionResult is one result line of ledger.jsonl, member for member the
 // contract Portal.Agent's Runner writes (kind, id, request, status,
 // started, finished, exit, output, source, seq, prev). Request is the
-// ledger:<seq> of the request it answers; Exit and Output are pointers so a
+// id of the request it answers, either form; Exit and Output are pointers so a
 // line without them is told from a zero. Portal never writes one.
 type ActionResult struct {
 	Kind     string        `json:"kind"`
@@ -79,6 +87,8 @@ type ActionResult struct {
 	Source   ResultSources `json:"source"`
 	Seq      int           `json:"seq"`
 	Prev     string        `json:"prev"`
+	// LegacyID is the id the line carried before the 0.16.1 migration.
+	LegacyID string `json:"legacyId,omitempty"`
 }
 
 // ResultSource is who wrote a result line: the emitter (Emitter.Ledger),
@@ -117,18 +127,54 @@ func (rs *ResultSources) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// LedgerID is the id of line seq of the tenant's ledger, ledger:<seq>: the
-// id an action line of seq carries, and the entry id of any line there.
-func LedgerID(seq int) string { return ledgerIDPrefix + strconv.Itoa(seq) }
+// LedgerID is the id of line seq of tenant's ledger,
+// ledger:tenant/<tenant>/<seq> (docs/design.md 55): the id an action line
+// of seq carries, and the entry id of any line there.
+func LedgerID(tenant string, seq int) string {
+	return LedgerTenantPrefix + tenant + "/" + strconv.Itoa(seq)
+}
 
-// LedgerSeq reads ledger:<seq>; false for any other id.
-func LedgerSeq(id string) (int, bool) {
+// LedgerID is the id of line seq of this tenant's ledger.
+func (t *Tenant) LedgerID(seq int) string { return LedgerID(t.Name, seq) }
+
+// LedgerRoot is the root of tenant's chain, ledger:tenant/<tenant>.
+func LedgerRoot(tenant string) string { return LedgerTenantPrefix + tenant }
+
+// LedgerSeq reads a tenant ledger id: ledger:tenant/<tenant>/<seq>, or the
+// legacy ledger:<seq> (legacy true). It returns the tenant ("" for the
+// legacy form) and seq; ok is false for any other id, a chain root
+// included.
+func LedgerSeq(id string) (tenant string, seq int, legacy, ok bool) {
 	rest, ok := strings.CutPrefix(id, ledgerIDPrefix)
-	if !ok {
-		return 0, false
+	if !ok || graph.ValidID(ledgerIDPrefix, id) != nil {
+		return "", 0, false, false
 	}
-	n, err := strconv.Atoi(rest)
-	return n, err == nil && n > 0 && strconv.Itoa(n) == rest
+	if r, ns := strings.CutPrefix(rest, "tenant/"); ns {
+		name, n, found := strings.Cut(r, "/")
+		if !found {
+			return "", 0, false, false // the chain root
+		}
+		rest = n
+		tenant = name
+	} else if strings.HasPrefix(rest, "line-") {
+		return "", 0, false, false
+	}
+	seq, err := strconv.Atoi(rest)
+	if err != nil || seq < 1 {
+		return "", 0, false, false
+	}
+	return tenant, seq, tenant == "", true
+}
+
+// NormalizeID is id in this tenant's namespaced form: a legacy ledger:<seq>
+// (a line of this tenant's ledger, as the Runner wrote it before it took
+// the namespaced form) becomes ledger:tenant/<tenant>/<seq>; any other id
+// is returned as it is.
+func (t *Tenant) NormalizeID(id string) string {
+	if _, seq, legacy, ok := LedgerSeq(id); ok && legacy {
+		return t.LedgerID(seq)
+	}
+	return id
 }
 
 // CheckAction is the request's own check: an action of ActionNames on a
@@ -178,8 +224,8 @@ func decodeAction(line []byte) (LedgerEntry, error) {
 	if err := CheckAction(a.Action, a.Subject); err != nil {
 		return LedgerEntry{}, err
 	}
-	if _, ok := LedgerSeq(a.ID); !ok {
-		return LedgerEntry{}, fmt.Errorf("id %q is not ledger:<seq>", a.ID)
+	if _, _, _, ok := LedgerSeq(a.ID); !ok {
+		return LedgerEntry{}, fmt.Errorf("id %q is not ledger:tenant/<tenant>/<seq> (or the legacy ledger:<seq>)", a.ID)
 	}
 	if a.Principal == "" || a.Requested == "" || a.Status == "" {
 		return LedgerEntry{}, errors.New("an action request names its principal, when it was requested and its status")
@@ -188,7 +234,7 @@ func decodeAction(line []byte) (LedgerEntry, error) {
 }
 
 // decodeResult reads a ledger line whose kind is action.result: every
-// member of the contract, nothing else, ids that are ledger:<seq>, a status
+// member of the contract, nothing else, ids that are LedgerSeq's, a status
 // of ResultStatuses, both times, an exit and an output (empty is an
 // output), and a source of one item. Whether a request of that id is in
 // the chain is the join's to say, not the boot's: a result naming none is
@@ -201,8 +247,8 @@ func decodeResult(line []byte) (LedgerEntry, error) {
 		return LedgerEntry{}, err
 	}
 	for _, id := range []string{r.ID, r.Request} {
-		if _, ok := LedgerSeq(id); !ok {
-			return LedgerEntry{}, fmt.Errorf("id %q is not ledger:<seq>", id)
+		if _, _, _, ok := LedgerSeq(id); !ok {
+			return LedgerEntry{}, fmt.Errorf("id %q is not ledger:tenant/<tenant>/<seq> (or the legacy ledger:<seq>)", id)
 		}
 	}
 	if !slices.Contains(ResultStatuses, r.Status) {

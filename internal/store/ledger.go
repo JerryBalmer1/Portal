@@ -12,8 +12,9 @@ import (
 // layer of LedgerEntry nodes under the ids that layer gave them
 // (ledger:<seq>), and the tenant's ledger, tenants/<tenant>/ledger.jsonl,
 // whose lines Portal and the Runner append (pushes, action requests and
-// their results, docs/design.md 50) and whose entries are ledger:<seq> by
-// position. Both are verified here the same way.
+// their results, docs/design.md 50) and whose entries are
+// ledger:tenant/<tenant>/<seq> by position (docs/design.md 55): a tenant
+// chain's id is never an agent entry's. Both are verified here the same way.
 const (
 	// LedgerKind is the Kind of an entry, in the agent's layer and as the
 	// API serves both chains.
@@ -149,15 +150,7 @@ func (c *Chain) Last() int {
 // chain's own verify is the layer root's valid and break. False when no
 // such layer is mounted.
 func (p *Portal) AgentLedger() (*Chain, bool) {
-	var from *Layer
-	for _, l := range p.Layers() {
-		if !holdsLedger(l.Env) {
-			continue
-		}
-		if from == nil || l.Env.Layer >= from.Env.Layer {
-			from = l
-		}
-	}
+	from := AgentLedgerLayer(p.Layers())
 	if from == nil {
 		return nil, false
 	}
@@ -170,7 +163,7 @@ func (p *Portal) AgentLedger() (*Chain, bool) {
 	}
 	c := &Chain{Source: "agent", Layer: from.Name, Stamp: env.Layer}
 	for _, n := range env.Nodes {
-		if n.Kind != LedgerKind || !strings.HasPrefix(n.ID, AgentLedgerPrefix) {
+		if !isAgentEntry(n) {
 			continue
 		}
 		seq, ok := intProp(n.Properties["seq"])
@@ -202,16 +195,37 @@ func (p *Portal) AgentLedger() (*Chain, bool) {
 // holdsLedger is whether a layer holds the agent's ledger: a LedgerEntry
 // node under a ledger: id, in a layer that is not an alert layer, whose
 // entries are copies of the ones its alerts are about (docs/design.md 47).
+// AgentLedgerLayer is the layer of layers the agent's chain is read from:
+// of those holding agent entries, the newest by layer stamp, the later in
+// mount order on a tie; nil when none does.
+func AgentLedgerLayer(layers []*Layer) *Layer {
+	var from *Layer
+	for _, l := range layers {
+		if holdsLedger(l.Env) && (from == nil || l.Env.Layer >= from.Env.Layer) {
+			from = l
+		}
+	}
+	return from
+}
+
 func holdsLedger(env *graph.Envelope) bool {
 	if IsAlertLayer(env) {
 		return false
 	}
 	for _, n := range env.Nodes {
-		if n.Kind == LedgerKind && strings.HasPrefix(n.ID, AgentLedgerPrefix) {
+		if isAgentEntry(n) {
 			return true
 		}
 	}
 	return false
+}
+
+// isAgentEntry reports whether n is an entry of the agent's chain: a
+// LedgerEntry under ledger:, not under a tenant chain's
+// ledger:tenant/<tenant> (Graph.Node 0.4.2, docs/design.md 55), which
+// ValidID now also takes.
+func isAgentEntry(n graph.Node) bool {
+	return n.Kind == LedgerKind && strings.HasPrefix(n.ID, AgentLedgerPrefix) && !strings.HasPrefix(n.ID, graph.LedgerTenantPrefix)
 }
 
 func intProp(v any) (int, bool) {

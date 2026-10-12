@@ -23,7 +23,7 @@ BeforeAll {
     [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 
     # The Graph.Node version the lift and the graph-node skill are pinned to (docs/design.md 4, 40).
-    $script:GraphNodeTag = 'v0.4.0'
+    $script:GraphNodeTag = 'v0.4.2'
     # Edits the lift carries, file => (upstream text, Portal's text). Up to v0.2.1 the ui: row of the id prefix
     # registry was one (docs/design.md 4, 31); since v0.2.3 Graph.Node registers ui: to Portal itself, so the lift is
     # upstream's but for the import path (docs/design.md 34). A new edit goes here and in design.md.
@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.16.0 and needs PowerShell 7.4' {
+    It 'is version 0.16.1 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.16.0'
+        $m.ModuleVersion | Should -Be '0.16.1'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,12 +302,12 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.16.0, the twenty-two Kinds, the twenty-three edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.16.1, the twenty-two Kinds, the twenty-six edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.16\.0$'
+        $text | Should -Match '(?m)^version: 0\.16\.1$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry', 'Alerts', 'Alert', 'Actions') { $text | Should -Match "(?m)^  ${k}:" }
-        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in', 'has-alert', 'about', 'raised-in', 'has-action', 'answered-by', 'answers') { $text | Should -Match "(?m)^  ${e}:" }
+        foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in', 'has-alert', 'about', 'raised-in', 'has-action', 'answered-by', 'answers', 'request', 'subject', 'principal') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
     }
     It 'the FileSystem fixture passes graphnode validate and has its ontology beside it' {
@@ -457,7 +457,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.16.0'
+        $s.version | Should -Be '0.16.1'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -2124,11 +2124,11 @@ Describe 'Actions' -Tag 'Actions' {
         $r = Send-Ask @{ action = 'logs'; subject = 'env:container/claude-agent-dev/agent' }
         $r.Status | Should -Be 201
         "$($r.Body.kind) $($r.Body.id) $($r.Body.action) $($r.Body.subject) $($r.Body.principal) $($r.Body.status) $($r.Body.seq)" |
-            Should -Be 'action.request ledger:6 logs env:container/claude-agent-dev/agent ui:principal:root requested 6'
+            Should -Be 'action.request ledger:tenant/default/6 logs env:container/claude-agent-dev/agent ui:principal:root requested 6'
         # The line as written is the line returned, in the contract's member order, chained to line 5, the Runner's.
         $lines = @(Get-Content -LiteralPath (Join-Path $AcTd 'ledger.jsonl'))
         $lines.Count | Should -Be 6
-        $lines[5] | Should -Match '^\{"kind":"action\.request","id":"ledger:6","action":"logs","subject":"env:container/claude-agent-dev/agent","principal":"ui:principal:root","requested":"[^"]+","status":"requested","seq":6,"prev":"[0-9a-f]{64}"\}$'
+        $lines[5] | Should -Match '^\{"kind":"action\.request","id":"ledger:tenant/default/6","action":"logs","subject":"env:container/claude-agent-dev/agent","principal":"ui:principal:root","requested":"[^"]+","status":"requested","seq":6,"prev":"[0-9a-f]{64}"\}$'
         $sha = [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($lines[4]))
         $r.Body.prev | Should -Be ([Convert]::ToHexString($sha).ToLowerInvariant())
         $c = (Invoke-RestMethod "$AcUrl/api/tenants/default/ledger").nodes | Where-Object id -EQ 'ui:ledger:portal'
@@ -2139,38 +2139,55 @@ Describe 'Actions' -Tag 'Actions' {
         $api = Invoke-RestMethod "$AcUrl/api/tenants/default/actions"
         $root = $api.nodes | Where-Object id -EQ 'ui:actions'
         "$($root.properties.count) $($root.properties.requested) $($root.properties.done) $($root.properties.failed)" | Should -Be '4 2 1 1'
-        @($api.edges | Where-Object kind -EQ 'has-action' | ForEach-Object to) | Should -Be @('ledger:6', 'ledger:3', 'ledger:2', 'ledger:1')
+        @($api.edges | Where-Object kind -EQ 'has-action' | ForEach-Object to) | Should -Be @('ledger:tenant/default/6', 'ledger:tenant/default/3', 'ledger:tenant/default/2', 'ledger:tenant/default/1')
         @($api.nodes | Where-Object { $_.properties.PSObject.Properties['event']?.Value -eq 'action.request' } | ForEach-Object { "$($_.properties.seq) $($_.properties.outcome) $($_.properties.PSObject.Properties['resultId']?.Value)" }) |
-            Should -Be @('6 requested ', '3 requested ', '2 failed ledger:5', '1 done ledger:4')
-        $res = $api.nodes | Where-Object id -EQ 'ledger:5'
+            Should -Be @('6 requested ', '3 requested ', '2 failed ledger:tenant/default/5', '1 done ledger:tenant/default/4')
+        $res = $api.nodes | Where-Object id -EQ 'ledger:tenant/default/5'
         "$($res.properties.source) $($res.properties.request) $($res.properties.status) $($res.properties.exit) $($res.properties.writer[0].emitter) $($res.source[0].tool) $($res.source[0].path):$($res.source[0].line)" |
-            Should -Be 'portal ledger:2 failed 1 Emitter.Ledger Emitter.Ledger ledger.jsonl:5'
+            Should -Be 'portal ledger:tenant/default/2 failed 1 Emitter.Ledger Emitter.Ledger ledger.jsonl:5'
         @($api.edges | Where-Object kind -In 'answered-by', 'answers' | ForEach-Object id | Sort-Object) |
-            Should -Be @('ledger:1|ledger:4|answered-by', 'ledger:2|ledger:5|answered-by', 'ledger:4|ledger:1|answers', 'ledger:5|ledger:2|answers')
-        (Invoke-RestMethod "$AcUrl/api/tenants/default/actions/2").root | Should -Be 'ledger:2'
+            Should -Be @('ledger:tenant/default/1|ledger:tenant/default/4|answered-by', 'ledger:tenant/default/2|ledger:tenant/default/5|answered-by', 'ledger:tenant/default/4|ledger:tenant/default/1|answers', 'ledger:tenant/default/5|ledger:tenant/default/2|answers')
+        (Invoke-RestMethod "$AcUrl/api/tenants/default/actions/2").root | Should -Be 'ledger:tenant/default/2'
         foreach ($n in 4, 9) { [int](Invoke-WebRequest "$AcUrl/api/tenants/default/actions/$n" -SkipHttpErrorCheck).StatusCode | Should -Be 404 }
     }
 
-    It 'Environments/Actions at /default/actions lists them newest first, each status in its colour and every id a link; a row opens its ledger entry' {
+    It 'Environments/Actions at /default/actions lists them newest first, each status in its colour, every id a link and the request''s id last; a row opens Explore from it' {
         $dom = Get-PageDom $AcUrl '/default/actions'
         if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
         $dom | Should -Match 'href="/default/actions" class="pt-page" data-page="ui:rail:environments:actions" aria-current="page">Actions</a>'
         $dom | Should -Match '<span class="pt-count">4 actions · 2 requested · 1 done · 1 failed</span>'
-        $dom | Should -Match '<th>action</th><th>subject</th><th>principal</th><th>requested</th><th>status</th><th>result</th>'
-        @([regex]::Matches($dom, '<tr data-seq="(\d+)" data-outcome="(\w+)"') | ForEach-Object { "$($_.Groups[1].Value) $($_.Groups[2].Value)" }) |
-            Should -Be @('6 requested', '3 requested', '2 failed', '1 done')
+        $dom | Should -Match '<th>action</th><th>subject</th><th>principal</th><th>requested</th><th>status</th><th>result</th><th>id</th>'
+        @([regex]::Matches($dom, '<tr data-seq="(\d+)" data-id="([^"]+)" data-outcome="(\w+)"') | ForEach-Object { "$($_.Groups[1].Value) $($_.Groups[2].Value) $($_.Groups[3].Value)" }) |
+            Should -Be @('6 ledger:tenant/default/6 requested', '3 ledger:tenant/default/3 requested', '2 ledger:tenant/default/2 failed', '1 ledger:tenant/default/1 done')
+        # docs/design.md 55: each row's query is Explore from its request, out, five hops.
+        $dom | Should -Match '<tr data-seq="2" data-id="ledger:tenant/default/2" data-outcome="failed" class="pt-action-row" data-explore="/default/graph/explore\?from=ledger%3Atenant%2Fdefault%2F2&amp;direction=out&amp;depth=5"'
         $dom | Should -Match ('<td><a href="/default/ledger/portal/2">restart</a></td><td><a href="/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fmitm">env:container/claude-agent-dev/mitm</a></td>' +
             '<td><a href="/default/identity/users#ui%3Aprincipal%3Aroot">root</a></td><td>2026-10-09T02:50:57.000Z</td><td><span class="pt-outcome" data-outcome="failed">failed</span></td>' +
-            '<td><a href="/default/ledger/portal/5">ledger:5</a></td></tr>')
-        $dom | Should -Match '<td><span class="pt-outcome" data-outcome="requested">requested</span></td><td></td></tr>'
+            '<td><a href="/default/ledger/portal/5">ledger:tenant/default/5</a></td><td class="pt-hash">ledger:tenant/default/2</td></tr>')
+        $dom | Should -Match '<td><span class="pt-outcome" data-outcome="requested">requested</span></td><td></td><td class="pt-hash">ledger:tenant/default/6</td></tr>'
         $css = Get-Content -LiteralPath (Join-Path $Repo 'web' 'base.css') -Raw
         $css | Should -Match '\.pt-outcome\[data-outcome="done"\] \{ color: var\(--gr-ok\); \}'
         $css | Should -Match '\.pt-outcome\[data-outcome="failed"\] \{ color: var\(--gr-bad\); \}'
-        # A click on the row (not a link) opens the request's entry; the principal's link marks its row on Users.
+        # A click on the row (not a link) opens Explore querying from the request out to depth 5 in the tenant-actions
+        # layer: the result, the lines before it, its subject and its principal (docs/design.md 55); the principal's link
+        # marks its row on Users.
         $r = Invoke-PageScript $AcUrl '/default/actions' '' ("(async () => { $AcWait " +
             'const row = await wait(() => document.querySelector("tr[data-seq=\"1\"]")); row.cells[3].click(); ' +
-            'await wait(() => document.querySelector("[data-field=\"answered by\"]")); return location.pathname; })()')
-        $r | Should -Be '/default/ledger/portal/1'
+            'const s = await wait(() => document.querySelector("#query-stats[data-nodes]")); ' +
+            'const f = document.querySelector("form[data-form=query]"); ' +
+            'return JSON.stringify({ at: location.pathname + location.search, fields: [...f.elements].filter((x) => x.name).map((x) => `${x.name}=${x.value}`) }); })()')
+        if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
+        $o = $r | ConvertFrom-Json
+        $o.at | Should -Be '/default/graph/explore?from=ledger%3Atenant%2Fdefault%2F1&direction=out&depth=5'
+        $o.fields | Should -Contain 'from=ledger:tenant/default/1'
+        $o.fields | Should -Contain 'direction=out'
+        $o.fields | Should -Contain 'depth=5'
+        # The same query from the API: request 1 reaches its subject, its principal and the line before it; its result,
+        # line 4, points at it, so out does not reach it.
+        $q = Invoke-RestMethod "$AcUrl/api/tenants/default/query?from=ledger%3Atenant%2Fdefault%2F1&direction=out&depth=5"
+        @($q.nodes.id) | Should -Contain 'env:container/claude-agent-dev/agent'
+        @($q.nodes.id) | Should -Contain 'ui:principal:root'
+        @($q.edges.id) | Should -Contain 'ledger:tenant/default/1|ui:principal:root|principal'
         (Get-PageDom $AcUrl '/default/identity/users#ui%3Aprincipal%3Aroot') | Should -Match '<tr data-principal="ui:principal:root" class="pt-target" aria-current="true">'
     }
 
@@ -2180,21 +2197,21 @@ Describe 'Actions' -Tag 'Actions' {
         $dom | Should -Match '<dd data-field="action">logs</dd>'
         $dom | Should -Match '<dd data-field="subject"><a href="/default/environments/graph#env%3Acontainer%2Fclaude-agent-dev%2Fagent">env:container/claude-agent-dev/agent</a></dd>'
         $dom | Should -Match '<dd data-field="outcome"><span class="pt-outcome" data-outcome="done">done</span></dd>'
-        $dom | Should -Match '<dd data-field="answered by"><a href="/default/ledger/portal/4">ledger:4</a></dd>'
+        $dom | Should -Match '<dd data-field="answered by"><a href="/default/ledger/portal/4">ledger:tenant/default/4</a></dd>'
         $dom | Should -Match '<dd data-field="principal"><a href="/default/identity/users#ui%3Aprincipal%3Aroot">ui:principal:root</a></dd>'
         $dom = Get-PageDom $AcUrl '/default/ledger/portal/5'
-        $dom | Should -Match '<dd data-field="answers"><a href="/default/ledger/portal/2">ledger:2</a></dd>'
+        $dom | Should -Match '<dd data-field="answers"><a href="/default/ledger/portal/2">ledger:tenant/default/2</a></dd>'
         $dom | Should -Match '<dd data-field="status"><span class="pt-outcome" data-outcome="failed">failed</span></dd>'
         $dom | Should -Match '<dd data-field="exit">1</dd>'
         $dom | Should -Match '<dd data-field="output"><pre class="pt-output">Error response from daemon: container claude-agent-dev-mitm-1 is marked for removal and cannot be started\s*</pre></dd>'
         $dom | Should -Match '<dd data-field="written by">Emitter\.Ledger 0\.4\.0 · for default · 2026-10-09T02:50:59\.400Z</dd>'
         $dom | Should -Match '<dd data-field="line">ledger\.jsonl:5</dd>'
         $dom = Get-PageDom $AcUrl '/default/ledger/portal/3'
-        $dom | Should -Match '<dd data-field="answered by">nothing yet: no later action\.result in the tenant''s ledger names ledger:3</dd>'
+        $dom | Should -Match '<dd data-field="answered by">nothing yet: no later action\.result in the tenant''s ledger names ledger:tenant/default/3</dd>'
         # The portal chain's list says what each request asked and what each result answers.
         $dom = Get-PageDom $AcUrl '/default/ledger/portal'
         $dom | Should -Match '<tr data-seq="2" data-event="action.request"><td><a href="/default/ledger/portal/2">2</a></td><td>2026-10-09T02:50:57.000Z</td><td>restart · failed</td><td>env:container/claude-agent-dev/mitm</td><td>root</td>'
-        $dom | Should -Match '<tr data-seq="5" data-event="action.result"><td><a href="/default/ledger/portal/5">5</a></td><td>2026-10-09T02:50:59.400Z</td><td>failed · answers ledger:2</td><td></td><td>Emitter.Ledger</td>'
+        $dom | Should -Match '<tr data-seq="5" data-event="action.result"><td><a href="/default/ledger/portal/5">5</a></td><td>2026-10-09T02:50:59.400Z</td><td>failed · answers ledger:tenant/default/2</td><td></td><td>Emitter.Ledger</td>'
     }
 
     It 'right-click offers Logs, Stop and Restart on a container only; Logs asks at once, Stop and Restart ask first, and the notice links the new line' {
@@ -2219,14 +2236,14 @@ Describe 'Actions' -Tag 'Actions' {
         if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
         $o = $r | ConvertFrom-Json
         $o.container | Should -Be @('Details|A|', 'Show graph|A|', 'Runs|A|true', 'Ledger|A|true', 'Query from here|A|', 'Logs|BUTTON|', 'Stop|BUTTON|', 'Restart|BUTTON|')
-        "$($o.sep) $($o.last) $($o.dialog) $($o.asked) $($o.link)" | Should -Be 'True Restart False ledger:7 /default/ledger/portal/7'
+        "$($o.sep) $($o.last) $($o.dialog) $($o.asked) $($o.link)" | Should -Be 'True Restart False ledger:tenant/default/7 /default/ledger/portal/7'
         $o.compose | Should -Be @('Details|A|', 'Show graph|A|', 'Runs|A|true', 'Ledger|A|true', 'Query from here|A|')
         $o.image | Should -Be @('Details|A|', 'Show graph|A|', 'Runs|A|true', 'Ledger|A|true', 'Query from here|A|')
-        "$($o.question) / $($o.focus) / $($o.cancelled) / $($o.second) / $($o.at)" | Should -Be 'Restart mitm (mitmproxy/mitmproxy:12.2.3)? / cancel / 1 / ledger:8 / /default/ledger/portal/8'
+        "$($o.question) / $($o.focus) / $($o.cancelled) / $($o.second) / $($o.at)" | Should -Be 'Restart mitm (mitmproxy/mitmproxy:12.2.3)? / cancel / 1 / ledger:tenant/default/8 / /default/ledger/portal/8'
         # Cancel wrote nothing: line 7 is the logs, line 8 the stop, both as root.
         $lines = @(Get-Content -LiteralPath (Join-Path $AcTd 'ledger.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
         @($lines | Select-Object -Skip 6 | ForEach-Object { "$($_.id) $($_.action) $($_.subject) $($_.principal)" }) |
-            Should -Be @('ledger:7 logs env:container/claude-agent-dev/agent ui:principal:root', 'ledger:8 stop env:container/claude-agent-dev/mitm ui:principal:root')
+            Should -Be @('ledger:tenant/default/7 logs env:container/claude-agent-dev/agent ui:principal:root', 'ledger:tenant/default/8 stop env:container/claude-agent-dev/mitm ui:principal:root')
     }
 
     It 'anonymous sees the three actions greyed with why, on the graph and on an Instances row' {
@@ -2251,12 +2268,12 @@ Describe 'Actions' -Tag 'Actions' {
         $result = '{"kind":"action.result","id":"ledger:' + $n + '","request":"ledger:7","status":"done","started":"2026-10-11T22:00:00.000Z","finished":"2026-10-11T22:00:01.000Z","exit":0,"output":"agent: stopped\n","source":{"emitter":"Emitter.Ledger","version":"0.4.0","target":"default","stamp":"2026-10-11T22:00:01.000Z"},"seq":' + $n + ',"prev":"' + (& $hash $lines[-1]) + '"}'
         [IO.File]::AppendAllText($file, $result + "`n", [Text.UTF8Encoding]::new($false))
         $api = Invoke-RestMethod "$AcUrl/api/tenants/default/actions"
-        $q = $api.nodes | Where-Object id -EQ 'ledger:7'
-        "$($q.properties.outcome) $($q.properties.resultId)" | Should -Be "done ledger:$n"
+        $q = $api.nodes | Where-Object id -EQ 'ledger:tenant/default/7'
+        "$($q.properties.outcome) $($q.properties.resultId)" | Should -Be "done ledger:tenant/default/$n"
         $root = $api.nodes | Where-Object id -EQ 'ui:actions'
         "$($root.properties.count) $($root.properties.requested) $($root.properties.done) $($root.properties.failed)" | Should -Be '6 3 2 1'
         $r = Send-Ask @{ action = 'restart'; subject = 'env:container/claude-agent-dev/mitm' }
-        "$($r.Status) $($r.Body.id) $($r.Body.prev)" | Should -Be "201 ledger:$($n + 1) $(& $hash $result)"
+        "$($r.Status) $($r.Body.id) $($r.Body.prev)" | Should -Be "201 ledger:tenant/default/$($n + 1) $(& $hash $result)"
         $c = (Invoke-RestMethod "$AcUrl/api/tenants/default/ledger").nodes | Where-Object id -EQ 'ui:ledger:portal'
         "$($c.properties.count) $($c.properties.valid)" | Should -Be "$($n + 1) True"
     }

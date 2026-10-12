@@ -92,6 +92,9 @@ func main() {
 		log.Fatalf("portal: %v", err)
 	}
 	fmt.Printf("tenant %s from %s, mode %s (%d menu nodes, %d principals, %d tokens, %d connections)\n", t.Name, *tenants, t.Mode(), len(t.Menu.Nodes), len(t.Principals()), t.Tokens(), len(t.Connections))
+	if m := t.Migrated; m.Lines > 0 {
+		fmt.Printf("ledger: %d lines rewritten to ledger:tenant/%s/<seq> ids (docs/design.md 55); the file as it was is %s\n", m.Lines, t.Name, m.Backup)
+	}
 	devToken := ""
 	switch {
 	case t.Mode() == tenant.ModeDev:

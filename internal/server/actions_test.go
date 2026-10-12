@@ -77,14 +77,14 @@ func TestPostActionValidatesAndTakesThePrincipalFromTheToken(t *testing.T) {
 	if err := json.Unmarshal(h.doAs(t, contribToken, s.URL, "POST", actionsPath, good, 201), &a); err != nil {
 		t.Fatal(err)
 	}
-	if a.Kind != "action.request" || a.ID != "ledger:1" || a.Action != "logs" || a.Subject != agentBox || a.Principal != "ui:principal:contrib" ||
+	if a.Kind != "action.request" || a.ID != "ledger:tenant/default/1" || a.Action != "logs" || a.Subject != agentBox || a.Principal != "ui:principal:contrib" ||
 		a.Status != "requested" || a.Seq != 1 || a.Prev != store.ZeroHash || a.Requested == "" {
 		t.Errorf("first ask %+v", a)
 	}
 	if err := json.Unmarshal(h.do(t, s.URL, "POST", actionsPath, ask("restart", "env:container/claude-agent-dev/mitm"), 201), &b); err != nil {
 		t.Fatal(err)
 	}
-	if b.ID != "ledger:2" || b.Principal != "ui:principal:"+tester || b.Seq != 2 {
+	if b.ID != "ledger:tenant/default/2" || b.Principal != "ui:principal:"+tester || b.Seq != 2 {
 		t.Errorf("second ask %+v", b)
 	}
 	// The file holds the lines as returned, member for member in the
@@ -94,7 +94,7 @@ func TestPostActionValidatesAndTakesThePrincipalFromTheToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
-	if len(lines) != 2 || !strings.HasPrefix(lines[0], `{"kind":"action.request","id":"ledger:1","action":"logs","subject":"`+agentBox+`","principal":"ui:principal:contrib","requested":"`) ||
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], `{"kind":"action.request","id":"ledger:tenant/default/1","action":"logs","subject":"`+agentBox+`","principal":"ui:principal:contrib","requested":"`) ||
 		!strings.HasSuffix(lines[0], `","status":"requested","seq":1,"prev":"`+store.ZeroHash+`"}`) {
 		t.Fatalf("ledger.jsonl %q", lines)
 	}
@@ -111,7 +111,7 @@ func TestPostActionValidatesAndTakesThePrincipalFromTheToken(t *testing.T) {
 	if num(r["count"]) != 2 || num(r["requested"]) != 2 || num(r["done"]) != 0 || num(r["failed"]) != 0 {
 		t.Errorf("actions root %v", r)
 	}
-	if q := props(env, "ledger:1"); q["principal"] != "ui:principal:contrib" || q["by"] != "contrib" || q["outcome"] != "requested" || q["lineId"] != nil || q["resultId"] != nil {
+	if q := props(env, "ledger:tenant/default/1"); q["principal"] != "ui:principal:contrib" || q["by"] != "contrib" || q["outcome"] != "requested" || q["lineId"] != nil || q["resultId"] != nil {
 		t.Errorf("request 1 %v", q)
 	}
 }
@@ -142,13 +142,13 @@ func TestActionsJoinTheirResults(t *testing.T) {
 			order = append(order, e.To)
 		}
 	}
-	if strings.Join(order, ",") != "ledger:3,ledger:2,ledger:1" {
+	if strings.Join(order, ",") != "ledger:tenant/default/3,ledger:tenant/default/2,ledger:tenant/default/1" {
 		t.Errorf("requests %v, want newest first", order)
 	}
 	want := map[string][3]any{ // outcome, resultId, resultSeq
-		"ledger:1": {"done", "ledger:4", 4},
-		"ledger:2": {"failed", "ledger:5", 5},
-		"ledger:3": {"requested", nil, -1},
+		"ledger:tenant/default/1": {"done", "ledger:tenant/default/4", 4},
+		"ledger:tenant/default/2": {"failed", "ledger:tenant/default/5", 5},
+		"ledger:tenant/default/3": {"requested", nil, -1},
 	}
 	for id, w := range want {
 		q := props(env, id)
@@ -157,19 +157,19 @@ func TestActionsJoinTheirResults(t *testing.T) {
 			t.Errorf("%s %v, want %v", id, q, w)
 		}
 	}
-	res := props(env, "ledger:5")
-	if res["event"] != "action.result" || res["request"] != "ledger:2" || num(res["requestSeq"]) != 2 || res["status"] != "failed" || num(res["exit"]) != 1 ||
+	res := props(env, "ledger:tenant/default/5")
+	if res["event"] != "action.result" || res["request"] != "ledger:tenant/default/2" || num(res["requestSeq"]) != 2 || res["status"] != "failed" || num(res["exit"]) != 1 ||
 		!strings.HasPrefix(res["output"].(string), "Error response from daemon") || res["source"] != "portal" || res["started"] == nil || res["finished"] == nil {
 		t.Errorf("result 5 %v", res)
 	}
 	if w, _ := res["writer"].([]any); len(w) != 1 || w[0].(map[string]any)["emitter"] != "Emitter.Ledger" || w[0].(map[string]any)["target"] != "default" {
 		t.Errorf("result 5's writer %v, want the line's source, one item", res["writer"])
 	}
-	i := env.NodeIndex()["ledger:4"]
+	i := env.NodeIndex()["ledger:tenant/default/4"]
 	if src := env.Nodes[i].Source; len(src) != 1 || src[0].Tool != "Emitter.Ledger" || src[0].Path != tenant.LedgerFile || src[0].Line != 4 {
 		t.Errorf("result 4's source block %+v", src)
 	}
-	for _, e := range []string{"ledger:1|ledger:4|answered-by", "ledger:4|ledger:1|answers", "ledger:2|ledger:5|answered-by", "ledger:5|ledger:2|answers"} {
+	for _, e := range []string{"ledger:tenant/default/1|ledger:tenant/default/4|answered-by", "ledger:tenant/default/4|ledger:tenant/default/1|answers", "ledger:tenant/default/2|ledger:tenant/default/5|answered-by", "ledger:tenant/default/5|ledger:tenant/default/2|answers"} {
 		if !hasEdge(env, e) {
 			t.Errorf("no edge %s", e)
 		}
@@ -181,11 +181,11 @@ func TestActionsJoinTheirResults(t *testing.T) {
 	// One request, with its result; the gap alone; no request at line 4
 	// (a result) or 9 (none).
 	one := served(t, h.do(t, base, "GET", actionsPath+"/2", "", 200))
-	if one.Root != "ledger:2" || props(one, "ledger:5") == nil || !hasEdge(one, "ledger:2|ledger:5|answered-by") || len(one.Nodes) != 2 {
+	if one.Root != "ledger:tenant/default/2" || props(one, "ledger:tenant/default/5") == nil || !hasEdge(one, "ledger:tenant/default/2|ledger:tenant/default/5|answered-by") || len(one.Nodes) != 2 {
 		t.Errorf("action 2: root %s, %d nodes", one.Root, len(one.Nodes))
 	}
 	gap := served(t, h.do(t, base, "GET", actionsPath+"/3", "", 200))
-	if len(gap.Nodes) != 1 || props(gap, "ledger:3")["outcome"] != "requested" {
+	if len(gap.Nodes) != 1 || props(gap, "ledger:tenant/default/3")["outcome"] != "requested" {
 		t.Errorf("action 3: %d nodes", len(gap.Nodes))
 	}
 	h.do(t, base, "GET", actionsPath+"/4", "", 404)
@@ -193,23 +193,23 @@ func TestActionsJoinTheirResults(t *testing.T) {
 
 	// The entry pages link both ways, in the one chain.
 	e := served(t, h.do(t, base, "GET", "/api/tenants/default/ledger/portal/1", "", 200))
-	if props(e, "ledger:4") == nil || !hasEdge(e, "ledger:1|ledger:4|answered-by") || props(e, "ledger:1")["resultId"] != "ledger:4" {
+	if props(e, "ledger:tenant/default/4") == nil || !hasEdge(e, "ledger:tenant/default/1|ledger:tenant/default/4|answered-by") || props(e, "ledger:tenant/default/1")["resultId"] != "ledger:tenant/default/4" {
 		t.Error("request 1's entry page lacks its result")
 	}
 	e = served(t, h.do(t, base, "GET", "/api/tenants/default/ledger/portal/5", "", 200))
-	if props(e, "ledger:2") == nil || !hasEdge(e, "ledger:5|ledger:2|answers") || num(props(e, "ledger:5")["requestSeq"]) != 2 || !hasEdge(e, "ledger:5|ledger:4|prev") {
+	if props(e, "ledger:tenant/default/2") == nil || !hasEdge(e, "ledger:tenant/default/5|ledger:tenant/default/2|answers") || num(props(e, "ledger:tenant/default/5")["requestSeq"]) != 2 || !hasEdge(e, "ledger:tenant/default/5|ledger:tenant/default/4|prev") {
 		t.Error("result 5's entry page lacks its request or the entry before it")
 	}
 	// A result whose request is not the line before it brings it; the
 	// line before is served once either way.
 	e = served(t, h.do(t, base, "GET", "/api/tenants/default/ledger/portal/4", "", 200))
-	if len(e.Nodes) != 4 || !hasEdge(e, "ledger:4|ledger:1|answers") || !hasEdge(e, "ledger:4|ledger:3|prev") {
+	if len(e.Nodes) != 4 || !hasEdge(e, "ledger:tenant/default/4|ledger:tenant/default/1|answers") || !hasEdge(e, "ledger:tenant/default/4|ledger:tenant/default/3|prev") {
 		t.Errorf("result 4's entry page: %d nodes, want the chain, 4, 3 and its request 1", len(e.Nodes))
 	}
 	// The chain's own pages carry the join too.
 	page := served(t, h.do(t, base, "GET", "/api/tenants/default/ledger/portal", "", 200))
-	if props(page, "ledger:2")["outcome"] != "failed" || num(props(page, "ledger:4")["requestSeq"]) != 1 {
-		t.Errorf("portal chain's request 2 %v", props(page, "ledger:2"))
+	if props(page, "ledger:tenant/default/2")["outcome"] != "failed" || num(props(page, "ledger:tenant/default/4")["requestSeq"]) != 1 {
+		t.Errorf("portal chain's request 2 %v", props(page, "ledger:tenant/default/2"))
 	}
 	c := props(served(t, h.do(t, base, "GET", "/api/tenants/default/ledger", "", 200)), "ui:ledger:portal")
 	if c["valid"] != true || num(c["count"]) != 5 || num(c["unchained"]) != 0 {
@@ -224,7 +224,7 @@ func TestActionResultsAreReadFromTheTenantLedgerOnly(t *testing.T) {
 	h := newHarness(t)
 	fp := strings.Repeat("e", 64)
 	result := map[string]any{"id": "ledger:58", "kind": "LedgerEntry", "name": "58 action.result", "properties": map[string]any{
-		"seq": 58, "stamp": "2026-10-09T02:51:30Z", "event": "action.result", "kind": "action.result", "request": "ledger:3", "status": "done", "exit": 0, "output": "stopped"}}
+		"seq": 58, "stamp": "2026-10-09T02:51:30Z", "event": "action.result", "kind": "action.result", "request": "ledger:tenant/default/3", "status": "done", "exit": 0, "output": "stopped"}}
 	copyOf := alertLayer(t, "copies", "2026-10-09T02:52:00Z", []map[string]any{
 		alertNodeOf(alertID(fp), "info", "action-seen", "An action result.", "2026-10-09T02:52:00Z", "open", fp), result,
 	}, [][3]string{{alertID(fp), "ledger:58", "about"}})
@@ -235,7 +235,7 @@ func TestActionResultsAreReadFromTheTenantLedgerOnly(t *testing.T) {
 	h.do(t, base, "POST", "/api/tenants/default/layers", string(old), 201)
 	h.do(t, base, "POST", "/api/tenants/default/layers", copyOf, 201)
 	env := served(t, h.do(t, base, "GET", actionsPath, "", 200))
-	if q := props(env, "ledger:3"); q["outcome"] != "requested" || q["resultId"] != nil || q["source"] != "portal" {
+	if q := props(env, "ledger:tenant/default/3"); q["outcome"] != "requested" || q["resultId"] != nil || q["source"] != "portal" {
 		t.Errorf("request 3 %v: a layer answered it", q)
 	}
 	if r := props(env, ActionsID); num(r["requested"]) != 1 || len(env.Nodes) != 6 {
@@ -248,7 +248,7 @@ func TestActionResultsAreReadFromTheTenantLedgerOnly(t *testing.T) {
 	s := reloadTenant(t, p, dir)
 	h.do(t, s.URL, "POST", actionsPath, ask("stop", agentBox), 201)
 	env = served(t, h.do(t, s.URL, "GET", actionsPath, "", 200))
-	if q := props(env, "ledger:2"); q["outcome"] != "requested" || num(props(env, ActionsID)["count"]) != 1 {
+	if q := props(env, "ledger:tenant/default/2"); q["outcome"] != "requested" || num(props(env, ActionsID)["count"]) != 1 {
 		t.Errorf("request 2 %v: answered by the line before it", q)
 	}
 }
@@ -300,7 +300,7 @@ func runnerAppends(t *testing.T, dir, line string) {
 // page see it without a restart, and the ask is chained to it: seq after
 // it, prev its hash, so the file stays one chain. A line without its LF is
 // still being written to a read, and ended before the next append. A reset
-// (the file removed) drops both sides, so the next ask is ledger:1 again
+// (the file removed) drops both sides, so the next ask is ledger:tenant/default/1 again
 // and nothing old answers it.
 func TestLinesAppendedAfterBootAreReadAndChainedTo(t *testing.T) {
 	h := newHarness(t)
@@ -324,13 +324,13 @@ func TestLinesAppendedAfterBootAreReadAndChainedTo(t *testing.T) {
 	result := runnerResult(t, dir, "ledger:1", "done", true)
 	runnerAppends(t, dir, result)
 	env := served(t, h.do(t, s.URL, "GET", actionsPath, "", 200))
-	if q := props(env, "ledger:1"); q["outcome"] != "done" || q["resultId"] != "ledger:4" {
-		t.Errorf("request 1 %v, want done by ledger:4, appended after boot", q)
+	if q := props(env, "ledger:tenant/default/1"); q["outcome"] != "done" || q["resultId"] != "ledger:tenant/default/4" {
+		t.Errorf("request 1 %v, want done by ledger:tenant/default/4, appended after boot", q)
 	}
-	if w, _ := props(env, "ledger:4")["writer"].([]any); len(w) != 1 {
-		t.Errorf("a bare source object is read as the list of one: %v", props(env, "ledger:4")["writer"])
+	if w, _ := props(env, "ledger:tenant/default/4")["writer"].([]any); len(w) != 1 {
+		t.Errorf("a bare source object is read as the list of one: %v", props(env, "ledger:tenant/default/4")["writer"])
 	}
-	if e := props(served(t, h.do(t, s.URL, "GET", "/api/tenants/default/ledger/portal?limit=1", "", 200)), "ledger:4"); e == nil || e["event"] != "action.result" {
+	if e := props(served(t, h.do(t, s.URL, "GET", "/api/tenants/default/ledger/portal?limit=1", "", 200)), "ledger:tenant/default/4"); e == nil || e["event"] != "action.result" {
 		t.Errorf("the ledger page's newest entry %v, want the Runner's line", e)
 	}
 
@@ -339,8 +339,8 @@ func TestLinesAppendedAfterBootAreReadAndChainedTo(t *testing.T) {
 	if err := json.Unmarshal(h.do(t, s.URL, "POST", actionsPath, ask("logs", agentBox), 201), &a); err != nil {
 		t.Fatal(err)
 	}
-	if a.ID != "ledger:5" || a.Seq != 5 || a.Prev != tenantLineHash(result) {
-		t.Errorf("ask after the Runner's line %+v, want ledger:5 chained to it", a)
+	if a.ID != "ledger:tenant/default/5" || a.Seq != 5 || a.Prev != tenantLineHash(result) {
+		t.Errorf("ask after the Runner's line %+v, want ledger:tenant/default/5 chained to it", a)
 	}
 	// A line without its LF: a read leaves it; the next append ends it.
 	torn := runnerResult(t, dir, "ledger:5", "failed", false)
@@ -352,7 +352,7 @@ func TestLinesAppendedAfterBootAreReadAndChainedTo(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Close()
-	if q := props(served(t, h.do(t, s.URL, "GET", actionsPath, "", 200)), "ledger:5"); q["outcome"] != "requested" {
+	if q := props(served(t, h.do(t, s.URL, "GET", actionsPath, "", 200)), "ledger:tenant/default/5"); q["outcome"] != "requested" {
 		t.Errorf("request 5 %v: a line without its LF is still being written", q)
 	}
 	if err := json.Unmarshal(h.do(t, s.URL, "POST", actionsPath, ask("restart", agentBox), 201), &a); err != nil {
@@ -365,7 +365,7 @@ func TestLinesAppendedAfterBootAreReadAndChainedTo(t *testing.T) {
 	if c["valid"] != true || num(c["count"]) != 7 {
 		t.Errorf("one chain, both writers %v", c)
 	}
-	if q := props(served(t, h.do(t, s.URL, "GET", actionsPath, "", 200)), "ledger:5"); q["outcome"] != "failed" {
+	if q := props(served(t, h.do(t, s.URL, "GET", actionsPath, "", 200)), "ledger:tenant/default/5"); q["outcome"] != "failed" {
 		t.Errorf("request 5 %v, want failed by the torn line, now ended", q)
 	}
 	if _, err := tenant.Load(tenant.Options{Dir: filepath.Dir(dir), Base: portal.BaseYAML, Schema: portal.ConfigSchema, Stamp: "2026-10-10T00:00:00.000Z", Check: p.CheckEnvelope}); err != nil {
@@ -382,9 +382,9 @@ func TestLinesAppendedAfterBootAreReadAndChainedTo(t *testing.T) {
 	if err := json.Unmarshal(h.do(t, s.URL, "POST", actionsPath, ask("logs", agentBox), 201), &a); err != nil {
 		t.Fatal(err)
 	}
-	q := props(served(t, h.do(t, s.URL, "GET", actionsPath, "", 200)), "ledger:1")
-	if a.ID != "ledger:1" || a.Prev != store.ZeroHash || q["outcome"] != "requested" {
-		t.Errorf("first ask after a reset %+v %v, want ledger:1, unanswered", a, q)
+	q := props(served(t, h.do(t, s.URL, "GET", actionsPath, "", 200)), "ledger:tenant/default/1")
+	if a.ID != "ledger:tenant/default/1" || a.Prev != store.ZeroHash || q["outcome"] != "requested" {
+		t.Errorf("first ask after a reset %+v %v, want ledger:tenant/default/1, unanswered", a, q)
 	}
 }
 
@@ -399,7 +399,7 @@ func TestActionLinesSurviveARestartAndABadOneStopsIt(t *testing.T) {
 	h.doForm(t, testToken, s.URL, "/api/tenants/default/feeds/cards-oci/push", cardParts(t, "0.2.0"), 201)
 	s = reloadTenant(t, p, dir)
 	env := served(t, h.do(t, s.URL, "GET", actionsPath, "", 200))
-	if q := props(env, "ledger:2"); q["action"] != "stop" || q["lineId"] != nil || q["by"] != tester {
+	if q := props(env, "ledger:tenant/default/2"); q["action"] != "stop" || q["lineId"] != nil || q["by"] != tester {
 		t.Errorf("request 2 after a restart %v", q)
 	}
 	c := props(served(t, h.do(t, s.URL, "GET", "/api/tenants/default/ledger", "", 200)), "ui:ledger:portal")

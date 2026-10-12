@@ -19,6 +19,7 @@ func (p *Portal) NodesOfKind(kind string) (*graph.Envelope, error) {
 	if err != nil {
 		return nil, err
 	}
+	p.syncDerived()
 	p.mu.Lock()
 	layers := append([]*Layer(nil), p.layers...)
 	stamp := p.screen.Layer

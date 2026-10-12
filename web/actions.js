@@ -3,16 +3,19 @@
 // Logs, Stop and Restart do on a container: Stop and Restart are confirmed
 // first, then POST /api/tenants/{tenant}/actions appends one action.request
 // line to the tenant's ledger as the signed-in principal, and a notice
-// links the id it returns, ledger:<seq>, to that line's entry page,
+// links the id it returns, ledger:tenant/<tenant>/<seq>, to that line's entry page,
 // /<tenant>/ledger/portal/<seq>. Nothing here runs anything.
 //
 // Environments/Actions, at /<tenant>/actions: the requests from GET
 // .../actions, newest first, one row each (action, subject, principal,
-// requested, status, result). Status is requested until a later line of
-// the tenant's ledger is the Runner's result naming the request, then that
-// result's status; request and result are entries of the one chain,
-// ledger:<seq>. A row opens the request's entry page, where a result's
-// output is shown.
+// requested, status, result, then its id). Status is requested until a
+// later line of the tenant's ledger is the Runner's result naming the
+// request, then that result's status; request and result are entries of the
+// one chain, ledger:tenant/<tenant>/<seq> (docs/design.md 55). A row opens
+// Graph/Explore querying from the request out to depth 5 in the
+// tenant-actions layer: its result, the lines before it, its subject and
+// its principal; the action links the request's entry page, where a
+// result's output is shown.
 import { toast } from '/static/toast.js';
 
 // ask asks for action on node n. ctx: {client, navigate, ledgerHref}.
@@ -124,7 +127,7 @@ export function mount(el, ctx) {
     const t = document.createElement('table');
     t.className = 'pt-table pt-actions';
     const head = t.createTHead().insertRow();
-    for (const name of ['action', 'subject', 'principal', 'requested', 'status', 'result']) {
+    for (const name of ['action', 'subject', 'principal', 'requested', 'status', 'result', 'id']) {
       const th = document.createElement('th');
       th.textContent = name;
       head.appendChild(th);
@@ -134,11 +137,15 @@ export function mount(el, ctx) {
     for (const n of list) {
       const q = n.properties;
       const entry = ctx.ledgerHref('portal', q.seq);
+      // The row's query: from the request, out along its edges, five hops.
+      const explore = ctx.nodeLinks.queryHref ? ctx.nodeLinks.queryHref(n.id, { direction: 'out', depth: '5' }) : null;
       const row = body.insertRow();
       row.dataset.seq = String(q.seq);
+      row.dataset.id = n.id;
       row.dataset.outcome = q.outcome;
       row.className = 'pt-action-row';
-      row.title = `request ${n.id}: its entry is ${entry}`;
+      if (explore) row.dataset.explore = explore;
+      row.title = explore ? `request ${n.id}: opens ${explore}` : `request ${n.id}: its entry is ${entry}`;
       row.insertCell().appendChild(go(ctx, entry, q.action));
       const graph = ctx.nodeLinks.graphHref(q.subject);
       row.insertCell().appendChild(graph ? go(ctx, graph, q.subject) : document.createTextNode(q.subject));
@@ -157,12 +164,16 @@ export function mount(el, ctx) {
       row.insertCell().appendChild(st);
       const rc = row.insertCell();
       if (q.resultSeq) rc.appendChild(go(ctx, ctx.ledgerHref('portal', q.resultSeq), q.resultId));
-      // A click anywhere on the row but a link opens the request's entry.
+      const idc = row.insertCell();
+      idc.className = 'pt-hash';
+      idc.textContent = n.id;
+      // A click anywhere on the row but a link opens Explore from the
+      // request; with no query page, the request's entry.
       row.addEventListener('click', (ev) => {
         if (ev.target.closest('a') || ev.button !== 0) return;
-        ctx.navigate(entry);
+        ctx.navigate(explore || entry);
       });
-      rows.push({ row, text: `${q.action} ${q.subject} ${q.by} ${q.outcome} ${q.resultId || ''}`.toLowerCase() });
+      rows.push({ row, text: `${q.action} ${q.subject} ${q.by} ${q.outcome} ${q.resultId || ''} ${n.id}`.toLowerCase() });
     }
     const tail = ['requested', 'done', 'failed'].map((k) => ` · ${root[k]} ${k}`).join('');
     h.off = searchable(ctx.bus, rows, count, 'actions', tail);

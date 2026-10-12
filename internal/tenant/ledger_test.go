@@ -51,8 +51,8 @@ func TestRecordWaitsForTheRunnersLock(t *testing.T) {
 	held.Close()
 	select {
 	case a := <-done:
-		if a.ID != "ledger:3" || a.Seq != 3 || a.Prev != lineHash([]byte(result)) {
-			t.Errorf("ask after the Runner's line %+v, want ledger:3 chained to it", a)
+		if a.ID != "ledger:tenant/default/3" || a.Seq != 3 || a.Prev != lineHash([]byte(result)) {
+			t.Errorf("ask after the Runner's line %+v, want ledger:tenant/default/3 chained to it", a)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the ask never ran once the lock was released")

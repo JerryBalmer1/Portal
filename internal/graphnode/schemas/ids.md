@@ -14,12 +14,22 @@ GraphNode reserves the prefix and its owner. The id format belongs to the owner:
 | `notrun:` | Graph.RunReport | `notrun:<n>`, n a positive integer | |
 | `touched:` | Graph.RunReport | `touched:<path relative to the repo>`, forward slashes | |
 | `alert:` | Claude.Agent.Alerts | `alert:<rule>:<seq>`, or `alert:<rule>:line-<n>` for a ledger line without seq; rule matches `^[a-z][a-z0-9-]*$`, seq and n positive integers; or `alert:<fingerprint>`, 64 lower-case hex, the SHA-256 of the rule and the subject id with a newline between (the alerts layer Claude.Agent.Alerts builds for Claude.Agent.Orchestrator) | Claude.Agent.Orchestrator |
-| `ledger:` | Claude.Agent.Alerts | `ledger:<seq>`, or `ledger:line-<n>` for a ledger line without seq; seq and n positive integers | Portal, Claude.Agent.Orchestrator, Claude.Agent.Ledger |
+| `ledger:` | Claude.Agent.Alerts | `ledger:<seq>`, or `ledger:line-<n>` for a ledger line without seq; seq and n positive integers; the bare `ledger:` is the chain root, Claude.Agent.Ledger's layer root, and the one registered prefix valid with nothing after the colon (design.md 28); `ledger:tenant/<tenant>/<seq>` is a tenant's own chain, `ledger:tenant/<tenant>` its root, tenant matching `^[a-z0-9][a-z0-9-]*$` (design.md 29, below) | Portal, Claude.Agent.Orchestrator, Claude.Agent.Ledger |
 | `agent:` | Graph.Emitter.Agent | `agent:<path relative to the repo, forward slashes>` (AgentFile), then optionally `#<heading slug>` (Section) and `/rule-<n>` (Rule); slug matches `^[a-z0-9_-]+$`, n a positive integer. The run layer's `agent:run/<stamp>/step-<n>/...` is a path in this shape | |
 | `runner:` | Claude.Agent.Runner | `runner:<plan>` (Plan), `runner:<plan>/<session id>` (Run), `runner:<plan>/<session id>/step-<n>` (Step); plan has no `.` or `/`, n a positive integer | |
 | `git:` | Graph.Emitter.Git.Repository | `git:commit/<40 lower-case hex sha>`, `git:branch/<name>`, `git:tag/<name>`, `git:author/<email, lower-cased; the name when the email is empty>` | |
 | `ref:` | Graph.Emitter.Reference | `ref:repo:<folder name>`, `ref:doc:<Repo>/<path relative to the root>`, `ref:section:<Repo>/design.md#<n>`, `ref:skill:<Repo>/<name>`, `ref:ext:<first 16 lower-case hex of the SHA-256 of host + path>` | |
 | `env:` | Claude.Agent.Orchestrator | `env:compose/<project>` (the compose stack), `env:container/<project>/<service>`, `env:image/<image reference>` (`env:image/mitmproxy/mitmproxy:12.2.3`), `env:network/<name>` (the name compose gave it, project included); project, service and name have no `/`, backslash or space, the reference no backslash or space | |
+
+## `ledger:tenant/` in full
+
+`ledger:<seq>` is the agent's chain: one seq space, numbered by Claude.Agent.Ledger's writer. A tenant's action ledger (Portal's `tenants/<tenant>/ledger.jsonl`, appended by Portal and Portal.Agent's Runner) numbers its lines from 1 too. Mounted in one graph, line 23 of each would both be `ledger:23`: one node id for two lines, and an edge meant for one lands on the other. The namespaced form keeps them apart.
+
+- `ledger:tenant/<tenant>/<seq>` is line seq of that tenant's chain; `ledger:tenant/<tenant>`, no seq, is that chain's root, accepted as the bare `ledger:` is.
+- tenant matches `^[a-z0-9][a-z0-9-]*$`: lower-case letters, digits and hyphens, not starting with a hyphen. It is Portal's tenant name rule, so a tenant's name is its slug unchanged. seq is a positive integer with no leading zero.
+- No other path form after `ledger:`. `ledger:default/23` (no `tenant/`), `ledger:tenant//23` (empty slug), `ledger:tenant/Default/23` (upper case), `ledger:tenant/default/0` (seq not positive), `ledger:tenant/default/line-3` and `ledger:tenant/default/23/4` all fail. The message names every accepted form: `must be ledger:<seq>, ledger:line-<n>, the bare ledger: (the chain root) or ledger:tenant/<tenant>/<seq> (ledger:tenant/<tenant> its root); seq and n positive integers, tenant matching ^[a-z0-9][a-z0-9-]*$`.
+- Like the bare root, the tenant chain passes whichever format applies: an owner `idPattern` for `ledger:` describes the agent's chain and need not name it. Go `graph.LedgerTenantPrefix` is `ledger:tenant/`.
+- `ledger:23` and `ledger:tenant/default/23` are different ids; one envelope may hold both.
 
 ## `fs:` in full
 

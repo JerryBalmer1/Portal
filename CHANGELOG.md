@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.16.1 — 2026-10-12
+
+- **The tenant's action chain under its own ids** (docs/design.md 55). Action lines of `tenants/<tenant>/ledger.jsonl` carry `ledger:tenant/<tenant>/<seq>` (Graph.Node 0.4.2's tenant form of `ledger:`), and a result's `request` names that form. They no longer share strings with the agent chain's `ledger:<seq>`. A line still in the old form is read as this tenant's.
+- **Repinned to Graph.Node v0.4.2.** `internal/graphnode`, `cmd/graphnode` and the `graph-node` skill are recopied byte for byte from the tag (import path aside); the Pester tag, CLAUDE.md and README name it. `graphnode check-id ledger ledger:tenant/default/23` passes from Portal's own binary.
+- **The boot migrates the old ids in place**, under the file lock (`internal/tenant/migrate.go`). Each action line's `id`, and a result's `request`, become the tenant form, keeping the number. `legacyId` (the old id) goes right after `id`. The next line's `prev` is rewritten to the new hash, so the chain still verifies; a link that was already broken stays broken. Every other member and the member order are kept. The file is first copied to `ledger.jsonl.<stamp>.bak` beside it (gitignored). A ledger with nothing to migrate is not touched.
+- **The tenant ledger is mounted as `tenant-actions`**, a layer Portal builds itself (`store.Derived`). It is rebuilt whenever the file grows, Portal's appends and the Runner's alike, on the next read of the layers, and it is mounted while the ledger holds an action line.
+  - Nodes are the lines (LedgerEntry) and the principals they name. Edges are `prev` (newer to older), `request` (result to request), `subject` (request to its container) and `principal` (request to who asked).
+  - Its source block names Emitter.Ledger at the mounted agent ledger layer's version, else the newest Emitter.Ledger card's.
+  - The name is reserved (400). The agent chain never reads `ledger:tenant/...` nodes.
+- **The query reaches an action's request, container and principal**: `GET .../query?from=ledger:tenant/default/24&direction=out&depth=5` on the dev tenant (`docs/api/query.md` example 4).
+- **Environments/Actions** gets an `id` column. A row opens Graph/Explore at `?from=<request id>&direction=out&depth=5`; `queryHref(id, more)` takes the bar's other fields.
+- **`docs/api/actions.md`**: the line contract, versioned. Its `ids` section gives the exact format, the migration rule, and what Portal.Agent's Runner must write.
+- **Ontology** 0.16.1: edge Kinds `request`, `subject` and `principal`, and property `legacyId` on LedgerEntry. The spec describes the new ids, `legacyId` on ActionRequest and the reserved layer name; `internal/gen` is regenerated. No new operation.
+- **Go** 119 to 127:
+  - `TestMigrationOfThreeLinesKeepsTheChain`, `TestMigrationLeavesABrokenLinkBroken`, `TestMigrationLeavesAnUnreadableLedgerToTheBoot`.
+  - `TestLedgerIDsAreGraphNodeIDs`, `TestTenantActionsLayerMountsWithFourEdgeKinds` (strict validate, every id `ValidID`, both appends without a restart, the reserved name).
+  - `TestQueryFromAResultReachesItsRequestSubjectAndPrincipal`, `TestTenantActionsLayerSourceAndTheRollCall`, `TestNoActionLineNoTenantActionsLayer`.
+  - The actions and ledger tests expect the tenant form.
+- **Pester** 129, the same count. The Actions block runs on the migrated fixture. Its page check reads the `id` column and each row's Explore link, clicks a row through to Explore (from, direction and depth in the bar), and checks the same query from the API reaching the subject and the principal. The ontology check counts 26 edge Kinds.
+
 ## 0.16.0 — 2026-10-12
 
 - **The tenant graph query** (docs/design.md 54). `GET .../query` (`queryTenantGraph`) walks every mounted layer at once, breadth-first and in memory, and answers with an envelope (module Portal) plus `paths` and `query`.

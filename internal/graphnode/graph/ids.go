@@ -27,7 +27,7 @@ var idPrefixes = []IDPrefix{
 	{Prefix: "notrun:", Owner: "Graph.RunReport", Shape: "notrun:<n>, n a positive integer"},
 	{Prefix: "touched:", Owner: "Graph.RunReport", Shape: "touched:<path relative to the repo>, forward slashes"},
 	{Prefix: "alert:", Owner: "Claude.Agent.Alerts", Shape: "alert:<rule>:<seq>, or alert:<rule>:line-<n> for a ledger line without seq; rule matches ^[a-z][a-z0-9-]*$, seq and n positive integers; or alert:<fingerprint>, 64 lower-case hex (SHA-256 of the rule and the subject id with a newline between)", SharedWith: []string{"Claude.Agent.Orchestrator"}},
-	{Prefix: "ledger:", Owner: "Claude.Agent.Alerts", Shape: "ledger:<seq>, or ledger:line-<n> for a ledger line without seq; seq and n positive integers", SharedWith: []string{"Portal", "Claude.Agent.Orchestrator", "Claude.Agent.Ledger"}},
+	{Prefix: "ledger:", Owner: "Claude.Agent.Alerts", Shape: "ledger:<seq>, or ledger:line-<n> for a ledger line without seq; seq and n positive integers; the bare ledger: is the chain root (Claude.Agent.Ledger's layer root); ledger:tenant/<tenant>/<seq> is a tenant's own chain (Portal's action ledger), ledger:tenant/<tenant> its root; tenant matches ^[a-z0-9][a-z0-9-]*$", SharedWith: []string{"Portal", "Claude.Agent.Orchestrator", "Claude.Agent.Ledger"}},
 	{Prefix: "agent:", Owner: "Graph.Emitter.Agent", Shape: "agent:<path relative to the repo, forward slashes>, then optionally #<heading slug> and /rule-<n>; slug matches ^[a-z0-9_-]+$, n a positive integer"},
 	{Prefix: "runner:", Owner: "Claude.Agent.Runner", Shape: "runner:<plan>, then optionally /<session id> and /step-<n>; plan has no . or /, n a positive integer"},
 	{Prefix: "git:", Owner: "Graph.Emitter.Git.Repository", Shape: "git:commit/<40 lower-case hex sha>, git:branch/<name>, git:tag/<name> or git:author/<email, lower-cased; the name when the email is empty>"},
@@ -56,19 +56,38 @@ func PrefixOf(id string) (IDPrefix, bool) {
 }
 
 var (
-	positiveInt = regexp.MustCompile(`^[1-9][0-9]*$`)
-	runRest     = regexp.MustCompile(`^[^:/\\]+:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$`)
-	ledgerRest  = regexp.MustCompile(`^(line-)?[1-9][0-9]*$`)
-	alertRest   = regexp.MustCompile(`^([a-z][a-z0-9-]*:(line-)?[1-9][0-9]*|[0-9a-f]{64})$`)
-	envRest     = regexp.MustCompile(`^(compose/[^/\\ ]+|container/[^/\\ ]+/[^/\\ ]+|image/[^\\ ]+|network/[^/\\ ]+)$`)
-	agentAnchor = regexp.MustCompile(`^[a-z0-9_-]+(/rule-[1-9][0-9]*)?$`)
-	runnerRest  = regexp.MustCompile(`^[^./\\]+(/[^/\\]+(/step-[1-9][0-9]*)?)?$`)
-	gitRest     = regexp.MustCompile(`^(commit/[0-9a-f]{40}|(branch|tag)/[^\\]+|author/.+)$`)
-	refRest     = regexp.MustCompile(`^(repo:[^/\\]+|doc:[^/\\]+/.+|section:[^/\\]+/design[.]md#[1-9][0-9]*|skill:[^/\\]+/[^/\\]+|ext:[0-9a-f]{16})$`)
+	positiveInt  = regexp.MustCompile(`^[1-9][0-9]*$`)
+	runRest      = regexp.MustCompile(`^[^:/\\]+:[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$`)
+	ledgerRest   = regexp.MustCompile(`^(line-)?[1-9][0-9]*$`)
+	ledgerTenant = regexp.MustCompile(`^tenant/[a-z0-9][a-z0-9-]*(/[1-9][0-9]*)?$`)
+	alertRest    = regexp.MustCompile(`^([a-z][a-z0-9-]*:(line-)?[1-9][0-9]*|[0-9a-f]{64})$`)
+	envRest      = regexp.MustCompile(`^(compose/[^/\\ ]+|container/[^/\\ ]+/[^/\\ ]+|image/[^\\ ]+|network/[^/\\ ]+)$`)
+	agentAnchor  = regexp.MustCompile(`^[a-z0-9_-]+(/rule-[1-9][0-9]*)?$`)
+	runnerRest   = regexp.MustCompile(`^[^./\\]+(/[^/\\]+(/step-[1-9][0-9]*)?)?$`)
+	gitRest      = regexp.MustCompile(`^(commit/[0-9a-f]{40}|(branch|tag)/[^\\]+|author/.+)$`)
+	refRest      = regexp.MustCompile(`^(repo:[^/\\]+|doc:[^/\\]+/.+|section:[^/\\]+/design[.]md#[1-9][0-9]*|skill:[^/\\]+/[^/\\]+|ext:[0-9a-f]{16})$`)
 )
 
+// LedgerRoot is the bare ledger: id, the root of Claude.Agent.Ledger's chain.
+// It is the one registered prefix that is valid with nothing after the colon.
+const LedgerRoot = "ledger:"
+
+// LedgerTenantPrefix starts a tenant's own chain under ledger:,
+// ledger:tenant/<tenant>/<seq>, its root ledger:tenant/<tenant>; tenant
+// matches ^[a-z0-9][a-z0-9-]*$ (design.md 29). It keeps a tenant's chain
+// apart from the agent chain's ledger:<seq> in one graph.
+const LedgerTenantPrefix = "ledger:tenant/"
+
+// ledgerShapes names every accepted ledger: form, for the error.
+const ledgerShapes = "must be ledger:<seq>, ledger:line-<n>, the bare ledger: (the chain root) or ledger:tenant/<tenant>/<seq> (ledger:tenant/<tenant> its root); seq and n positive integers, tenant matching ^[a-z0-9][a-z0-9-]*$"
+
+// isLedgerTenant reports whether rest, the part after ledger:, is a tenant
+// chain's id or root.
+func isLedgerTenant(rest string) bool { return ledgerTenant.MatchString(rest) }
+
 // ValidID checks that id has the shape registered for prefix ("fs" or "fs:").
-// A nil error means the id conforms.
+// A nil error means the id conforms. Every id needs something after the
+// prefix except LedgerRoot.
 func ValidID(prefix, id string) error {
 	if !strings.HasSuffix(prefix, ":") {
 		prefix += ":"
@@ -87,6 +106,9 @@ func ValidID(prefix, id string) error {
 	}
 	rest := id[len(prefix):]
 	if rest == "" {
+		if prefix == LedgerRoot {
+			return nil
+		}
 		return errors.New("nothing after the prefix")
 	}
 	switch prefix {
@@ -106,8 +128,8 @@ func ValidID(prefix, id string) error {
 			return errors.New("must be alert:<rule>:<seq>, alert:<rule>:line-<n> or alert:<64 lower-case hex fingerprint>")
 		}
 	case "ledger:":
-		if !ledgerRest.MatchString(rest) {
-			return errors.New("must be ledger:<seq> or ledger:line-<n>")
+		if !ledgerRest.MatchString(rest) && !isLedgerTenant(rest) {
+			return errors.New(ledgerShapes)
 		}
 	case "agent:":
 		path, anchor, hasAnchor := strings.Cut(rest, "#")

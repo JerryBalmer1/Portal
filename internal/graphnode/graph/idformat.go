@@ -114,7 +114,8 @@ func idPatternsFor(doc any, prefix string) []string {
 
 // Check reports why id does not have this format; nil means it does. With
 // Source ontology the id must match one of Patterns whole; with registry it
-// must have the registry's Shape (ValidID).
+// must have the registry's Shape (ValidID). LedgerRoot and a tenant chain's
+// ids (LedgerTenantPrefix) pass either way.
 func (f IDFormat) Check(id string) error {
 	if f.Source != IDFormatOntology {
 		return ValidID(f.Prefix, id)
@@ -123,14 +124,24 @@ func (f IDFormat) Check(id string) error {
 		return fmt.Errorf("does not start with %s", f.Prefix)
 	}
 	if id == f.Prefix {
+		if id == LedgerRoot {
+			return nil
+		}
 		return errors.New("nothing after the prefix")
+	}
+	if f.Prefix == LedgerRoot && isLedgerTenant(id[len(f.Prefix):]) {
+		return nil
 	}
 	for _, re := range f.compiled {
 		if re.MatchString(id) {
 			return nil
 		}
 	}
-	return errors.New("matches no idPattern for " + f.Prefix + " in " + f.Ontology + ": " + strings.Join(f.Patterns, " | "))
+	msg := "matches no idPattern for " + f.Prefix + " in " + f.Ontology + ": " + strings.Join(f.Patterns, " | ")
+	if f.Prefix == LedgerRoot {
+		msg += "; the bare ledger: and ledger:tenant/<tenant>/<seq> (ledger:tenant/<tenant> its root) pass whichever format applies"
+	}
+	return errors.New(msg)
 }
 
 // ValidIDIn is ValidID with the owner's ontology looked for under siblings

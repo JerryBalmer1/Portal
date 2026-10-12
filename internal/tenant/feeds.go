@@ -446,7 +446,7 @@ func (t *Tenant) Push(ctx context.Context, p Pusher, who Principal, feedID strin
 // whatever cause was. ledgerMu keeps this process's appends and reads one
 // at a time; a push also holds pushMu across its duplicate check. An
 // action request (e.Action) is written as its ActionRequest, its id
-// ledger:<seq>.
+// ledger:tenant/<tenant>/<seq> (docs/design.md 55).
 func (t *Tenant) record(e LedgerEntry, cause error) (LedgerEntry, error) {
 	t.ledgerMu.Lock()
 	defer t.ledgerMu.Unlock()
@@ -468,7 +468,7 @@ func (t *Tenant) record(e LedgerEntry, cause error) (LedgerEntry, error) {
 	var v any = e
 	if e.Action != nil {
 		a := *e.Action
-		a.ID, a.Seq, a.Prev = LedgerID(e.Seq), e.Seq, e.Prev
+		a.ID, a.Seq, a.Prev = t.LedgerID(e.Seq), e.Seq, e.Prev
 		e.Action = &a
 		v = a
 	}

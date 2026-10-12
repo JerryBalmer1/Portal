@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.16.0
+  version: 0.16.1
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -21,7 +21,10 @@ tags:
   - name: screen
     description: The screen graph and its writes. Every write validates the whole next screen with Graph.Node and the portal ontology before it is accepted.
   - name: layers
-    description: Mounted data layers, read-only.
+    description: >-
+      Mounted data layers, read-only. One is Portal's own (docs/design.md 55): tenant-actions, the tenant's ledger.jsonl
+      as a layer, built at boot and rebuilt whenever the file grows, mounted while the ledger holds an action line; its name
+      is reserved.
   - name: snaps
     description: Snapshots of the screen graph on disk and the diff between two.
   - name: page
@@ -45,12 +48,15 @@ tags:
   - name: actions
     description: >-
       Actions on containers (docs/design.md 50). Portal asks, the Runner executes, the ledger records, the graph shows the gap.
-      A request is one action.request line of tenants/<tenant>/ledger.jsonl (kind, id ledger:<seq>, action, subject, principal,
-      requested, status, then seq and prev), written as the token's principal; Portal never executes anything. Portal.Agent's
-      Runner answers with an action.result line of the same file (kind, id ledger:<seq>, request the request's ledger:<seq>,
-      status done or failed, started, finished, exit, output, source, then seq and prev), appended under the same file lock
-      with the same seq and prev: one ledger, one chain. Portal reads results from that file only, never from a mounted
-      layer or an alert layer's copies.
+      A request is one action.request line of tenants/<tenant>/ledger.jsonl (kind, id ledger:tenant/<tenant>/<seq>, action,
+      subject, principal, requested, status, then seq and prev), written as the token's principal; Portal never executes
+      anything. Portal.Agent's Runner answers with an action.result line of the same file (kind, id
+      ledger:tenant/<tenant>/<seq>, request the request's id, status done or failed, started, finished, exit, output, source,
+      then seq and prev), appended under the same file lock with the same seq and prev: one ledger, one chain. Portal reads
+      results from that file only, never from a mounted layer or an alert layer's copies. Ids (docs/api/actions.md, docs/design.md
+      55): until 0.16.0 both carried ledger:<seq>, the agent chain's form; at boot such a line is rewritten in place
+      (legacyId keeping the old id, prev rewritten to keep the chain, the file copied beside it first), and a line still in
+      that form, a Runner's from before it took the new one, is read as this tenant's.
   - name: feeds
     description: Where the tenant publishes Graph.Node manifest cards (an OCI registry or a NuGet v3 feed), what each holds, and the push. Every push is one line of tenants/<tenant>/ledger.jsonl.
 paths:
@@ -785,10 +791,10 @@ paths:
       summary: >-
         The tenant's action requests, newest first, as an envelope (module Portal) rooted at ui:actions (Kind Actions: count,
         and requested, done and failed, the requests by outcome), joined to each request by has-action. A request is the
-        LedgerEntry of its line in the tenant's ledger, under the id the line carries, ledger:<seq>, as getLedgerEntry serves
+        LedgerEntry of its line in the tenant's ledger, under its id ledger:tenant/<tenant>/<seq>, as getLedgerEntry serves
         it: event action.request, action, subject, principal, by, status (requested, as written) and outcome (requested
         until a later result line names it, then the result's status), with resultId and resultSeq when one does. Its result
-        is the LedgerEntry of the Runner's line in the same chain, ledger:<seq>: event action.result, request, status,
+        is the LedgerEntry of the Runner's line in the same chain, ledger:tenant/<tenant>/<seq>: event action.result, request (in this form, whatever form the line wrote), status,
         started, finished, exit, output, requestSeq, writer (the line's source, a one-item list of emitter, version, target
         and stamp) and a source block naming that emitter, ledger.jsonl and the line; joined answered-by (request to result)
         and answers (result to request). When several results name one request, the newest. Read from ledger.jsonl only,
@@ -808,7 +814,7 @@ paths:
         Ask for an action on a container: logs, stop or restart, on a subject env:container/<project>/<service>. The principal
         is the token's, never the body's: a contributor or admin (403 for a reader, and for a token from before 0.5.0, which
         belongs to no principal; 401 without a token). Appends one action.request line to tenants/<tenant>/ledger.jsonl,
-        under the file lock, after reading the lines appended since (the Runner's among them), chained like every line, and returns it as written; its id is ledger:<seq>, and its entry page
+        under the file lock, after reading the lines appended since (the Runner's among them), chained like every line, and returns it as written; its id is ledger:tenant/<tenant>/<seq>, and its entry page
         /<tenant>/ledger/portal/<seq>. Any other action, or a subject that is no container id, is 422. Portal executes nothing.
       requestBody:
         required: true
@@ -829,7 +835,7 @@ paths:
   /api/tenants/{tenant}/actions/{seq}:
     parameters:
       - $ref: "#/components/parameters/Tenant"
-      - { name: seq, in: path, required: true, description: "The request's line in the tenant's ledger, the seq of its id ledger:<seq>.", schema: { type: integer } }
+      - { name: seq, in: path, required: true, description: "The request's line in the tenant's ledger, the seq of its id ledger:tenant/<tenant>/<seq>.", schema: { type: integer } }
     get:
       operationId: getAction
       tags: [actions]
@@ -1019,7 +1025,7 @@ paths:
     post:
       operationId: mountLayer
       tags: [layers]
-      summary: Mount a layer from a path on disk (a .graph.json file, or a directory whose newest *.graph.json is taken) or from an envelope in the body. Refused with the Graph.Node problem codes when graphnode validate would fail. Mounting an existing name replaces it. A mount by path also records itself on the screen as the Mount node ui:mount:<name> holding the path as given (made absolute), so an approved snap mounts it again at boot; a mount by envelope removes that node. Mounts are otherwise held in memory.
+      summary: Mount a layer from a path on disk (a .graph.json file, or a directory whose newest *.graph.json is taken) or from an envelope in the body. Refused with the Graph.Node problem codes when graphnode validate would fail. Mounting an existing name replaces it; tenant-actions is Portal's own (docs/design.md 55) and 400. A mount by path also records itself on the screen as the Mount node ui:mount:<name> holding the path as given (made absolute), so an approved snap mounts it again at boot; a mount by envelope removes that node. Mounts are otherwise held in memory.
       requestBody:
         required: true
         content:
@@ -1406,7 +1412,7 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [action.request] }
-        id: { type: string, description: "ledger:<seq>, seq the line's number in the tenant's ledger." }
+        id: { type: string, description: "ledger:tenant/<tenant>/<seq>, seq the line's number in the tenant's ledger (docs/api/actions.md)." }
         action: { type: string, enum: [logs, stop, restart] }
         subject: { type: string, description: "env:container/<project>/<service>." }
         principal: { type: string, description: "Who asked: ui:principal:<name>, from the token." }
@@ -1414,6 +1420,7 @@ components:
         status: { type: string, enum: [requested] }
         seq: { type: integer, description: "The line's number in the ledger, from 1, as every line since 0.10.0." }
         prev: { type: string, description: "SHA-256 of the line before, 64 lower-case hex; 64 zeros for the first line." }
+        legacyId: { type: string, description: "On a line migrated at 0.16.1 only, never on one postAction writes: the id it carried before, ledger:<seq>." }
     Error:
       type: object
       required: [code, message]

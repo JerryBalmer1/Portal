@@ -55,6 +55,9 @@ type Tenant struct {
 	Menu        *graph.Envelope
 	Connections []Connection
 	Feeds       []feed.Feed
+	// Migrated is what the boot's id migration did to ledger.jsonl
+	// (docs/design.md 55); zero when it had nothing to do.
+	Migrated    LedgerMigration
 	dir         string
 	now         func() time.Time
 	mu          sync.RWMutex
@@ -150,6 +153,9 @@ func Load(o Options) (*Tenant, error) {
 		return nil, err
 	}
 	if t.Connections, err = loadConnections(filepath.Join(dir, "connections.yaml"), t.principals); err != nil {
+		return nil, err
+	}
+	if t.Migrated, err = migrateLedger(dir, name, t.now().UTC().Format(BackupLayout)); err != nil {
 		return nil, err
 	}
 	if t.ledger, t.ledgerRaw, t.ledgerEnd, t.ledgerLines, err = loadLedger(filepath.Join(dir, LedgerFile)); err != nil {

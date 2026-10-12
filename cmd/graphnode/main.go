@@ -26,7 +26,7 @@ import (
 	"github.com/JerryBalmer1/Portal/internal/graphnode/graph"
 )
 
-const version = "0.4.0"
+const version = "0.4.2"
 
 func main() {
 	if len(os.Args) < 2 {

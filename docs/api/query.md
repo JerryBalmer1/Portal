@@ -212,7 +212,7 @@ paths:  root > module.network > module.network.module.endpoint
 
 ### 3. The ledger chain from one entry, with direction=in
 
-The brief asked for the ledger chain backwards from a given `action.result`. That cannot be shown as asked. The `action.result` lines live in the tenant's own `tenants/default/ledger.jsonl`, which is no mounted layer, so the walk cannot reach them (design.md entry 54). The chain the walk can reach is Emitter.Ledger's agent chain (`agent-ledger`): LedgerEntry nodes under `ledger:<seq>`, each with a `prev` edge to the entry before it.
+This example walks Emitter.Ledger's agent chain (`agent-ledger`): LedgerEntry nodes under `ledger:<seq>`, each with a `prev` edge to the entry before it. Example 4 walks the tenant's own action chain.
 
 `prev` points from the newer entry to the older one. So `direction=in` walks forwards in time, to the entries that chain onto this one. `direction=out` walks backwards, to the entries it chains onto. This example starts from the policy decision `ledger:25`, a deny.
 
@@ -263,11 +263,77 @@ truncated: true, truncatedAt: 4
 query:  {"from":["ledger:25"],"follow":["prev"],"direction":"out","depth":10,"where":[],"limit":4}
 ```
 
-Beware the shared ids. In the dev tenant, the tenant ledger's line 24 is the Runner's `action.result` answering `ledger:23` (a `logs` request on `env:container/claude-agent-dev/ledger`). The query resolves `from=ledger:24` to the agent chain's entry 24, a different line:
+### 4. An action result back to its request, its container and its principal
+
+Since 0.16.1 the tenant's `ledger.jsonl` is mounted as the layer `tenant-actions` (design.md entry 55). Its lines are LedgerEntry nodes under `ledger:tenant/<tenant>/<seq>`, apart from the agent chain's `ledger:<seq>`. A result has a `request` edge to its request. A request has a `subject` edge to its container and a `principal` edge to whoever asked. Every line has a `prev` edge to the line before it. The ids and the line contract are in [actions.md](actions.md).
+
+These are the dev tenant's layers on 2026-10-12, with `agent-ledger` and `agent-environment` mounted from Portal.Agent's latest layers. Line 24 is the Runner's `action.result`, the newest action line. It answers request 23, a `logs` on the ledger keeper, asked by `dev-bootstrap`. All of a request's edges point away from it, so `direction=out` is the walk that reaches the request, the container (and its compose stack and image, from the environment layer) and the principal:
+
+```
+GET /api/tenants/default/query?from=ledger%3Atenant%2Fdefault%2F24&direction=out&depth=5
+```
+
+```
+nodes:  ledger:tenant/default/24                         LedgerEntry            done ledger:tenant/default/23
+        ledger:tenant/default/23                         LedgerEntry            logs env:container/claude-agent-dev/ledger
+        ledger:tenant/default/22                         LedgerEntry            pushed Emitter.Terraform 0.17.1 to cards-oci
+        env:container/claude-agent-dev/ledger            environment.instance   ledger (claude-agent-ledger:dev)
+        ui:principal:dev-bootstrap                       Principal              dev-bootstrap
+        ledger:tenant/default/21                         LedgerEntry            duplicate Emitter.Reference 0.1.1 to cards-oci
+        env:compose/claude-agent-dev                     environment.instance   claude-agent-dev (compose on MSI)
+        env:image/claude-agent-ledger:dev                environment.image      claude-agent-ledger:dev
+        ledger:tenant/default/20                         LedgerEntry            duplicate Emitter.Network 0.4.0 to cards-oci
+        ledger:tenant/default/19                         LedgerEntry            duplicate Emitter.Ledger 0.4.0 to cards-oci
+edges:  ledger:tenant/default/24|ledger:tenant/default/23|prev
+        ledger:tenant/default/24|ledger:tenant/default/23|request
+        ledger:tenant/default/23|ledger:tenant/default/22|prev
+        ledger:tenant/default/23|env:container/claude-agent-dev/ledger|subject
+        ledger:tenant/default/23|ui:principal:dev-bootstrap|principal
+        ledger:tenant/default/22|ledger:tenant/default/21|prev
+        env:container/claude-agent-dev/ledger|env:compose/claude-agent-dev|member-of
+        env:container/claude-agent-dev/ledger|env:image/claude-agent-ledger:dev|runs-image
+        ledger:tenant/default/21|ledger:tenant/default/20|prev
+        env:compose/claude-agent-dev|ui:principal:dev-bootstrap|runs-as
+        ledger:tenant/default/20|ledger:tenant/default/19|prev
+paths:  ledger:tenant/default/24 > ledger:tenant/default/23 > ui:principal:dev-bootstrap
+        ledger:tenant/default/24 > ledger:tenant/default/23 > env:container/claude-agent-dev/ledger > env:compose/claude-agent-dev
+        ledger:tenant/default/24 > ledger:tenant/default/23 > env:container/claude-agent-dev/ledger > env:image/claude-agent-ledger:dev
+        ledger:tenant/default/24 > ledger:tenant/default/23 > ledger:tenant/default/22 > ledger:tenant/default/21 > ledger:tenant/default/20 > ledger:tenant/default/19
+query:  {"from":["ledger:tenant/default/24"],"follow":[],"direction":"out","depth":5,"where":[],"limit":500}
+```
+
+`direction=in` walks to the lines that chain onto line 24, the newer ones:
+
+```
+GET /api/tenants/default/query?from=ledger%3Atenant%2Fdefault%2F24&direction=in&depth=5
+```
+
+```
+nodes:  ledger:tenant/default/24                         LedgerEntry            done ledger:tenant/default/23
+        ledger:tenant/default/25                         LedgerEntry            duplicate Emitter.Agent 0.1.4 to cards-oci
+        ledger:tenant/default/26                         LedgerEntry            pushed Emitter.AzureDevOps 0.3.2 to cards-oci
+        ledger:tenant/default/27                         LedgerEntry            duplicate Emitter.Environment 0.3.0 to cards-oci
+        ledger:tenant/default/28                         LedgerEntry            pushed Emitter.FileSystem 0.2.1 to cards-oci
+        ledger:tenant/default/29                         LedgerEntry            pushed Emitter.Git 0.1.2 to cards-oci
+edges:  ledger:tenant/default/25|ledger:tenant/default/24|prev
+        ledger:tenant/default/26|ledger:tenant/default/25|prev
+        ledger:tenant/default/27|ledger:tenant/default/26|prev
+        ledger:tenant/default/28|ledger:tenant/default/27|prev
+        ledger:tenant/default/29|ledger:tenant/default/28|prev
+paths:  ledger:tenant/default/24 > ledger:tenant/default/25 > ledger:tenant/default/26 > ledger:tenant/default/27 > ledger:tenant/default/28 > ledger:tenant/default/29
+query:  {"from":["ledger:tenant/default/24"],"follow":[],"direction":"in","depth":5,"where":[],"limit":500}
+```
+
+The ids no longer collide. `ledger:24` is the agent chain's entry 24, and the tenant's line 24 is `ledger:tenant/default/24`:
 
 ```
 GET /api/tenants/default/query?from=ledger%3A24&depth=0
-nodes:  ledger:24  LedgerEntry  policy.allow post File.write /work/policy-smoke.txt
 ```
 
-The tenant ledger is read at `GET /api/tenants/default/ledger/portal` and `.../actions` instead.
+```
+nodes:  ledger:24                                        LedgerEntry            policy.allow post File.write /work/policy-smoke.txt
+paths:  ledger:24
+query:  {"from":["ledger:24"],"follow":[],"direction":"out","depth":0,"where":[],"limit":500}
+```
+
+Environments/Actions opens this walk for any request: a click on its row goes to Explore at `?from=<request id>&direction=out&depth=5`.

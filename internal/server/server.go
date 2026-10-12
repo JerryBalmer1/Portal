@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -62,6 +63,12 @@ func New(p *store.Portal, t *tenant.Tenant, o Options) http.Handler {
 	s := &Server{p: p, t: t, gh: o.GitHub, feeds: o.Feeds, web: web.FS, devToken: o.DevToken}
 	if s.feeds == nil {
 		s.feeds = feed.Client{}
+	}
+	// The tenant's ledger as the tenant-actions layer, from now on
+	// (docs/design.md 55). A first build that fails is logged and leaves the
+	// layer unmounted; it never stops the server.
+	if err := p.SetDerived(store.Derived{Name: ActionsLayer, Build: s.actionsLayer}); err != nil {
+		log.Printf("portal: %v", err)
 	}
 	r := chi.NewRouter()
 	r.NotFound(notFound)

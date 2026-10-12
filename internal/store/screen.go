@@ -125,6 +125,7 @@ type Portal struct {
 	boot       string
 	now        func() time.Time
 	lastStamp  time.Time
+	derived    derivedState
 }
 
 // New boots the screen (docs/design.md 20): from the snap Options.Snap names,

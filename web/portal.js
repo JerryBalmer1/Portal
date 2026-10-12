@@ -194,11 +194,12 @@ function sourceGraphHref(source) {
 }
 
 // queryHref is the query bar's Page (the one whose query is true) querying
-// from id, /<tenant>/graph/explore?from=<id> (docs/design.md 54); null when
+// from id, /<tenant>/graph/explore?from=<id> (docs/design.md 54), then the
+// bar's other fields in more (an object: direction, depth, ...); null when
 // the menu has no such page.
-function queryHref(id) {
+function queryHref(id, more) {
   const page = [...menu.pages.values()].find((p) => p.properties.query === true);
-  return page ? `${href(page.properties.path)}?${new URLSearchParams({ from: id })}` : null;
+  return page ? `${href(page.properties.path)}?${new URLSearchParams({ from: id, ...(more || {}) })}` : null;
 }
 
 // alertHref is an alert's page, /<tenant>/compliance/alerts/<fingerprint>,
