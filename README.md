@@ -15,7 +15,17 @@ Graph                orchestrates; calls the PowerShell wrappers here
 
 Nothing edits below its own row.
 
-![Overview/Summary](docs/screenshots/summary.png)
+![Graph → Nodes](docs/screenshots/nodes.png)
+
+*Graph → Nodes: the whole tenant graph, 1615 nodes and 2813 edges, agent run layers on the left and the Portal repos on the right.*
+
+![Ledger → Entries](docs/screenshots/ledger.png)
+
+*Ledger → Entries: two chains, both valid: the agent's 344 entries from the agent-ledger layer and Portal's 33 from ledger.jsonl.*
+
+![Compliance → Alerts](docs/screenshots/alerts.png)
+
+*Compliance → Alerts: two info alerts from agent run 339..344, a refused PORTAL_TOKEN retried and a blocked direct egress attempt.*
 
 ## What is here
 
@@ -40,7 +50,7 @@ Nothing edits below its own row.
 | `src/Portal/` | PowerShell module: `Start-Portal`, `Stop-Portal`, `Get-PortalStatus`, `Get-PortalScreen`, `New-PortalSnap`, `Compare-PortalSnap`, `Mount-PortalLayer`, `New-PortalToken`, `Publish-PortalCard`. |
 | `tests/` | Pester (`Invoke-Tests.ps1`, `Portal.Tests.ps1`) and fixtures: `layers/filesystem/` (a FileSystem layer and its ontology), `layers/agent-runs/` (a Graph.Emitter.Agent runs layer and its ontology, Portal.Emitters' `emitters/Agent/artifacts/layers` at cd862d9: one run, three steps, four allow, one deny), `layers/ledger/` (an agent ledger layer built to Portal.Agent's shape: seq 44 to 55, a valid chain whose records edges name that run and its steps), `ledger/actions.ledger.jsonl` (a tenant ledger, one chain: three action requests, then the Runner's results answering two of them, done and failed; the third the gap) and `layers/ledger-broken/` (seq 44 to 55 with entry 50 altered, broken at 51), `layers/agent-environment/` (Portal.Agent's environment layer from Up on 2026-10-11 19:00, byte for byte: a compose stack, its three containers, three images and two networks, all under `env:` ids) and `layers/agent-environment-tagged/` (the same with group and tags on three instances, no env on the ledger keeper, its hosts edge onto the agent-runs run), `layers/agent-alerts/` (Portal.Agent's alert layer from the same Up, byte for byte: one info alert under `alert:<fingerprint>` about `ledger:303`; the tests mount five varied alerts inline beside it), `invalid.graph.json` (Graph.Node's at v0.3.3), `cards/Tool.Git/` (Portal.Tools' `tools/Git` card at c330712, the sample Feeds pushes), `cards/Emitter.<X>/` (the nine emitter cards of Portal.Emitters v0.2.0, `emitters/<folder>/manifest.yaml` byte for byte, Graph.Node 0.4.0 manifests: Agent, AzureDevOps, Environment, FileSystem, Git, Ledger, Network, Reference, Terraform; the tests stamp copies of the real layers with a source block naming them, docs/design.md 49). |
 | `scripts/` | `Refresh-Portal.ps1`: `Invoke-Build Refresh` from any directory. |
-| `docs/` | `design.md` (decisions, numbered), `refresh/` (`dependency-order.md`, the Refresh order across the Portal repos and its conflicts; `order.psd1`, the same as data), `api/query.md` (the tenant graph query: every parameter, worked examples), `api/actions.md` (the actions ledger contract and its ids, which Portal.Agent's Runner follows), `manual-check-list.md`, `screenshots/` (`summary.png`, `service-connections.png`, `explore.png`, `identity-users.png`), `prompts/` (task reports). |
+| `docs/` | `design.md` (decisions, numbered), `refresh/` (`dependency-order.md`, the Refresh order across the Portal repos and its conflicts; `order.psd1`, the same as data), `api/query.md` (the tenant graph query: every parameter, worked examples), `api/actions.md` (the actions ledger contract and its ids, which Portal.Agent's Runner follows), `manual-check-list.md`, `screenshots/` (`summary.png`, `service-connections.png`, `explore.png`, `identity-users.png` from `Invoke-Build Screenshot`; `nodes.png`, `ledger.png`, `alerts.png` captured by hand, shown above), `prompts/` (task reports). |
 | `.claude/skills/` | `manual-check-list`, `ontology-doc`, `readme` (this repo's docs); `graph-node` (0.4.2, copied read-only from Graph.Node v0.4.2); `run-report` 0.2.2 and `git-guard` 0.1.0 (copied read-only from Graph's committed HEAD, 0.2.8). |
 | `.claude/settings.json` | Wires `git-guard` as a PreToolUse hook on the Bash and PowerShell tools: an agent's `git commit`, `git push`, `git tag`, `--amend`, `gh pr merge` and `gh release create` are refused. |
 | `.env.example` | `PORTAL_PORT=8200`; copy to `.env` (gitignored) to move the portal. `.env` also holds `PORTAL_NUGET_KEY` and `PORTAL_POSTGRES_PASSWORD`, which `Invoke-Build Feeds` writes, random, the first time. |
@@ -70,7 +80,7 @@ Invoke-Build Up           # portal on http://127.0.0.1:8200 over artifacts/ and 
 Invoke-Build Status       # port, URL and boot stamp; "unrecorded" for a portal serving artifacts/ whose portal.json is gone
 Invoke-Build Down         # stop every portal serving artifacts/, recorded or not; throws, keeping the record, if one survives
 Invoke-Build Generate     # internal/gen from api/openapi.yaml
-Invoke-Build Screenshot   # docs/screenshots/summary.png, service-connections.png, explore.png, identity-users.png; mounts Claude.Agent's newest agent-runs layer when present; refuses while tenants/default is mode dev
+Invoke-Build Screenshot   # docs/screenshots/summary.png, service-connections.png, explore.png, identity-users.png (not nodes.png, ledger.png, alerts.png: hand captures); mounts Claude.Agent's newest agent-runs layer when present; refuses while tenants/default is mode dev
 Invoke-Build Refresh      # every Portal repo down and back up in docs/refresh/order.psd1's order, a snap approved, the Catalogue checked; -DryRun prints the plan
 ```
 
