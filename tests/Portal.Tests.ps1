@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.16.3 and needs PowerShell 7.4' {
+    It 'is version 0.16.4 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.16.3'
+        $m.ModuleVersion | Should -Be '0.16.4'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,10 +302,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.16.3, the twenty-two Kinds, the twenty-six edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.16.4, the twenty-two Kinds, the twenty-six edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.16\.3$'
+        $text | Should -Match '(?m)^version: 0\.16\.4$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry', 'Alerts', 'Alert', 'Actions') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in', 'has-alert', 'about', 'raised-in', 'has-action', 'answered-by', 'answers', 'request', 'subject', 'principal') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -574,7 +574,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.16.3'
+        $s.version | Should -Be '0.16.4'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -711,6 +711,69 @@ Describe 'Live portal' {
         $box | Should -Not -Match 'class="gr-error"'
         # The base's theme.graph.wheelZoomSpeed 1.0 keeps the product's wheel step.
         $box | Should -Match 'data-wheel-sensitivity="0.2"'
+    }
+    It 'tenants/default/portal.yaml carries theme.graph.wheelZoomSpeed in range, and GET .../config serves it' {
+        # docs/design.md 58: graph interaction defaults live in tenant config. This portal's tenant is a copy of the file.
+        $text = Get-Content -LiteralPath (Join-Path $Repo 'tenants' 'default' 'portal.yaml') -Raw
+        $m = [regex]::Match($text, '(?m)^theme:\s*\r?\n(?:\s*#.*\r?\n)*\s+graph:\s*\r?\n(?:\s*#.*\r?\n)*\s+wheelZoomSpeed:\s*([0-9.]+)\s*$')
+        $m.Success | Should -BeTrue -Because 'the default tenant names its wheel speed'
+        $v = [double]::Parse($m.Groups[1].Value, [cultureinfo]::InvariantCulture)
+        $v | Should -BeGreaterOrEqual 0.1
+        $v | Should -BeLessOrEqual 5
+        (Send $Url GET '/api/tenants/default/config').Body.theme.graph.wheelZoomSpeed | Should -Be $v
+    }
+    It 'every web module that draws a Cytoscape graph takes its wheel speed from wheel-speed.js, which is served' {
+        # The smoke for "every page serving a graph canvas loads wheel-speed.js": a page draws Cytoscape only through these modules.
+        $drawing = @(Get-ChildItem -LiteralPath (Join-Path $Repo 'web') -Filter '*.js' | Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match '\bcytoscape\(\{' })
+        @($drawing.Name | Sort-Object) | Should -Be @('canvas.js', 'graph.js')
+        foreach ($f in $drawing) {
+            $src = Get-Content -LiteralPath $f.FullName -Raw
+            $src | Should -Match "import \{ sensitivity, track \} from '/static/wheel-speed\.js';" -Because $f.Name
+            $src | Should -Match 'wheelSensitivity: sensitivity\(\)' -Because $f.Name
+            $src | Should -Match 'h\.untrack = track\(h\.cy, ' -Because $f.Name
+        }
+        (Get-Content -LiteralPath (Join-Path $Repo 'web' 'query.js') -Raw) | Should -Match "import \{ draw, merged \} from '/static/graph\.js';"
+        $r = Invoke-WebRequest "$Url/static/wheel-speed.js"
+        [int]$r.StatusCode | Should -Be 200
+        [string]$r.Headers['Content-Type'] | Should -Match '^text/javascript'
+    }
+    It 'Graph/Nodes, Explore and an Explore query each draw the Wheel control last in the toolbar, at the config''s speed' {
+        foreach ($route in '/default/graph', '/default/graph/explore', '/default/graph/explore?from=fs%3Asrc&depth=1') {
+            $dom = Get-PageDom $Url $route
+            if (-not $dom) { Set-ItResult -Skipped -Because 'no Chrome for --dump-dom'; return }
+            $bar = [regex]::Match($dom, '<div class="pt-toolbar" id="toolbar">(.*?)</div>', 'Singleline').Groups[1].Value
+            $bar | Should -Match '<span class="pt-wheel"[^>]*data-wheel-speed="1" data-default="1" data-from="config">' -Because $route
+            $bar | Should -Match '<label for="pt-wheel-graph-(nodes|explore)">Wheel</label><input type="range" id="pt-wheel-graph-(nodes|explore)" min="0.1" max="5" step="0.1"' -Because $route
+            $bar | Should -Match '<output for="pt-wheel-graph-(nodes|explore)">1\.0×</output><button type="button" class="gr-btn pt-wheel-reset" disabled=""' -Because $route
+            # The page's own toolbar items come first, as before; the control is the last child.
+            $bar | Should -Match '^<span class="pt-(count|mode)"' -Because $route
+            $bar | Should -Match '</button></span>$' -Because $route
+        }
+    }
+    It 'the Wheel control overrides one page''s speed in this browser only, applies it in place, and Reset clears it' {
+        $wait = 'const wait = async (f) => { for (let t = 0; t < 160; t++) { const v = f(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); } throw new Error("timed out: " + f); };'
+        $key = 'portal:default:graph/explore:wheelSpeed'
+        $r = Invoke-PageScript $Url '/default/graph/explore' '' ("(async () => { $wait " +
+            'const host = () => document.querySelector(".gr-box[data-id=\"ui:canvas\"] [data-wheel-sensitivity]"); ' +
+            'const cy = () => document.querySelector(".gr-box[data-id=\"ui:canvas\"] .pt-canvas-root")._cyreg.cy; ' +
+            'const ctl = await wait(() => document.querySelector("#toolbar .pt-wheel")); await wait(host); const out = { first: host().dataset.wheelSensitivity }; ' +
+            'const s = ctl.querySelector("input"); s.value = "2.5"; s.dispatchEvent(new Event("input")); ' +
+            'out.set = [localStorage.getItem("' + $key + '"), host().dataset.wheelSensitivity, String(cy().renderer().wheelSensitivity), ctl.dataset.from, ctl.querySelector("output").textContent, String(ctl.querySelector("button").disabled)]; ' +
+            # An invalid value for Nodes falls back to the config's speed.
+            'localStorage.setItem("portal:default:graph/nodes:wheelSpeed", "9"); ' +
+            'document.querySelector("a.pt-page[data-page=\"ui:rail:graph:nodes\"]").click(); const g = await wait(() => document.querySelector(".pt-graph-root[data-wheel-sensitivity]")); ' +
+            'out.nodes = [g.dataset.wheelSensitivity, document.querySelector("#toolbar .pt-wheel").dataset.from]; ' +
+            'document.querySelector("a.pt-page[data-page=\"ui:rail:graph:explore\"]").click(); await wait(() => document.querySelector(".pt-explore .gr-box[data-id]") && host()); ' +
+            'const c2 = await wait(() => document.querySelector("#toolbar .pt-wheel")); out.back = [host().dataset.wheelSensitivity, c2.dataset.wheelSpeed, c2.dataset.from]; ' +
+            'c2.querySelector("button").click(); out.reset = [String(localStorage.getItem("' + $key + '")), host().dataset.wheelSensitivity, String(cy().renderer().wheelSensitivity), c2.dataset.from, String(c2.querySelector("button").disabled)]; ' +
+            'return JSON.stringify(out); })()')
+        if ($null -eq $r) { Set-ItResult -Skipped -Because 'no Chrome'; return }
+        $o = $r | ConvertFrom-Json
+        $o.first | Should -Be '0.2'
+        $o.set | Should -Be @('2.5', '0.5', '0.5', 'browser', '2.5×', 'False')
+        $o.nodes | Should -Be @('0.2', 'config')
+        $o.back | Should -Be @('0.5', '2.5', 'browser')
+        $o.reset | Should -Be @('null', '0.2', '0.2', 'config', 'True')
     }
     It 'a section State PATCH round-trips through New-PortalSnap and back' {
         $null = New-PortalSnap -Url $Url

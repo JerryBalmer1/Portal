@@ -42,6 +42,7 @@ var static = map[string]string{
 	"detail.js":        "detail.js",
 	"designer.js":      "designer.js",
 	"toast.js":         "toast.js",
+	"wheel-speed.js":   "wheel-speed.js",
 	"base.css":         "base.css",
 	"cytoscape.min.js": "vendor/cytoscape.min.js",
 }

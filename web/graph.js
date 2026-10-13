@@ -10,12 +10,11 @@
 // right-click on a node opens Query from here (docs/design.md 54); Explore's
 // query result is drawn by draw too. Nothing here writes.
 /* global cytoscape */
-import { label, splitAlpha, styleFor, wheelZoomSpeed } from '/static/canvas.js';
+import { label, splitAlpha, styleFor } from '/static/canvas.js';
 import { wireCanvas } from '/static/nodemenu.js';
+import { sensitivity, track } from '/static/wheel-speed.js';
 
-const WHEEL_STEP = 0.2;
-
-// mount draws into el. ctx: {client, toolbar, config, navigate, sourceGraphHref, nodeLinks}.
+// mount draws into el. ctx: {client, toolbar, navigate, sourceGraphHref, nodeLinks}.
 export function mount(el, ctx) {
   el.classList.add('pt-fill');
   const source = new URLSearchParams(location.search).get('source') || '';
@@ -55,6 +54,7 @@ export function mount(el, ctx) {
 export function destroy(h) {
   h.gone = true;
   if (h.ro) h.ro.disconnect();
+  if (h.untrack) h.untrack();
   if (h.cy) h.cy.destroy();
   h.wrap.remove();
 }
@@ -98,14 +98,16 @@ export function merged(ontology) {
 }
 
 // draw puts envelope g into h.wrap with Cytoscape, coloured by ont, and
-// wires Query from here on its nodes. ctx: {config, nodeLinks, navigate}.
+// wires Query from here on its nodes. ctx: {nodeLinks, navigate}.
 export function draw(h, ctx, g, ont) {
   const root = document.createElement('div');
   root.className = 'pt-graph-root';
   h.wrap.appendChild(root);
   const elements = g.nodes.map((n) => ({ group: 'nodes', data: { id: n.id, kind: n.kind, label: label(ont, n) } }));
   for (const e of g.edges) elements.push({ group: 'edges', data: { id: e.id, kind: e.kind, source: e.from, target: e.to } });
-  h.cy = cytoscape({ container: root, elements, wheelSensitivity: WHEEL_STEP * wheelZoomSpeed(ctx.config), maxZoom: 2.2 });
+  // The page's wheel speed, its Wheel control in the toolbar (docs/design.md 58).
+  h.cy = cytoscape({ container: root, elements, wheelSensitivity: sensitivity(), maxZoom: 2.2 });
+  h.untrack = track(h.cy, root);
   const cs = getComputedStyle(root);
   const tok = (name) => splitAlpha(cs.getPropertyValue(name).trim() || cs.color);
   h.cy.style(styleFor(ont, tok('--gr-text'), tok('--gr-text-muted'), tok('--gr-fallback'), cs.fontFamily));

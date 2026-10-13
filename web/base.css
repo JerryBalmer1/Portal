@@ -429,6 +429,13 @@ body.pt-rail-collapsed { --pt-rail-w: 52px; }
 .pt-filter-clear { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; color: var(--gr-text-muted); text-decoration: none; }
 .pt-filter-clear:hover, .pt-filter-clear:focus-visible { background: var(--gr-card); color: var(--gr-text); }
 .pt-show-graph { margin-left: 10px; }
+/* A graph page's Wheel (web/wheel-speed.js): last in the toolbar and pushed
+   right, so the stats, chips and query bar keep their places (docs/design.md 58). */
+.pt-wheel { order: 1; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gr-text-muted); }
+.pt-wheel input[type="range"] { width: 96px; }
+.pt-wheel output { min-width: 3.2em; color: var(--gr-text); font-variant-numeric: tabular-nums; }
+.pt-wheel-reset { padding: 1px 7px; line-height: 1.2; }
+.pt-wheel-reset:disabled { cursor: default; opacity: 0.4; }
 
 /* The environments graph (docs/design.md 46). Colour is an instance's kind,
    shape its Kind; a node one edge away is smaller and dimmer. Hulls are the

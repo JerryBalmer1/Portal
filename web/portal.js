@@ -49,6 +49,7 @@ import * as graphView from '/static/graph.js';
 import * as query from '/static/query.js';
 import { icon } from '/static/icons.js';
 import { refusal } from '/static/toast.js';
+import * as wheel from '/static/wheel-speed.js';
 
 // Page renderers by a Page's view; screen is drawn by screen.js.
 const VIEWS = { table: nodes, connections, users: principals, agents, tokens, feeds, layers, emitters, ledger, 'environments-graph': envgraph, alerts, actions, graph: graphView };
@@ -693,6 +694,9 @@ function drawPage(svc, page, r) {
   ui.toolbar.replaceChildren();
   ui.content.replaceChildren();
   ui.content.className = 'pt-content';
+  // A graph this page draws takes the page's wheel speed and puts the Wheel
+  // control in the toolbar; only a menu page keeps its own (docs/design.md 58).
+  wheel.use({ tenant, id: page && !r.layer && !r.agent && !r.emitter && !r.source && !r.id ? page.properties.path : '', config, toolbar: ui.toolbar });
   if (r.layer) {
     ui.title.textContent = r.layer;
     ui.title.dataset.page = `layer:${r.layer}`;

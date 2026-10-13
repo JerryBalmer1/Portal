@@ -52,15 +52,18 @@
 # a tenant overrides one by id, or adds its own (docs/design.md 40).
 #
 # theme is the shell's own settings, not a node's display (that is State and
-# Theme nodes, docs/design.md 5). graph.wheelZoomSpeed scales the Canvas's
-# mouse-wheel zoom step: 1.0 is the product's step, 2 twice as fast, 0.5 half
-# (0.1 to 5; docs/design.md 37).
+# Theme nodes, docs/design.md 5). graph.wheelZoomSpeed scales the mouse-wheel
+# zoom step of every graph page (Graph/Nodes, Explore, the Canvas): 1.0 is the
+# product's step, 2 twice as fast, 0.5 half (0.1 to 5; docs/design.md 37). It
+# is the default of each graph page's Wheel control; a viewer's own value for
+# a page stays in their browser, never here (docs/design.md 58).
 product:
   name: Portal
   help: https://github.com/JerryBalmer1/Portal#readme
 
 theme:
   graph:
+    # Mouse-wheel zoom speed of every graph page, the default of each page's Wheel control (0.1 to 5).
     wheelZoomSpeed: 1.0
 
 feeds:

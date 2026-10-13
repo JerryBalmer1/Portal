@@ -150,6 +150,7 @@ export function mount(el, ctx) {
 export function destroy(h) {
   h.gone = true;
   if (h.ro) h.ro.disconnect();
+  if (h.untrack) h.untrack();
   if (h.cy) h.cy.destroy();
   h.wrap.remove();
   h.paths.remove();

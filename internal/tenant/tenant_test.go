@@ -64,7 +64,9 @@ func TestBaseOnly(t *testing.T) {
 }
 
 // theme.graph.wheelZoomSpeed is 1.0 in the base and a tenant may override
-// it within 0.1..5 (docs/design.md 37).
+// it within 0.1..5 (docs/design.md 37); it is every graph page's default
+// wheel speed, which a viewer overrides per page in the browser only
+// (docs/design.md 58).
 func TestWheelZoomSpeed(t *testing.T) {
 	speed := func(c map[string]any) any {
 		return c["theme"].(map[string]any)["graph"].(map[string]any)["wheelZoomSpeed"]
@@ -80,6 +82,7 @@ func TestWheelZoomSpeed(t *testing.T) {
 		"theme: { graph: { wheelZoomSpeed: 2.5 } }\n": 2.5,
 		"theme: { graph: { wheelZoomSpeed: 0.1 } }\n": 0.1,
 		"theme: { graph: { wheelZoomSpeed: 5 } }\n":   5,
+		"theme: { graph: { wheelZoomSpeed: 5.0 } }\n": 5,
 	} {
 		c, err := LoadConfig(portal.BaseYAML, []byte(overlay), portal.ConfigSchema)
 		if err != nil {
@@ -89,6 +92,11 @@ func TestWheelZoomSpeed(t *testing.T) {
 		if got := speed(c); got != want {
 			t.Errorf("%q: wheelZoomSpeed %v, want %v", overlay, got, want)
 		}
+	}
+	// Just under the range is refused, naming the key.
+	_, err = LoadConfig(portal.BaseYAML, []byte("theme: { graph: { wheelZoomSpeed: 0.05 } }\n"), portal.ConfigSchema)
+	if err == nil || !strings.Contains(err.Error(), "/theme/graph/wheelZoomSpeed") {
+		t.Errorf("wheelZoomSpeed 0.05: %v, want a refusal at /theme/graph/wheelZoomSpeed", err)
 	}
 }
 

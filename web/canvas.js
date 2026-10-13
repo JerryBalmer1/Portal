@@ -10,6 +10,7 @@
 /* global cytoscape */
 import { parseSource } from '/static/client.js';
 import { wireCanvas } from '/static/nodemenu.js';
+import { sensitivity, track } from '/static/wheel-speed.js';
 
 const SHAPES = new Set([
   'ellipse', 'triangle', 'round-triangle', 'rectangle', 'round-rectangle',
@@ -22,17 +23,6 @@ const SHAPES = new Set([
 // the first two are not Cytoscape names.
 const SHAPE_ALIASES = { circle: 'ellipse', square: 'round-rectangle' };
 const EDGE_STYLES = new Set(['solid', 'dashed', 'dotted']);
-// The product's wheel zoom step (Cytoscape's wheelSensitivity), scaled by
-// the config's theme.graph.wheelZoomSpeed (docs/design.md 37).
-const WHEEL_STEP = 0.2;
-
-// wheelZoomSpeed is the merged config's theme.graph.wheelZoomSpeed, 1 when
-// absent; the schema holds it to 0.1..5 at boot, and the page clamps too.
-export function wheelZoomSpeed(config) {
-  const v = Number(config && config.theme && config.theme.graph && config.theme.graph.wheelZoomSpeed);
-  return Number.isFinite(v) ? Math.min(5, Math.max(0.1, v)) : 1;
-}
-
 export function mount(el, ctx) {
   const root = document.createElement('div');
   root.className = 'pt-canvas-root';
@@ -41,7 +31,7 @@ export function mount(el, ctx) {
   el.appendChild(root);
   const src = parseSource(ctx.node.properties && ctx.node.properties.source);
   const ont = (ctx.ontology.layers && ctx.ontology.layers[src.layer]) || { kinds: {}, edgeKinds: {} };
-  const h = { root, cy: null, gone: false, ro: null, timer: 0 };
+  const h = { root, cy: null, gone: false, ro: null, timer: 0, untrack: null };
   // Cytoscape measures its container once, when made; on first load that
   // can be before the panel has a size, and the graph is drawn a few pixels
   // wide. fit measures again and fits whenever the container has a size:
@@ -69,9 +59,10 @@ export function mount(el, ctx) {
   h.ro.observe(body);
   ctx.client.getLayerNodes(src.layer, { kind: src.kind, from: src.from }).then((graph) => {
     if (h.gone) return;
-    const wheel = WHEEL_STEP * wheelZoomSpeed(ctx.config);
-    el.dataset.wheelSensitivity = String(Number(wheel.toFixed(4)));
-    h.cy = cytoscape({ container: root, elements: elements(ont, graph), wheelSensitivity: wheel, maxZoom: 2.2 });
+    // The wheel speed is the page's (docs/design.md 37, 58); track records
+    // it as data-wheel-sensitivity on el and adds the toolbar's Wheel.
+    h.cy = cytoscape({ container: root, elements: elements(ont, graph), wheelSensitivity: sensitivity(), maxZoom: 2.2 });
+    h.untrack = track(h.cy, el);
     restyle(h, ont);
     h.cy.layout({ name: 'cose', animate: false, fit: true }).run();
     requestAnimationFrame(fit);
@@ -98,6 +89,7 @@ export function destroy(h) {
   h.gone = true;
   h.ro.disconnect();
   clearTimeout(h.timer);
+  if (h.untrack) h.untrack();
   if (h.cy) h.cy.destroy();
   h.root.remove();
 }

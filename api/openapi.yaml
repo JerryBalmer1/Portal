@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Portal
-  version: 0.16.3
+  version: 0.16.4
   description: >-
     The one API of the portal. Everything on screen is a graph in the Graph.Node envelope (graph/1):
     Containers, Widgets, Layouts, Categories, States, Themes, Refs and Mounts, joined by contains, laid-out-by, is-a,
@@ -1274,7 +1274,7 @@ components:
                   type: number
                   minimum: 0.1
                   maximum: 5
-                  description: Scales the Canvas's mouse-wheel zoom step; 1.0 (the base's) is the product's step.
+                  description: Scales the mouse-wheel zoom step of every graph page (Graph/Nodes, Explore, the Canvas); 1.0 (the base's) is the product's step. It is the default of each page's Wheel control, whose override stays in the viewer's browser (docs/design.md 58).
         menu:
           type: array
           items: { type: object, additionalProperties: true }

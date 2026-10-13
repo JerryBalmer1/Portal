@@ -272,9 +272,11 @@ task Smoke Build, {
         $services = @((Invoke-RestMethod "$($p.Url)$api/menu").nodes | Where-Object kind -EQ 'Service' | ForEach-Object id)
         $report.checks.rail = Test-Rail -Url $p.Url -Services $services
         $report.checks.canvasFit = Test-CanvasFit -Url $p.Url
+        $speed = [double](Invoke-RestMethod "$($p.Url)$api/config").theme.graph.wheelZoomSpeed
+        $report.checks.wheelSpeed = Test-WheelSpeed -Url $p.Url -Menu (Invoke-RestMethod "$($p.Url)$api/menu") -Screen $after -Speed $speed
 
         $report.result = 'passed'
-        print Green "smoke: seed $($report.checks.seed.nodes) nodes; approved $($a.stamp), then $($b.stamp) changing $($changed -join ', '); restart booted from $($p.Boot); canvas fit $($report.checks.canvasFit | ConvertTo-Json -Compress)"
+        print Green "smoke: seed $($report.checks.seed.nodes) nodes; approved $($a.stamp), then $($b.stamp) changing $($changed -join ', '); restart booted from $($p.Boot); canvas fit $($report.checks.canvasFit | ConvertTo-Json -Compress); wheel $($report.checks.wheelSpeed | ConvertTo-Json -Compress)"
     }
     catch {
         $report.error = "$_"
@@ -403,6 +405,46 @@ function Test-CanvasFit {
 
 # msedge, then chrome (chrome first with -Prefer chrome): PATH first, then the default install locations.
 # Lifted from GraphRenderer's .build.ps1; -Prefer is the portal's.
+# Loads every menu page that draws a Cytoscape graph (view graph, or view screen naming a node that is-a Canvas) in
+# headless Chrome and throws unless the page loaded web/wheel-speed.js: its toolbar ends with the Wheel control at
+# the config's speed, and its graph took that speed, data-wheel-sensitivity 0.2 x theme.graph.wheelZoomSpeed
+# (docs/design.md 58). Returns the pages, or that it skipped and why when there is no Chrome.
+function Test-WheelSpeed {
+    param([Parameter(Mandatory)] [string] $Url, [Parameter(Mandatory)] $Menu, [Parameter(Mandatory)] $Screen, [Parameter(Mandatory)] [double] $Speed)
+    $prop = { param($n, $k) $v = $n.properties.PSObject.Properties[$k]; if ($v) { $v.Value } }
+    $canvases = @($Screen.edges | Where-Object { $_.kind -eq 'is-a' -and $_.to -eq 'ui:category:Canvas' } | ForEach-Object from)
+    $pages = @($Menu.nodes | Where-Object {
+            $_.kind -eq 'Page' -and ((& $prop $_ 'view') -eq 'graph' -or ((& $prop $_ 'view') -eq 'screen' -and (& $prop $_ 'screen') -in $canvases))
+        })
+    if (-not $pages) { throw 'no menu page draws a graph' }
+    $chrome = @(Find-HeadlessBrowser -Prefer chrome) | Where-Object { $_ -match 'chrome' } | Select-Object -First 1
+    if (-not $chrome) { return [ordered]@{ wheelSpeed = 'skipped: no Chrome for --dump-dom' } }
+    $inv = [cultureinfo]::InvariantCulture
+    $want = $Speed.ToString($inv)
+    $sens = [math]::Round(0.2 * $Speed, 4).ToString($inv)
+    $work = Join-Path ([IO.Path]::GetTempPath()) "Portal-wheel-$([guid]::NewGuid())"
+    $null = New-Item -ItemType Directory -Force -Path $work
+    try {
+        $seen = foreach ($page in $pages) {
+            $path = & $prop $page 'path'
+            $route = if ((& $prop $page 'view') -eq 'graph') { '/default/graph' } else { "/default/$path" }
+            $dom = Join-Path $work "$($path -replace '/', '-').html"
+            $argv = @('--headless=new', "--user-data-dir=$(Join-Path $work 'profile')", '--no-first-run', '--virtual-time-budget=8000', '--window-size=1400,900', '--dump-dom', "$Url$route")
+            $null = Start-Process -FilePath $chrome -ArgumentList $argv -Wait -NoNewWindow -PassThru `
+                -RedirectStandardOutput $dom -RedirectStandardError (Join-Path $work 'd.err')
+            $text = [string](Get-Content -LiteralPath $dom -Raw -ErrorAction SilentlyContinue)
+            $bar = [regex]::Match($text, '<div class="pt-toolbar" id="toolbar">(.*?)</div>', 'Singleline').Groups[1].Value
+            if ($bar -notmatch ('<span class="pt-wheel"[^>]*data-wheel-speed="' + [regex]::Escape($want) + '"[^>]*>.*</button></span>$')) {
+                throw "$route has no Wheel control at speed $want last in its toolbar: web/wheel-speed.js did not load"
+            }
+            if ($text -notmatch ('data-wheel-sensitivity="' + [regex]::Escape($sens) + '"')) { throw "$route draws no graph at wheelSensitivity $sens" }
+            $path
+        }
+        [ordered]@{ speed = $Speed; sensitivity = [double]$sens; pages = @($seen) }
+    }
+    finally { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 function Find-HeadlessBrowser {
     param([ValidateSet('msedge', 'chrome')] [string] $Prefer = 'msedge')
     $names = if ($Prefer -eq 'chrome') { 'chrome', 'google-chrome', 'msedge', 'microsoft-edge' } else { 'msedge', 'microsoft-edge', 'chrome', 'google-chrome' }

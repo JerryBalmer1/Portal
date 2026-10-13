@@ -28,7 +28,7 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "wheelZoomSpeed": { "type": "number", "minimum": 0.1, "maximum": 5, "default": 1.0, "description": "Scales the Canvas's mouse-wheel zoom step: 1.0 is the product's step." }
+            "wheelZoomSpeed": { "type": "number", "minimum": 0.1, "maximum": 5, "default": 1.0, "description": "Scales the mouse-wheel zoom step of every graph page: 1.0 is the product's step. The default of each page's Wheel control; a viewer's override stays in their browser (docs/design.md 37, 58)." }
           }
         }
       }

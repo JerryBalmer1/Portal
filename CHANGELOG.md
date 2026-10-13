@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.16.4 — 2026-10-13
+
+- **The Wheel control on every graph page** (docs/design.md 58). Graph/Nodes, Graph/Explore and Explore's query result each have a Wheel control at the right end of the toolbar:
+  - a slider from 0.1 to 5;
+  - the speed (`1.0×`);
+  - a reset to the tenant default (`↺`).
+
+  Moving the slider changes the mouse-wheel zoom speed of every graph on the page at once, without a redraw. The stats, source chip and query bar keep their places.
+- **A per-page override stays in the browser.** It is kept in `localStorage` under `portal:<tenant>:<page>:wheelSpeed` (for example `portal:default:graph/explore:wheelSpeed`) and read when the page opens. An absent or invalid value falls back to the tenant default. Reset removes the key. Nothing goes to the server.
+- **The default is the tenant config's `theme.graph.wheelZoomSpeed`** (0.4.1, docs/design.md 37), which now reaches every graph page, not only the Canvas. 1.0 keeps today's step exactly. The brief named a new `ui.graph.wheelSpeed`. This existing key already had the same default, range, schema check and `GET .../config`, so it was kept rather than duplicated (docs/design.md 58).
+- **`web/wheel-speed.js`** (new) holds the product's step and the page's speed. `canvas.js` and `graph.js` no longer keep their own copies. Graph/Nodes and query results now record `data-wheel-sensitivity` too.
+- **`docs/tenant-ui-settings.md`** (new): the tenant's UI settings, where they come from, and the per-page overrides.
+- **`tenants/default/portal.yaml`** names `theme.graph.wheelZoomSpeed: 1.0` with a one-line comment. It is left unstaged (mode dev). `portal.base.yaml` gains the same one-line comment.
+- **Tests:**
+  - Go `TestWheelZoomSpeed`: `5.0` accepted, `0.05` refused.
+  - Pester 166 to 170: the default tenant's key in range and served by `GET .../config`; every module that draws Cytoscape takes its speed from `wheel-speed.js`; the control on Nodes, Explore and a query; the override, its fallback and Reset, driven in Chrome.
+  - `Invoke-Build Smoke` adds `checks.wheelSpeed` over every menu page that draws a graph.
+- **docs/manual-check-list.md**: new item 2.19; item 2.6's Expect updated.
+- No API operation or Kind change. The spec's `Config` description and version move, so `internal/gen` is regenerated.
+
 ## 0.16.3 — 2026-10-12
 
 - **A portal that lost its record is found** (docs/design.md 57). The 2026-10-12 Refresh's `Down` passed with nothing recorded while this repo's portal still held 8200 over `artifacts/`, so `Dev` failed. A portal is now this repo's `build/win-x64/portal.exe`, or `portal.exe~` as `go build` renames a binary in use, whose `-artifacts` is the same directory. That narrows entry 32: any other port owner is still never stopped.
