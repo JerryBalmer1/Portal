@@ -61,8 +61,11 @@ task Modules {
 # internal/gen from api/openapi.yaml with the pinned oapi-codegen (go.mod tool). The output is staged, never hand-edited.
 task Generate { Invoke-Go @('generate', './api/...') }
 
-# portal and graphnode for win-x64 into build/win-x64/, the only platform anything runs them on.
+# portal and graphnode for win-x64 into build/win-x64/, the only platform anything runs them on. go build renames a
+# binary in use to <name>.exe~; one no process runs any more is removed first (docs/design.md 57).
 task Build {
+    Get-ChildItem -Path (Join-Path $buildDir 'win-x64') -Filter '*.exe~' -ErrorAction SilentlyContinue |
+        Remove-Item -ErrorAction SilentlyContinue
     foreach ($cmd in 'portal', 'graphnode') {
         $out = Join-Path $buildDir 'win-x64' "$cmd.exe"
         Invoke-Go @('build', '-trimpath', '-ldflags', '-s -w', '-o', $out, "./cmd/$cmd") -Env @{ GOOS = 'windows'; GOARCH = 'amd64'; CGO_ENABLED = '0' }
@@ -179,10 +182,12 @@ task Feeds FeedsGate, Build, {
 task Status {
     Import-Module $module -Force
     $s = Get-PortalStatus
-    $state = if ($s.Running) { "running (process $($s.ProcessId), $($s.Mode))" } else { 'not running' }
+    $state = if (-not $s.Running) { 'not running' } elseif ($s.Recorded) { "running (process $($s.ProcessId), $($s.Mode))" } else { "running (process $($s.ProcessId), unrecorded)" }
     print Green "port $($s.Port) · $($s.Url) · boot $(if ($s.Boot) { $s.Boot } else { '-' }) · $state"
 }
 
+# Stops every portal serving artifacts/, the recorded one and any unrecorded one; throws when one survives
+# (Stop-Portal, docs/design.md 57).
 task Down {
     Import-Module $module -Force
     Stop-Portal -Verbose

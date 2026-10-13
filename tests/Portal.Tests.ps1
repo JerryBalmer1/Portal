@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.16.2 and needs PowerShell 7.4' {
+    It 'is version 0.16.3 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.16.2'
+        $m.ModuleVersion | Should -Be '0.16.3'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -302,10 +302,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.16.2, the twenty-two Kinds, the twenty-six edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.16.3, the twenty-two Kinds, the twenty-six edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.16\.2$'
+        $text | Should -Match '(?m)^version: 0\.16\.3$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry', 'Alerts', 'Alert', 'Actions') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in', 'has-alert', 'about', 'raised-in', 'has-action', 'answered-by', 'answers', 'request', 'subject', 'principal') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -383,6 +383,7 @@ Describe 'Fixed port' {
             $s.Url | Should -Be "http://127.0.0.1:$TestPort"
             $s.Boot | Should -Be 'seed'
             $s.ProcessId | Should -Be $p.ProcessId
+            $s.Recorded | Should -BeTrue
         }
         finally { Stop-Portal -Artifacts $work }
     }
@@ -442,6 +443,122 @@ Describe 'Up replaces a running portal' {
     }
 }
 
+# Unrecorded portals (docs/design.md 57): this repo's binary serving the same -artifacts without a record is found,
+# stopped and replaced; one over other artifacts is left alone and named; a recorded id that is not such a portal is
+# never stopped; a portal that survives Stop-Process keeps its record. On the test port over their own artifacts.
+Describe 'Unrecorded portals' {
+    BeforeAll {
+        # A portal over $TestDrive/<Name> whose portal.json is gone, as the 2026-10-12 Refresh found one.
+        function New-Orphan([string] $Name) {
+            $dir = Join-Path $TestDrive $Name
+            $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+            Remove-Item -LiteralPath (Join-Path $dir 'portal.json')
+            $p
+        }
+    }
+    AfterEach {
+        foreach ($n in 'orphan', 'replace', 'other', 'survive') { try { Stop-Portal -Artifacts (Join-Path $TestDrive $n) } catch { } }
+        InModuleScope Portal { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 }
+    }
+    It 'Get-PortalStatus reports it unrecorded and Stop-Portal stops it, saying so' {
+        $p = New-Orphan 'orphan'
+        $dir = Join-Path $TestDrive 'orphan'
+        $s = Get-PortalStatus -Artifacts $dir
+        $s.Running | Should -BeTrue
+        $s.Recorded | Should -BeFalse
+        $s.Port | Should -Be 18200
+        $s.ProcessId | Should -Be $p.ProcessId
+        $s.Boot | Should -Be 'seed'
+        $v = @(Stop-Portal -Artifacts $dir -Verbose 4>&1 | ForEach-Object { "$_" }) -join "`n"
+        $v | Should -Match "Stopping the unrecorded portal $($p.ProcessId) \(.*portal\.exe, port 18200\)"
+        Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
+        (Get-PortalStatus -Artifacts $dir).Running | Should -BeFalse
+    }
+    It 'Invoke-PortalUp replaces it, and with -NoReplace throws naming it' {
+        $p = New-Orphan 'replace'
+        $dir = Join-Path $TestDrive 'replace'
+        { InModuleScope Portal -Parameters @{ Work = $dir } { param($Work) Invoke-PortalUp -Port 18200 -Artifacts $Work -Filesystem '' -NoReplace } } |
+            Should -Throw "*already running at http://127.0.0.1:18200 (process $($p.ProcessId), unrecorded)*Stop-Portal first*"
+        $new = InModuleScope Portal -Parameters @{ Work = $dir } { param($Work) Invoke-PortalUp -Port 18200 -Artifacts $Work -Filesystem '' }
+        $new.Replaced | Should -Be 'seed'
+        $new.ProcessId | Should -Not -Be $p.ProcessId
+        Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
+        $s = Get-PortalStatus -Artifacts $dir
+        $s.Recorded | Should -BeTrue
+        $s.ProcessId | Should -Be $new.ProcessId
+    }
+    It 'leaves one over other artifacts alone, and Start-Portal names the Stop-Portal that frees the port' {
+        $p = New-Orphan 'other'
+        $other = Join-Path $TestDrive 'other'
+        $mine = Join-Path $TestDrive 'mine'
+        (Get-PortalStatus -Artifacts $mine).Running | Should -BeFalse
+        Stop-Portal -Artifacts $mine
+        Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+        $err = $null
+        try { $null = Start-Portal -Port 18200 -Artifacts $mine -Filesystem '' } catch { $err = $_.Exception.Message }
+        $err | Should -BeLike "port 18200 is in use by portal (process $($p.ProcessId))*"
+        $err.EndsWith("It is this repo's portal serving ${other}: Stop-Portal -Artifacts '$other' stops it.") | Should -BeTrue -Because $err
+        Join-Path $mine 'portal.json' | Should -Not -Exist
+    }
+    It 'never stops a recorded process id that is not a portal serving the artifacts, and drops that record' {
+        $dir = Join-Path $TestDrive 'stale'
+        $null = New-Item -ItemType Directory -Force -Path $dir
+        [pscustomobject]@{ ProcessId = $PID; Port = 18200; Url = 'http://127.0.0.1:18200'; Tenant = 'default'; Boot = 'seed' } |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $dir 'portal.json')
+        (Get-PortalStatus -Artifacts $dir).Running | Should -BeFalse
+        $v = @(Stop-Portal -Artifacts $dir -Verbose 4>&1 | ForEach-Object { "$_" }) -join "`n"
+        $v | Should -Match "names process $PID, which is not a portal serving .*it is not stopped"
+        Get-Process -Id $PID | Should -Not -BeNullOrEmpty
+        Join-Path $dir 'portal.json' | Should -Not -Exist
+    }
+    It 'keeps the record and throws when the portal survives Stop-Process' {
+        $dir = Join-Path $TestDrive 'survive'
+        $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+        $err = InModuleScope Portal -Parameters @{ Dir = $dir } {
+            param($Dir)
+            Mock Stop-Process { }
+            Mock Wait-Process { }
+            try { Stop-Portal -Artifacts $Dir; $null } catch { $_.Exception.Message }
+        }
+        $err | Should -BeLike "Stop-Portal: process $($p.ProcessId) (*portal.exe) still serves $dir 10 s after Stop-Process; the record *"
+        $err.Contains("the record $(Join-Path $dir 'portal.json') is kept") | Should -BeTrue -Because $err
+        Join-Path $dir 'portal.json' | Should -Exist
+        Get-Process -Id $p.ProcessId | Should -Not -BeNullOrEmpty
+        # The mocks last through AfterEach, so this test stops its own portal.
+        $proc = [Diagnostics.Process]::GetProcessById($p.ProcessId)
+        $proc.Kill(); $null = $proc.WaitForExit(10000)
+    }
+    It 'matches this repo''s binary, renamed or not, on the same -artifacts however it is written' {
+        InModuleScope Portal -Parameters @{ Repo = $Repo } {
+            param($Repo)
+            $exe = Join-Path $Repo 'build' 'win-x64' 'portal.exe'
+            $art = Join-Path $Repo 'artifacts'
+            $rows = @(
+                [pscustomobject]@{ ProcessId = 1; ExecutablePath = $exe; CommandLine = "`"$exe`" -port 8200 -artifacts $art -tenants x -filesystem `"`"" }
+                [pscustomobject]@{ ProcessId = 2; ExecutablePath = "$exe~"; CommandLine = "portal.exe -port 8201 -artifacts $($art.ToUpperInvariant())\" }
+                [pscustomobject]@{ ProcessId = 3; ExecutablePath = $exe; CommandLine = "portal.exe --port=8202 --artifacts=$art" }
+                [pscustomobject]@{ ProcessId = 4; ExecutablePath = 'C:\elsewhere\build\win-x64\portal.exe'; CommandLine = "portal.exe -port 8203 -artifacts $art" }
+                [pscustomobject]@{ ProcessId = 5; ExecutablePath = $exe; CommandLine = "portal.exe -port 8204 -artifacts $art\smoke" }
+                [pscustomobject]@{ ProcessId = 6; ExecutablePath = $exe; CommandLine = 'portal.exe -port 8205' }
+                [pscustomobject]@{ ProcessId = 7; ExecutablePath = $null; CommandLine = $null }
+                [pscustomobject]@{ ProcessId = 8; ExecutablePath = $exe; CommandLine = "portal.exe -port 8206 -artifacts `"C:\with space\art`"" }
+            )
+            $mine = @(Get-PortalProcess -Artifacts $art -Process $rows)
+            @($mine.ProcessId) | Should -Be @(1, 2, 3)
+            @($mine.Port) | Should -Be @(8200, 8201, 8202)
+            ($mine | Where-Object ProcessId -EQ 2).Path | Should -Be "$exe~"
+            @((Get-PortalProcess -Process $rows).ProcessId) | Should -Be @(1, 2, 3, 5, 8)
+            @((Get-PortalProcess -Artifacts 'C:\with space\art\' -Process $rows).ProcessId) | Should -Be @(8)
+            $f = ConvertFrom-PortalCommandLine 'x -a "C:\p q\\" -b "say \"hi\"" -c C:\d\ -e=f -g'
+            $f['a'] | Should -BeExactly 'C:\p q\'
+            $f['b'] | Should -BeExactly 'say "hi"'
+            $f['c'] | Should -BeExactly 'C:\d\'
+            $f['e'] | Should -BeExactly 'f'
+            $f['g'] | Should -BeExactly ''
+        }
+    }
+}
+
 Describe 'Live portal' {
     BeforeAll {
         $script:Work = Join-Path $TestDrive 'live'
@@ -457,7 +574,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.16.2'
+        $s.version | Should -Be '0.16.3'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -2516,9 +2633,11 @@ Describe 'Refresh' -Tag 'Refresh' {
             $ws
         }
         # Handlers that record each call and run nothing; -Fail makes that step's invoke fail.
-        function New-Handlers([System.Collections.Generic.List[string]] $Calls, [string] $Fail, [bool] $Docker = $true) {
+        # -PortHeld makes the port check after Portal's down step throw it; -PortChecks records each check's step.
+        function New-Handlers([System.Collections.Generic.List[string]] $Calls, [string] $Fail, [bool] $Docker = $true, [string] $PortHeld, [System.Collections.Generic.List[string]] $PortChecks) {
             @{
                 docker    = { $Docker }.GetNewClosure()
+                portfree  = { param($Step) if ($null -ne $PortChecks) { $PortChecks.Add($Step.Id) }; if ($PortHeld) { throw $PortHeld } }.GetNewClosure()
                 invoke    = { param($Step, $File, $Log) $Calls.Add($Step.Id); [pscustomobject]@{ Ok = ($Step.Id -ne $Fail); Line = "fake $($Step.Task)"; After = $null } }.GetNewClosure()
                 approve   = { param($Step) $Calls.Add($Step.Id); [pscustomobject]@{ Ok = $true; Line = 'fake snap'; After = $null } }.GetNewClosure()
                 catalogue = { param($Step) $Calls.Add($Step.Id); [pscustomobject]@{ Ok = $true; Line = 'fake catalogue'; After = $null } }.GetNewClosure()
@@ -2635,6 +2754,17 @@ Describe 'Refresh' -Tag 'Refresh' {
             { Invoke-Refresh @{ Workspace = (New-FakeWorkspace 'ws-fail' -WithAgent); Artifacts = (Join-Path $TestDrive 'f-art'); Handlers = (New-Handlers $calls -Fail 'emitters-mount') } } |
                 Should -Throw '*Refresh stopped at step 4, emitters-mount (Portal.Emitters Invoke-Build Mount)*'
             @($calls) | Should -Be @('agent-down', 'portal-down', 'portal-dev', 'emitters-mount')
+        }
+        It 'checks the port after Portal''s down step only, and fails that step naming the holder' {
+            $calls = [System.Collections.Generic.List[string]]::new()
+            $checks = [System.Collections.Generic.List[string]]::new()
+            $null = Invoke-Refresh @{ Workspace = (New-FakeWorkspace 'ws-port' -WithAgent); Artifacts = (Join-Path $TestDrive 'p-art'); Handlers = (New-Handlers $calls -PortChecks $checks) }
+            @($checks) | Should -Be @('portal-down')
+            $calls = [System.Collections.Generic.List[string]]::new()
+            $held = 'port 8200 is in use by portal.exe~ (process 109484); free it, or set PORTAL_PORT in .env or pass -Port'
+            { Invoke-Refresh @{ Workspace = (New-FakeWorkspace 'ws-held' -WithAgent); Artifacts = (Join-Path $TestDrive 'h-art'); Handlers = (New-Handlers $calls -PortHeld $held) } } |
+                Should -Throw '*Refresh stopped at step 2, portal-down (Portal Invoke-Build Down): FAILED after Down: port 8200 is in use by portal.exe~ (process 109484)*(fake Down)*'
+            @($calls) | Should -Be @('agent-down', 'portal-down')
         }
         It 'runs nothing with -DryRun' {
             $calls = [System.Collections.Generic.List[string]]::new()

@@ -6,7 +6,9 @@ function Start-Portal {
     .DESCRIPTION
         The binary is build/win-x64/portal.exe at the repo root (Invoke-Build Build). The port is fixed: -Port,
         else PORTAL_PORT from the repo's .env, else the PORTAL_PORT environment variable, else 8200. 0 is refused,
-        and a busy port throws naming the port and the process that owns it; another port is never picked. The
+        and a busy port throws naming the port and the process that owns it, and the Stop-Portal -Artifacts that
+        frees it when the owner is this repo's portal; another port is never picked. A portal already serving
+        -Artifacts, recorded or not (Get-PortalStatus), throws too. The
         screen boots from the
         newest snap under <Artifacts>/snaps, or from the one -Snap names (PORTAL_SNAP), else from the dev seed
         (empty with -NoSeed); Boot in the record says which, as the screen's X-Portal-Boot header does.
@@ -36,13 +38,20 @@ function Start-Portal {
         [ValidateRange(1, 300)] [int] $TimeoutSec = 20
     )
     $Artifacts = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Artifacts))
-    $running = Get-PortalRecord -Artifacts $Artifacts
-    if ($running -and (Get-Process -Id $running.ProcessId -ErrorAction SilentlyContinue)) {
-        throw "A portal is already running at $($running.Url) (process $($running.ProcessId)). Stop it with Stop-Portal first."
+    $running = Get-PortalStatus -Artifacts $Artifacts
+    if ($running.Running) {
+        $how = if ($running.Recorded) { '' } else { ', unrecorded' }
+        throw "A portal is already running at $($running.Url) (process $($running.ProcessId)$how) over $Artifacts. Stop it with Stop-Portal first."
     }
     $Port = Get-PortalPort -Port ($PSBoundParameters.ContainsKey('Port') ? $Port : $null)
     $exe = Get-PortalBinaryPath
-    Assert-PortalPortFree -Port $Port
+    try { Assert-PortalPortFree -Port $Port }
+    catch {
+        # This repo's portal over other artifacts: name the Stop-Portal that frees the port (docs/design.md 57).
+        $holder = @(Get-PortalProcess | Where-Object Port -EQ $Port) | Select-Object -First 1
+        if (-not $holder) { throw }
+        throw "$($_.Exception.Message). It is this repo's portal serving $($holder.Artifacts): Stop-Portal -Artifacts '$($holder.Artifacts)' stops it."
+    }
     $null = New-Item -ItemType Directory -Force -Path $Artifacts
     $Tenants = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Tenants))
     $all = @('-port', $Port, '-artifacts', $Artifacts, '-tenants', $Tenants, '-filesystem', $Filesystem)

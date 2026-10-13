@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.16.2 on 2026-10-12, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23. Run: item 0.2 (Go 127 tests; Smoke passed with ratio 0.819; Pester 159 passed; `Build succeeded. 6 tasks, 0 errors, 0 warnings`) and item 0.4 (new), each from its own `pwsh -NoProfile -File`, its Expect the output seen. Not run: the other items, since 0.16.2 changes no API, page or wrapper, and the real `Invoke-Build Refresh`, which runs the sibling repos' builds that CLAUDE.md never lets an agent run.
+Verified for: 0.16.3 on 2026-10-12, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23. Run: item 0.2 (Go 127 tests; Smoke passed with ratio 0.819; Pester 166 passed; `Build succeeded. 6 tasks, 0 errors, 0 warnings`), item 0.4 (its two broken paths repaired), items 3.3 and 3.4 (Stop-Portal, Get-PortalStatus and Start-Portal changed; 3.4's -NoReplace message now names the artifacts) and item 3.9 (new), each from its own `pwsh -NoProfile -File`, its Expect the output seen. Not run: the other items, since 0.16.3 changes no API, page or other wrapper, and the real `Invoke-Build Refresh`, which runs the sibling repos' builds that CLAUDE.md never lets an agent run.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (127 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.819 here; 0.844 before Explore's query bar took its height), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 159, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 158, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
+Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (127 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}` with `<r>` above 0.5 (0.819 here; 0.844 before Explore's query bar took its height), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 166, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 165, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -34,9 +34,7 @@ Expect: `exit 0`, then `git-guard: agents edit and stage only; commits are run b
 ```powershell
 Invoke-Build Refresh -DryRun
 ```
-Expect: `Refresh <stamp> (dry run): 7 steps from ...\docs
-efresh\order.psd1; tenant default; workspace C:\__Code`, then `Graph.Node checkout: GraphNode 0.4.2 at C:\__Code\Graph.Node`, then `<repo>: no build script, nothing to refresh` for Portal.Ontology, Portal.Skills, Portal.Tools and Portal.Workflows. Then seven lines `[1/7] agent-down` to `[7/7] catalogue`, each `would run Invoke-Build <Task> -File <path>` (Down, Down, Dev, Mount, Up), then `would take the dev token and approve a snap` and `would print the Catalogue and compare it with ...rtifacts
-efresh\last.json`. Then `Build succeeded. 1 tasks, 0 errors, 0 warnings`. Nothing is run. With the Docker engine down, line 1 reads `would be skipped: the Docker engine is not answering, so there is nothing to stop`. The real `Invoke-Build Refresh` is not an item: it runs the sibling repos' builds (docs/design.md 56).
+Expect: `Refresh <stamp> (dry run): 7 steps from ...\docs\refresh\order.psd1; tenant default; workspace C:\__Code`, then `Graph.Node checkout: GraphNode 0.4.2 at C:\__Code\Graph.Node`, then `<repo>: no build script, nothing to refresh` for Portal.Ontology, Portal.Skills, Portal.Tools and Portal.Workflows. Then seven lines `[1/7] agent-down` to `[7/7] catalogue`, each `would run Invoke-Build <Task> -File <path>` (Down, Down, Dev, Mount, Up), then `would take the dev token and approve a snap` and `would print the Catalogue and compare it with ...\artifacts\refresh\last.json`. Then `Build succeeded. 1 tasks, 0 errors, 0 warnings`. Nothing is run. With the Docker engine down, line 1 reads `would be skipped: the Docker engine is not answering, so there is nothing to stop`. The real `Invoke-Build Refresh` is not an item: it runs the sibling repos' builds (docs/design.md 56).
 
 ## 1. API
 
@@ -1233,7 +1231,7 @@ try {
 }
 finally { Stop-Portal -Artifacts $dir; Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
 ```
-Expect: `replaced seed with <stamp>; new process: True; old gone: True` (`<stamp>` the snap just taken), then `noreplace: A portal is already running at http://127.0.0.1:18200 (process <pid>). Stop it with Stop-Portal first.` The 10 s timeout path is Pester's (a held port, 1 s bound).
+Expect: `replaced seed with <stamp>; new process: True; old gone: True` (`<stamp>` the snap just taken), then `noreplace: A portal is already running at http://127.0.0.1:18200 (process <pid>) over <TEMP>\portal-check-3.4. Stop it with Stop-Portal first.` The 10 s timeout path is Pester's (a held port, 1 s bound).
 
 ### 3.5 New-PortalToken: -Bootstrap once, then tokens for existing principals only
 ```powershell
@@ -1298,3 +1296,26 @@ try {
 finally { $env:PORTAL_TENANTS = $saved; Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue }
 ```
 Expect: Invoke-Build's own `ERROR: Feeds refuses: ...` and `Build FAILED. 2 tasks, 1 errors`, then `Feeds: Feeds refuses: tenant default is in mode prod. Feeds starts the stock registry, NuGet feed and Postgres in Docker and pushes a sample card, so it runs only for a tenant in mode dev or demo; a prod tenant's feeds are its own (portal.yaml feeds:).` and `written under the tenant: portal.yaml` (no `data/`, nothing started).
+
+### 3.9 A portal that lost its record: Status calls it unrecorded, Start-Portal names it, Stop-Portal stops it; a stale id is never stopped
+Down runs `Stop-Portal` on 8200 over `artifacts/`; this runs it on the test port (docs/design.md 57).
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$dir = Join-Path $env:TEMP 'portal-check-3.9'
+$other = Join-Path $env:TEMP 'portal-check-3.9-other'
+Remove-Item $dir, $other -Recurse -Force -ErrorAction SilentlyContinue
+try {
+    $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem ''
+    Remove-Item (Join-Path $dir 'portal.json')
+    $s = Get-PortalStatus -Artifacts $dir
+    "status: $($s.Running) recorded $($s.Recorded) port $($s.Port) process matches $($s.ProcessId -eq $p.ProcessId)"
+    try { Start-Portal -Port 18200 -Artifacts $other -Filesystem '' } catch { "other: $($_.Exception.Message)" }
+    Stop-Portal -Artifacts $dir -Verbose 4>&1 | ForEach-Object { "verbose: $_" }
+    "gone: $(-not (Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue))"
+    Set-Content (Join-Path $dir 'portal.json') "{ `"ProcessId`": $PID, `"Port`": 18200 }"
+    Stop-Portal -Artifacts $dir -Verbose 4>&1 | ForEach-Object { "verbose: $_" }
+    "this shell alive: $([bool](Get-Process -Id $PID)); record left: $(Test-Path (Join-Path $dir 'portal.json'))"
+}
+finally { Stop-Portal -Artifacts $dir; Remove-Item $dir, $other -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `status: True recorded False port 18200 process matches True`; `other: port 18200 is in use by portal (process <pid>); free it, or set PORTAL_PORT in .env or pass -Port. It is this repo's portal serving <TEMP>\portal-check-3.9: Stop-Portal -Artifacts '<TEMP>\portal-check-3.9' stops it.`; `verbose: Stopping the unrecorded portal <pid> (<repo>\build\win-x64\portal.exe, port 18200) serving <TEMP>\portal-check-3.9.`; `gone: True`; `verbose: The record names process <this shell's pid>, which is not a portal serving <TEMP>\portal-check-3.9 (exited, or the id was reused); it is not stopped.`; `this shell alive: True; record left: False`. The survivor that keeps its record is Pester's (Stop-Process mocked).

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.16.3 — 2026-10-12
+
+- **A portal that lost its record is found** (docs/design.md 57). The 2026-10-12 Refresh's `Down` passed with nothing recorded while this repo's portal still held 8200 over `artifacts/`, so `Dev` failed. A portal is now this repo's `build/win-x64/portal.exe`, or `portal.exe~` as `go build` renames a binary in use, whose `-artifacts` is the same directory. That narrows entry 32: any other port owner is still never stopped.
+  - `Stop-Portal` (and so `Down`) stops the recorded portal and every unrecorded one over its artifacts, saying which with `-Verbose`.
+  - `Get-PortalStatus` reports an unrecorded one: `Running` true, new property `Recorded` false, its port from its command line. `Up`, `Dev` and `Feeds` replace it; `Status` prints `unrecorded`.
+- **`Stop-Portal` keeps the record when the stop fails.** A portal still running 10 s after `Stop-Process` keeps `portal.json`, and Stop-Portal throws naming it. A recorded id that is not such a portal (exited, or reused by another program) is never stopped; the record is dropped.
+- **`Start-Portal`** refuses a second portal over the same artifacts, recorded or not. When this repo's portal over other artifacts holds the port, the message names the `Stop-Portal -Artifacts` that frees it.
+- **Refresh** checks the port after Portal's `Down`, and fails that step naming the holder.
+- **`Build`** removes a `build/win-x64/*.exe~` that no process runs.
+- **Pester** 159 to 166: an `Unrecorded portals` block (found, stopped, replaced, left alone over other artifacts, a stale id never stopped, a survivor keeping its record, the matcher over fake process rows) and a Refresh case for the port check.
+- **docs/manual-check-list.md**: item 0.4's two paths, broken by an escaped `\r` and `\a` in 0.16.2, are repaired. New item 3.9.
+- No API, Kind or binary change. The spec's version moves, so `internal/gen` is regenerated.
+
 ## 0.16.2 — 2026-10-12
 
 - **`Invoke-Build Refresh`** (docs/design.md 56): everything down and back up in one declared order.

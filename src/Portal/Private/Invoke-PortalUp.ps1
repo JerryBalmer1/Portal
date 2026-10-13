@@ -1,11 +1,12 @@
 function Invoke-PortalUp {
     <#
     .SYNOPSIS
-    Invoke-Build Up's start: when the portal recorded in <Artifacts>/portal.json is running, Stop-Portal it, wait
-    up to -FreeTimeoutSec (10) for its port to free, then Start-Portal. Returns Start-Portal's record with Replaced,
-    the old portal's boot stamp ($null when nothing was replaced). -NoReplace calls Start-Portal straight away, so a
-    running portal throws as before. A port held by anything Portal did not record is never stopped: Start-Portal
-    throws naming its owner (docs/design.md 32). PORTAL_NUGET_KEY, when the environment lacks it, is read from the repo's
+    Invoke-Build Up's start: when a portal serves <Artifacts> (Get-PortalStatus: the one recorded in portal.json, or
+    this repo's binary running over the same directory unrecorded, docs/design.md 57), Stop-Portal it, wait up to
+    -FreeTimeoutSec (10) for its port to free, then Start-Portal. Returns Start-Portal's record with Replaced, the
+    old portal's boot stamp ($null when nothing was replaced). -NoReplace calls Start-Portal straight away, so a
+    running portal throws as before. A port held by anything else is never stopped: Start-Portal throws naming its
+    owner (docs/design.md 32). PORTAL_NUGET_KEY, when the environment lacks it, is read from the repo's
     .env (Get-PortalEnvValue; read only, never written), so the portal can push to cards-nuget whether Up or Feeds
     started it (docs/design.md 40).
     #>

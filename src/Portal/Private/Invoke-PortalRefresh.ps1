@@ -12,7 +12,9 @@ function Invoke-PortalRefresh {
     restart re-mints it) and POSTs .../snap. catalogue GETs .../emitters, prints the table and fails, naming each
     card, when one that read ok in artifacts/refresh/last.json reads no-layers or version-mismatch; last.json is
     written only when it passes, failed.json when it does not. -DryRun prints what each step would do and runs
-    nothing. -Handlers replaces the invoke, approve, catalogue or docker handler (Pester).
+    nothing. After Portal's own down step, the port Up would use must be free, or that step fails naming the
+    owner (docs/design.md 57): a Down that stopped nothing while 8200 is held fails there, not at the next step.
+    -Handlers replaces the invoke, approve, catalogue, docker or portfree handler (Pester).
     #>
     [CmdletBinding()]
     param(
@@ -36,6 +38,7 @@ function Invoke-PortalRefresh {
             $LASTEXITCODE -eq 0
         }
         invoke    = { param($Step, $File, $Log) Invoke-PortalRefreshStep -Task $Step.Task -File $File -Log $Log }
+        portfree  = { param($Step) Assert-PortalPortFree -Port (Get-PortalPort) }
         approve   = {
             param($Step)
             $url = Resolve-PortalUrl
@@ -139,6 +142,10 @@ function Invoke-PortalRefresh {
         }
         catch { [pscustomobject]@{ Ok = $false; Line = "FAILED: $($_.Exception.Message)"; After = $null } }
         if (-not $r) { $r = [pscustomobject]@{ Ok = $false; Line = 'FAILED: the step returned no result'; After = $null } }
+        if ($r.Ok -and $step.Repo -eq 'Portal' -and $step.Phase -eq 'down') {
+            try { & $h.portfree $step }
+            catch { $r = [pscustomobject]@{ Ok = $false; Line = "FAILED after $($step.Task): $($_.Exception.Message) ($($r.Line))"; After = $null } }
+        }
         $seconds = [math]::Round($clock.Elapsed.TotalSeconds, 1)
         Write-Host "$($r.Line) ($seconds s)" -ForegroundColor $(if ($r.Ok) { 'Green' } else { 'Red' })
         if ($r.After) { Write-Host $r.After }
