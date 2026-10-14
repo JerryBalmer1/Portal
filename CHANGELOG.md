@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.16.5 — 2026-10-13
+
+- **Refresh's catalogue step no longer fails with 401 after approve passes** (docs/design.md 59). Step 7, `GET .../emitters`, sent the `PORTAL_TOKEN` that Refresh's own process inherited from the shell, where an earlier `Invoke-Build Dev` had set it. Mount's two restarts had made that token dead. A `Dev` missing after Mount was not the cause, and the order is unchanged.
+- **Every API-calling step of Refresh fetches the dev token from `GET .../dev-token` immediately before its call, never earlier.** This covers `approve` and `catalogue`. `PORTAL_TOKEN` is no longer read or set by Refresh. A portal started with `Up` (dev-token 404) fails the step, naming it.
+- **The token's first 8 characters** appear in each API step's line and in its failure message. Every step's line also goes to the new `artifacts/refresh/<stamp>/refresh.log`.
+- **An invoke step still running prints its elapsed seconds every 15 s**, so a 40 s Mount is not a bare cursor.
+- **New private `Get-PortalDevToken`**, and `Invoke-PortalApi -Token`.
+- **`docs/refresh/dependency-order.md`**: conflict 4 is now "every Portal start mints a new dev token; fetch at use".
+- **Tests:**
+  - Pester 170 to 177: a fake portal that mints a new token at every restart, run with a stale `PORTAL_TOKEN`; the token fetch pinned after the last `RestartsPortal` step and directly before each call; a restart between fetch and call; dev-token 404; the fetch itself; progress ticks.
+  - **docs/manual-check-list.md**: new item 0.5, a real portal's 401 on a pre-restart token, and the 404 from a portal started without a dev token. Item 0.4's Expect is updated.
+- No API operation or Kind change. The spec's version moves, so `internal/gen` is regenerated.
+
 ## 0.16.4 — 2026-10-13
 
 - **The Wheel control on every graph page** (docs/design.md 58). Graph/Nodes, Graph/Explore and Explore's query result each have a Wheel control at the right end of the toolbar:

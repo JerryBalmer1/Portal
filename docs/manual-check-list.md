@@ -1,6 +1,6 @@
 # Portal manual check list
 
-Verified for: 0.16.4 on 2026-10-13, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23. Run: item 0.2 (Go 127 tests; Smoke passed with ratio 0.819 and `wheel {"speed":1.0,"sensitivity":0.2,"pages":["graph/explore","graph/nodes"]}`; Pester 170 passed; `Build succeeded. 6 tasks, 0 errors, 0 warnings`) and item 2.19 (new): its block's portal with the `Read-Host` replaced by headless Chrome, `--dump-dom` of Nodes, Explore, an Explore query and Environments/Graph, and a DevTools script that drags the slider, changes page, comes back and resets; its Expect the output seen. Item 2.6's Expect is reworded only (the committed tenant file is no longer `{}`) and was not re-run. Not run: the other items, since 0.16.4 changes no other API, page or wrapper, and the real `Invoke-Build Refresh`, which runs the sibling repos' builds that CLAUDE.md never lets an agent run.
+Verified for: 0.16.5 on 2026-10-13, Windows 11 (10.0.26200), PowerShell 7.6.6, Go 1.27.0, Pester 6.2.0, InvokeBuild 5.14.23. Run: item 0.2 (Go 127 tests; Smoke passed with ratio 0.819 and `wheel {"speed":1.0,"sensitivity":0.2,"pages":["graph/explore","graph/nodes"]}`; Pester 176 passed; `Build succeeded. 6 tasks, 0 errors, 0 warnings`), item 0.4 (its Expect's approve and catalogue plans updated) and item 0.5 (new), each Expect the output seen. Not run: the other items, since 0.16.5 changes only Refresh and a private helper, and the real `Invoke-Build Refresh`, which runs the sibling repos' builds that CLAUDE.md never lets an agent run.
 
 Run each block by saving it to a temp `.ps1` and `pwsh -NoProfile -File <temp>.ps1` from the repo root. Never `pwsh -Command { }`. Items 1 to 3 need item 0.2 (or `Invoke-Build Build`) to have built `build/win-x64/`. Every block starts its portal on a fresh directory under `$env:TEMP` and on the test port 18200, one at a time (0 is refused; docs/design.md 24): a directory that holds snaps boots from the newest of them.
 
@@ -20,7 +20,7 @@ Expect: `go version go1.27.0 windows/amd64` (1.27.0 or later), `all modules veri
 ```powershell
 Invoke-Build
 ```
-Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (127 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}; wheel {"speed":1.0,"sensitivity":0.2,"pages":["graph/explore","graph/nodes"]}` with `<r>` above 0.5 (0.819 here; 0.844 before Explore's query bar took its height), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 170, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 169, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
+Expect: go test ends `ok` for `cmd/portal`, `internal/feed`, `internal/server`, `internal/store` and `internal/tenant` (127 tests); Smoke prints `smoke: seed 20 nodes; approved <a>, then <b> changing ui:theme:default; restart booted from <b>; canvas fit {"graphWidth":<g>,"panelWidth":<p>,"graphHeight":<h>,"panelHeight":<q>,"ratio":<r>}; wheel {"speed":1.0,"sensitivity":0.2,"pages":["graph/explore","graph/nodes"]}` with `<r>` above 0.5 (0.819 here; 0.844 before Explore's query bar took its height), and `artifacts/smoke-report.json` has `checks.auth` `{"anonymousWrite":401,"principal":"smoke","role":"admin"}` (the smoke tenant's bootstrap admin) and `checks.rail.rail` the thirteen Services from `ui:rail:overview` to `ui:rail:settings`; Pester ends `Tests Passed: 177, Failed: 0, Skipped: 0`, then `Build succeeded. 6 tasks, 0 errors, 0 warnings`. While `tenants/default/portal.yaml` is staged or committed with mode dev, Pester ends `Tests Passed: 176, Failed: 1, Skipped: 0` instead, the failure being `tenants/default/portal.yaml is neither committed nor staged with mode dev`, and the build stops with `Pester failed: 1 test(s)` (docs/design.md 39).
 
 ### 0.3 git-guard hook
 Run from a shell that is not an agent's (the hook refuses an agent's call that quotes these commands).
@@ -34,7 +34,44 @@ Expect: `exit 0`, then `git-guard: agents edit and stage only; commits are run b
 ```powershell
 Invoke-Build Refresh -DryRun
 ```
-Expect: `Refresh <stamp> (dry run): 7 steps from ...\docs\refresh\order.psd1; tenant default; workspace C:\__Code`, then `Graph.Node checkout: GraphNode 0.4.2 at C:\__Code\Graph.Node`, then `<repo>: no build script, nothing to refresh` for Portal.Ontology, Portal.Skills, Portal.Tools and Portal.Workflows. Then seven lines `[1/7] agent-down` to `[7/7] catalogue`, each `would run Invoke-Build <Task> -File <path>` (Down, Down, Dev, Mount, Up), then `would take the dev token and approve a snap` and `would print the Catalogue and compare it with ...\artifacts\refresh\last.json`. Then `Build succeeded. 1 tasks, 0 errors, 0 warnings`. Nothing is run. With the Docker engine down, line 1 reads `would be skipped: the Docker engine is not answering, so there is nothing to stop`. The real `Invoke-Build Refresh` is not an item: it runs the sibling repos' builds (docs/design.md 56).
+Expect: `Refresh <stamp> (dry run): 7 steps from ...\docs\refresh\order.psd1; tenant default; workspace C:\__Code`, then `Graph.Node checkout: GraphNode 0.4.2 at C:\__Code\Graph.Node`, then `<repo>: no build script, nothing to refresh` for Portal.Ontology, Portal.Skills, Portal.Tools and Portal.Workflows. Then seven lines `[1/7] agent-down` to `[7/7] catalogue`, each `would run Invoke-Build <Task> -File <path>` (Down, Down, Dev, Mount, Up), then `would fetch the dev token and approve a snap` and `would fetch the dev token, print the Catalogue and compare it with ...\artifacts\refresh\last.json`. Then `Build succeeded. 1 tasks, 0 errors, 0 warnings`. Nothing is run. With the Docker engine down, line 1 reads `would be skipped: the Docker engine is not answering, so there is nothing to stop`. The real `Invoke-Build Refresh` is not an item: it runs the sibling repos' builds (docs/design.md 56).
+
+### 0.5 Refresh's dev token: fetched at use, and dead after a restart
+Every Portal start mints a new dev token, so Refresh fetches it immediately before each API call (docs/design.md 59). Two starts as `Dev` makes them, then one as `Up` makes it.
+```powershell
+Import-Module .\src\Portal\Portal.psd1 -Force
+$m = Get-Module Portal
+$t = Join-Path $env:TEMP 'portal-check-0.5-tenants'
+$dir = Join-Path $env:TEMP 'portal-check-0.5'
+Remove-Item $t, $dir -Recurse -Force -ErrorAction SilentlyContinue
+$null = New-Item -ItemType Directory -Force "$t\default"; Set-Content "$t\default\portal.yaml" 'mode: dev'
+$saved = $env:PORTAL_TOKEN
+try {
+    $held = @()
+    foreach ($start in 1, 2) {
+        $env:PORTAL_TOKEN = (& $m { param($t) New-PortalDevToken -Tenants $t } $t).Token
+        $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' -Tenants $t
+        try {
+            $held += $env:PORTAL_TOKEN
+            $fetched = & $m { param($u) Get-PortalDevToken -Url $u -Tenant default } $p.Url
+            "start ${start}: dev-token serves $($fetched.Substring(0, 8))... (the token Dev set: $($fetched -eq $env:PORTAL_TOKEN))"
+            if ($start -eq 2) {
+                $env:PORTAL_TOKEN = $held[0]
+                try { $null = & $m { param($u) Invoke-PortalApi -Url $u -Path '/emitters' } $p.Url } catch { "start 2, start 1's token from PORTAL_TOKEN: $($_.Exception.Message)" }
+                $rows = @(& $m { param($u, $k) Invoke-PortalApi -Url $u -Path '/emitters' -Token $k } $p.Url $fetched).Count
+                "start 2, the token fetched just before: GET /emitters ok ($rows envelope)"
+            }
+        }
+        finally { Stop-Portal -Artifacts $dir; & $m { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
+    }
+    $env:PORTAL_TOKEN = $null
+    $p = Start-Portal -Port 18200 -Artifacts $dir -Filesystem '' -Tenants $t
+    try { & $m { param($u) Get-PortalDevToken -Url $u -Tenant default } $p.Url } catch { "Up: $($_.Exception.Message)" }
+    finally { Stop-Portal -Artifacts $dir; & $m { Wait-PortalPortFree -Port 18200 -TimeoutSec 10 } }
+}
+finally { $env:PORTAL_TOKEN = $saved; Remove-Item $dir, $t -Recurse -Force -ErrorAction SilentlyContinue }
+```
+Expect: `start 1: dev-token serves <8 hex>... (the token Dev set: True)` and `start 2: dev-token serves <8 other hex>... (the token Dev set: True)`. Then `start 2, start 1's token from PORTAL_TOKEN: GET /api/tenants/default/emitters -> 401: the bearer token is not one tenant default holds (tenants/default/tokens.yaml)`, the 2026-10-13 Refresh's step 7 failure word for word. Then `start 2, the token fetched just before: GET /emitters ok (1 envelope)`, and `Up: GET http://127.0.0.1:18200/api/tenants/default/dev-token answered 404: the portal serves no dev token. It was started with Invoke-Build Up (or tenant default is not in mode dev), and Refresh needs the portal Invoke-Build Dev starts`.
 
 ## 1. API
 

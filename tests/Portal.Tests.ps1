@@ -155,9 +155,9 @@ AfterAll {
 }
 
 Describe 'Module' {
-    It 'is version 0.16.4 and needs PowerShell 7.4' {
+    It 'is version 0.16.5 and needs PowerShell 7.4' {
         $m = Import-PowerShellDataFile $Manifest
-        $m.ModuleVersion | Should -Be '0.16.4'
+        $m.ModuleVersion | Should -Be '0.16.5'
         $m.PowerShellVersion | Should -Be '7.4'
     }
     It 'exports exactly the functions the manifest lists' {
@@ -182,8 +182,17 @@ Describe 'Module' {
 }
 
 Describe 'Two doors' {
-    It 'README first line links ONTOLOGY.md' {
-        Get-Content (Join-Path $Repo 'README.md') -First 1 | Should -Match 'ONTOLOGY\.md'
+    It 'README first prose line links ONTOLOGY.md' {
+        $lines = Get-Content (Join-Path $Repo 'README.md')
+        $first = $lines | Where-Object { $_ -notmatch '^\s*$|^\s*<|^\s*!\[|^#' } | Select-Object -First 1
+        $first | Should -Match '^>'
+        $first | Should -Match ([regex]::Escape('[ONTOLOGY.md](ONTOLOGY.md)'))
+    }
+    It 'README has only presentation above the Terms line' {
+        $lines = Get-Content (Join-Path $Repo 'README.md')
+        $at = [array]::FindIndex([string[]]$lines, [Predicate[string]] { param($l) $l -match '^>.*\[ONTOLOGY\.md\]\(ONTOLOGY\.md\)' })
+        $at | Should -BeGreaterThan -1
+        @($lines | Select-Object -First $at | Where-Object { $_ -notmatch '^\s*$|^\s*<|^\s*!\[|^#' }) | Should -BeNullOrEmpty
     }
     It 'ONTOLOGY.md first line links README.md' {
         Get-Content (Join-Path $Repo 'ONTOLOGY.md') -First 1 | Should -Match 'README\.md'
@@ -302,10 +311,10 @@ Describe 'Ontology and fixtures' {
         $out = & $GraphNodeBin validate-ontology (Join-Path $Repo 'ontology.yaml')
         $LASTEXITCODE | Should -Be 0 -Because ($out -join ' ')
     }
-    It 'declares module Portal 0.16.4, the twenty-two Kinds, the twenty-six edge Kinds and the approved finding Kind' {
+    It 'declares module Portal 0.16.5, the twenty-two Kinds, the twenty-six edge Kinds and the approved finding Kind' {
         $text = Get-Content (Join-Path $Repo 'ontology.yaml') -Raw
         $text | Should -Match '(?m)^module: Portal$'
-        $text | Should -Match '(?m)^version: 0\.16\.4$'
+        $text | Should -Match '(?m)^version: 0\.16\.5$'
         foreach ($k in 'Container', 'Widget', 'Layout', 'Category', 'State', 'Theme', 'Ref', 'Mount', 'Service', 'Page', 'Principal', 'Feed', 'Card', 'Run', 'Decision', 'Emitter', 'Layer', 'Ledger', 'LedgerEntry', 'Alerts', 'Alert', 'Actions') { $text | Should -Match "(?m)^  ${k}:" }
         foreach ($e in 'contains', 'laid-out-by', 'is-a', 'displays', 'has-state', 'themed-by', 'opens', 'has-page', 'has-card', 'has-run', 'has-decision', 'produced-by', 'has-layer', 'has-entry', 'prev', 'records', 'recorded-in', 'has-alert', 'about', 'raised-in', 'has-action', 'answered-by', 'answers', 'request', 'subject', 'principal') { $text | Should -Match "(?m)^  ${e}:" }
         $text | Should -Match '(?m)^  approved:'
@@ -574,7 +583,7 @@ Describe 'Live portal' {
         $s = Get-PortalScreen -Url $Url
         $s.schema | Should -Be 'graph/1'
         $s.module | Should -Be 'Portal'
-        $s.version | Should -Be '0.16.4'
+        $s.version | Should -Be '0.16.5'
         $s.layer | Should -BeOfType [string]
         $byId = @{}; foreach ($n in $s.nodes) { $byId[$n.id] = $n }
         $byId['ui:root'].kind | Should -Be 'Container'
@@ -2846,6 +2855,116 @@ Describe 'Refresh' -Tag 'Refresh' {
             $bad.Ok | Should -BeFalse
             $bad.Line | Should -Match '^FAILED \(exit [1-9]'
             $bad.After | Should -Match 'bad-step-error'
+        }
+        It 'prints the elapsed seconds of a step still running, every -ProgressSeconds' {
+            $file = Join-Path $TestDrive 'slow.build.ps1'
+            Set-Content -LiteralPath $file -Value "task Slow { Start-Sleep -Milliseconds 2600 }"
+            $ticks = [System.Collections.Generic.List[int]]::new()
+            $tick = { param($Seconds) $ticks.Add($Seconds) }.GetNewClosure()
+            $r = InModuleScope Portal -Parameters @{ F = $file; L = (Join-Path $TestDrive 'slow.log'); T = $tick } { param($F, $L, $T) Invoke-PortalRefreshStep -Task Slow -File $F -Log $L -ProgressSeconds 1 -Progress $T }
+            $r.Ok | Should -BeTrue
+            $ticks.Count | Should -BeGreaterOrEqual 2
+            $ticks[0] | Should -Be 1
+            $ticks[1] | Should -Be 2
+        }
+    }
+
+    # The 2026-10-13 Refresh failed at catalogue with 401 after approve passed (docs/design.md 59): catalogue sent the
+    # PORTAL_TOKEN Refresh's own process inherited, which a restart had made dead. Here a fake portal mints a new
+    # token at every RestartsPortal step and refuses any other, as tenant.go's auth does, and PORTAL_TOKEN holds a
+    # stale one; approve and catalogue are the real handlers.
+    Context 'The dev token' {
+        BeforeAll {
+            function New-FakePortal([System.Collections.Generic.List[string]] $Events) {
+                $state = @{ Token = 'boot0000' + ('0' * 56); Starts = 0 }
+                $handlers = @{
+                    docker   = { $true }
+                    portfree = { param($Step) }
+                    url      = { 'http://127.0.0.1:65535' }
+                    invoke   = {
+                        param($Step, $File, $Log)
+                        $Events.Add("invoke:$($Step.Id)")
+                        if ($Step.RestartsPortal) { $state.Starts++; $state.Token = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N') }
+                        [pscustomobject]@{ Ok = $true; Line = "fake $($Step.Task)"; After = $null }
+                    }.GetNewClosure()
+                    token    = { param($Url) $Events.Add('token'); $state.Token }.GetNewClosure()
+                    api      = {
+                        param($Url, $Token, $Method, $Path, $Body)
+                        $Events.Add("api:$Method $Path")
+                        if ($Token -cne $state.Token) { throw "$Method /api/tenants/default$Path -> 401: the bearer token is not one tenant default holds (tenants/default/tokens.yaml)" }
+                        switch ($Path) {
+                            '/snap' { [pscustomobject]@{ stamp = '2026-10-13T18-46-57.523Z'; previous = $null } }
+                            '/emitters' { [pscustomobject]@{ nodes = @([pscustomobject]@{ id = 'ui:card:cards-oci/Emitter.Git@0.1.2'; kind = 'Card'; name = 'Emitter.Git'; properties = [pscustomobject]@{ status = 'ok'; version = '0.1.2'; layers = 1; layerVersions = @('0.1.2') } }) } }
+                        }
+                    }.GetNewClosure()
+                }
+                [pscustomobject]@{ State = $state; Handlers = $handlers }
+            }
+            function Invoke-WithStaleToken([scriptblock] $Body) {
+                $saved = $env:PORTAL_TOKEN
+                $env:PORTAL_TOKEN = 'c7e6db69' + ('f' * 56)
+                try { & $Body } finally { $env:PORTAL_TOKEN = $saved }
+            }
+        }
+        It 'passes approve and catalogue against a portal that mints a new token at every restart' {
+            $events = [System.Collections.Generic.List[string]]::new()
+            $fake = New-FakePortal $events
+            $art = Join-Path $TestDrive 'tok-art'
+            $results = @(Invoke-WithStaleToken { Invoke-Refresh @{ Workspace = (New-FakeWorkspace 'ws-tok' -WithAgent); Artifacts = $art; Handlers = $fake.Handlers } })
+            $fake.State.Starts | Should -Be @($Order.Steps | Where-Object RestartsPortal).Count
+            ($results | Where-Object Id -EQ 'approve').Result | Should -Be 'ok'
+            ($results | Where-Object Id -EQ 'catalogue').Result | Should -Be 'ok'
+            $prefix = $fake.State.Token.Substring(0, 8)
+            ($results | Where-Object Id -EQ 'approve').Line | Should -BeLike "*dev token $prefix...*"
+            ($results | Where-Object Id -EQ 'catalogue').Line | Should -BeLike "*dev token $prefix...*"
+            $log = Get-Content -LiteralPath (Join-Path (Get-ChildItem -LiteralPath $art -Directory | Select-Object -First 1).FullName 'refresh.log') -Raw
+            $log | Should -Match "\[7/7\] catalogue .*dev token $prefix\.\.\."
+            $log | Should -Not -Match $fake.State.Token
+        }
+        It 'fetches the token after the last RestartsPortal step and immediately before each API call' {
+            $events = [System.Collections.Generic.List[string]]::new()
+            $fake = New-FakePortal $events
+            $null = Invoke-WithStaleToken { Invoke-Refresh @{ Workspace = (New-FakeWorkspace 'ws-pin' -WithAgent); Artifacts = (Join-Path $TestDrive 'pin-art'); Handlers = $fake.Handlers } }
+            $restarts = @($Order.Steps | Where-Object RestartsPortal | ForEach-Object { "invoke:$($_.Id)" })
+            $lastRestart = -1
+            for ($i = 0; $i -lt $events.Count; $i++) { if ($events[$i] -in $restarts) { $lastRestart = $i } }
+            $lastRestart | Should -BeGreaterOrEqual 0
+            $calls = @(for ($i = 0; $i -lt $events.Count; $i++) { if ($events[$i] -like 'api:*') { $i } })
+            @($calls | ForEach-Object { $events[$_] }) | Should -Be @('api:POST /snap', 'api:GET /emitters')
+            foreach ($c in $calls) { $events[$c - 1] | Should -Be 'token' -Because "$($events[$c]) takes the token fetched just before it" }
+            for ($i = 0; $i -lt $events.Count; $i++) {
+                if ($events[$i] -eq 'token') { $i | Should -BeGreaterThan $lastRestart -Because 'no token is fetched before the last restart' }
+            }
+            @($events | Where-Object { $_ -eq 'token' }).Count | Should -Be $calls.Count
+        }
+        It 'fails catalogue, naming the token prefix, when the portal restarts between its fetch and its call' {
+            $events = [System.Collections.Generic.List[string]]::new()
+            $fake = New-FakePortal $events
+            $rotating = $fake.Handlers.Clone()
+            $state = $fake.State
+            $inner = $fake.Handlers.token
+            $rotating.token = { param($Url) $t = & $inner $Url; if ($events.Contains('api:POST /snap')) { $state.Token = 'moved000' + ('0' * 56) }; $t }.GetNewClosure()
+            { Invoke-Refresh @{ Workspace = (New-FakeWorkspace 'ws-rot' -WithAgent); Artifacts = (Join-Path $TestDrive 'rot-art'); Handlers = $rotating } } |
+                Should -Throw '*Refresh stopped at step 7, catalogue*401*(sent dev token *..., fetched from GET /api/tenants/*/dev-token just before)*'
+        }
+        It 'refuses a portal started with Up (dev-token 404), naming it, and sends no stale bearer to dev-token' {
+            Mock Invoke-WebRequest -ModuleName Portal { [pscustomobject]@{ StatusCode = 404; Content = '{"code":"not-found","message":"no route"}' } }
+            Invoke-WithStaleToken {
+                { InModuleScope Portal { Get-PortalDevToken -Url 'http://127.0.0.1:65535' -Tenant default } } |
+                    Should -Throw '*dev-token answered 404*started with Invoke-Build Up*'
+            }
+            Should -Invoke Invoke-WebRequest -ModuleName Portal -Times 1 -Exactly -ParameterFilter { -not $Headers -and $Uri -eq 'http://127.0.0.1:65535/api/tenants/default/dev-token' }
+            $events = [System.Collections.Generic.List[string]]::new()
+            $fake = New-FakePortal $events
+            $up = $fake.Handlers.Clone()
+            $up.Remove('token')
+            { Invoke-Refresh @{ Workspace = (New-FakeWorkspace 'ws-up' -WithAgent); Artifacts = (Join-Path $TestDrive 'up-art'); Handlers = $up } } |
+                Should -Throw '*Refresh stopped at step 6, approve*answered 404*Invoke-Build Up*'
+            $events | Should -Not -Contain 'api:POST /snap'
+        }
+        It 'returns the token dev-token serves' {
+            Mock Invoke-WebRequest -ModuleName Portal { [pscustomobject]@{ StatusCode = 200; Content = '{"token":"9d98439f53702b05"}' } }
+            InModuleScope Portal { Get-PortalDevToken -Url 'http://127.0.0.1:65535/' -Tenant default } | Should -BeExactly '9d98439f53702b05'
         }
     }
 

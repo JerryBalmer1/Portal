@@ -13,7 +13,7 @@ In the same task as any change to a path the What-is-here table names or a new t
 
 ## Rules
 
-- Line 1 is one `>` line naming the terms and linking `ONTOLOGY.md`. Pester checks it.
+- The first prose line is one `>` line naming the terms and linking `ONTOLOGY.md`. A prose line is any line that is not blank, an HTML tag, an image or a heading; everything above it is presentation only (HTML `<p>`/`<img>` blocks, blank lines, the H1). Pester checks both.
 - Sections in order: rows diagram, What is here, Requirements, Build, Use from PowerShell, Use the API, Status.
 - The What-is-here table matches the tree; the `src/Portal/` row lists exactly `FunctionsToExport`, in order; the `cmd/portal/` row lists every flag `main.go` defines; the `cmd/graphnode/` row every subcommand.
 - Build lists the Invoke-Build tasks exactly as `.build.ps1` defines them and says where binaries go (`build/win-x64/`).

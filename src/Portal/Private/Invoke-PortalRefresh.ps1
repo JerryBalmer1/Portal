@@ -8,13 +8,17 @@ function Invoke-PortalRefresh {
     artifacts/refresh/<stamp>/<n>-<id>.log, through files rather than a pipe: a portal the step starts inherits the
     child's handles, and an inherited pipe would never close. A repo or build file not on disk, and a
     SkipWithoutDocker step with no Docker engine, are skipped with one line. Portal is this repo; a dependent is the
-    folder of that name beside it. approve takes the dev token from GET .../dev-token (loopback, mode dev; a Portal
-    restart re-mints it) and POSTs .../snap. catalogue GETs .../emitters, prints the table and fails, naming each
+    folder of that name beside it. approve POSTs .../snap and catalogue GETs .../emitters, each with the dev token
+    fetched from GET .../dev-token immediately before its call, never earlier and never PORTAL_TOKEN (docs/design.md
+    59: every Portal start mints a new one); a portal started with Up (no dev token, 404) fails the step naming it.
+    Each line names the token's first 8 characters, and artifacts/refresh/<stamp>/refresh.log keeps every step's
+    line. An invoke step still running prints its elapsed seconds every -ProgressSeconds. catalogue prints the
+    table and fails, naming each
     card, when one that read ok in artifacts/refresh/last.json reads no-layers or version-mismatch; last.json is
     written only when it passes, failed.json when it does not. -DryRun prints what each step would do and runs
     nothing. After Portal's own down step, the port Up would use must be free, or that step fails naming the
     owner (docs/design.md 57): a Down that stopped nothing while 8200 is held fails there, not at the next step.
-    -Handlers replaces the invoke, approve, catalogue, docker or portfree handler (Pester).
+    -Handlers replaces the invoke, approve, catalogue, docker, portfree, url, token or api handler (Pester).
     #>
     [CmdletBinding()]
     param(
@@ -22,6 +26,7 @@ function Invoke-PortalRefresh {
         [string] $Workspace = (Split-Path $script:RepoRoot -Parent),
         [string] $Artifacts = (Join-Path $script:ArtifactsRoot 'refresh'),
         [switch] $DryRun,
+        [ValidateRange(1, 3600)] [int] $ProgressSeconds = 15,
         [hashtable] $Handlers = @{}
     )
     $order = Get-PortalRefreshOrder -Path $OrderPath
@@ -37,16 +42,24 @@ function Invoke-PortalRefresh {
             $null = & docker info --format '{{.ServerVersion}}' 2>&1
             $LASTEXITCODE -eq 0
         }
-        invoke    = { param($Step, $File, $Log) Invoke-PortalRefreshStep -Task $Step.Task -File $File -Log $Log }
+        invoke    = {
+            param($Step, $File, $Log)
+            $tick = { param($Seconds) Write-Host "$Seconds s... " -NoNewline -ForegroundColor DarkGray }
+            Invoke-PortalRefreshStep -Task $Step.Task -File $File -Log $Log -ProgressSeconds $ProgressSeconds -Progress $tick
+        }
         portfree  = { param($Step) Assert-PortalPortFree -Port (Get-PortalPort) }
+        url       = { Resolve-PortalUrl }
+        token     = { param($Url) Get-PortalDevToken -Url $Url -Tenant $tenant }
+        api       = {
+            param($Url, $Token, $Method, $Path, $Body)
+            $call = @{ Url = $Url; Path = $Path; Method = $Method; Token = $Token }
+            if ($null -ne $Body) { $call.Body = $Body }
+            Invoke-PortalApi @call
+        }
         approve   = {
             param($Step)
-            $url = Resolve-PortalUrl
-            $token = try { (Invoke-RestMethod -Uri "$url/api/tenants/$tenant/dev-token" -TimeoutSec 10).token } catch { $null }
-            $saved = $env:PORTAL_TOKEN
-            if ($token) { $env:PORTAL_TOKEN = $token }
-            try { $snap = New-PortalSnap -Url $url -Note "Invoke-Build Refresh $stamp" }
-            finally { $env:PORTAL_TOKEN = $saved }
+            $c = & $callApi 'POST' '/snap' @{ note = "Invoke-Build Refresh $stamp" }
+            $snap = $c.Data
             $changed = 0
             if ($snap.PSObject.Properties['diff'] -and $snap.diff) {
                 foreach ($part in 'added', 'removed', 'changed') {
@@ -55,12 +68,13 @@ function Invoke-PortalRefresh {
                 }
             }
             $since = if ($snap.PSObject.Properties['previous'] -and $snap.previous) { "$changed ids changed since $($snap.previous)" } else { 'the first snap' }
-            [pscustomobject]@{ Ok = $true; Line = "approved snap $($snap.stamp) ($since)"; After = $null }
+            [pscustomobject]@{ Ok = $true; Line = "approved snap $($snap.stamp) ($since); dev token $($c.Prefix)"; After = $null }
         }
         catalogue = {
             param($Step)
-            $url = Resolve-PortalUrl
-            $rows = @(ConvertTo-PortalCatalogueRow -Envelope (Invoke-PortalApi -Url $url -Path '/emitters'))
+            $c = & $callApi 'GET' '/emitters' $null
+            $url = $c.Url
+            $rows = @(ConvertTo-PortalCatalogueRow -Envelope $c.Data)
             $last = Join-Path $Artifacts 'last.json'
             $previous = if (Test-Path -LiteralPath $last) { @((Get-Content -LiteralPath $last -Raw | ConvertFrom-Json).rows) } else { @() }
             $regressed = @(Compare-PortalCatalogue -Previous $previous -Current $rows)
@@ -72,16 +86,31 @@ function Invoke-PortalRefresh {
             if ($regressed) {
                 Set-Content -LiteralPath (Join-Path $Artifacts 'failed.json') -Value $json -Encoding utf8NoBOM
                 $named = ($regressed | ForEach-Object { "$($_.Name) ok -> $($_.Now)" }) -join '; '
-                return [pscustomobject]@{ Ok = $false; Line = "REGRESSED since the last Refresh: $named"; After = $table }
+                return [pscustomobject]@{ Ok = $false; Line = "REGRESSED since the last Refresh: $named; dev token $($c.Prefix)"; After = $table }
             }
             Set-Content -LiteralPath $last -Value $json -Encoding utf8NoBOM
             $was = if ($previous) { 'compared with the last Refresh' } else { 'no last Refresh to compare with' }
-            [pscustomobject]@{ Ok = $true; Line = "$($rows.Count) rows ($counts); $was; wrote $last"; After = $table }
+            [pscustomobject]@{ Ok = $true; Line = "$($rows.Count) rows ($counts); $was; wrote $last; dev token $($c.Prefix)"; After = $table }
         }
     }
     foreach ($k in $Handlers.Keys) { $h[$k] = $Handlers[$k] }
+    # One API call of a step: the dev token is fetched here, immediately before the call, every time (docs/design.md
+    # 59). Never PORTAL_TOKEN, which this process may have inherited from an older Dev, and never a token an earlier
+    # step held: a step before this one may have restarted the portal, and every start mints a new token.
+    $callApi = {
+        param([string] $Method, [string] $Path, $Body)
+        $url = & $h.url
+        $token = & $h.token $url
+        $prefix = "$(([string]$token).Substring(0, [math]::Min(8, ([string]$token).Length)))..."
+        try { $data = & $h.api $url $token $Method $Path $Body }
+        catch { throw "$($_.Exception.Message) (sent dev token $prefix, fetched from GET /api/tenants/$tenant/dev-token just before)" }
+        [pscustomobject]@{ Data = $data; Prefix = $prefix; Url = $url }
+    }
 
     $say = { param([string] $Text, [string] $Color = 'Gray') Write-Host $Text -ForegroundColor $Color }
+    $runLog = Join-Path $logDir 'refresh.log'
+    $record = { param([string] $Text) if (-not $DryRun) { $null = New-Item -ItemType Directory -Force -Path $logDir; Add-Content -LiteralPath $runLog -Value $Text -Encoding utf8NoBOM } }
+    & $record "Refresh $stamp`: $($order.Steps.Count) steps from $OrderPath; tenant $tenant; workspace $Workspace"
     & $say "Refresh $stamp$(if ($DryRun) { ' (dry run)' }): $($order.Steps.Count) steps from $OrderPath; tenant $tenant; workspace $Workspace" Cyan
     $gn = Join-Path $Workspace 'Graph.Node' 'src' 'GraphNode' 'GraphNode.psd1'
     if (Test-Path -LiteralPath $gn) { & $say "Graph.Node checkout: GraphNode $((Import-PowerShellDataFile -LiteralPath $gn).ModuleVersion) at $(Split-Path (Split-Path (Split-Path $gn)))" }
@@ -115,14 +144,15 @@ function Invoke-PortalRefresh {
         elseif ($step.SkipWithoutDocker -and -not (& $h.docker)) { 'skipped: the Docker engine is not answering, so there is nothing to stop' }
         if ($skip) {
             & $say ($head + $(if ($DryRun) { "would be $skip" } else { $skip })) Yellow
+            & $record ($head + $skip)
             $results.Add([pscustomobject]@{ Id = $step.Id; Result = 'skipped'; Line = $skip })
             continue
         }
         if ($DryRun) {
             $plan = switch ($step.Action) {
                 'invoke' { "would run Invoke-Build $($step.Task) -File $file" }
-                'approve' { 'would take the dev token and approve a snap' }
-                'catalogue' { "would print the Catalogue and compare it with $(Join-Path $Artifacts 'last.json')" }
+                'approve' { 'would fetch the dev token and approve a snap' }
+                'catalogue' { "would fetch the dev token, print the Catalogue and compare it with $(Join-Path $Artifacts 'last.json')" }
             }
             & $say ($head + $plan)
             $results.Add([pscustomobject]@{ Id = $step.Id; Result = 'planned'; Line = $plan })
@@ -148,6 +178,7 @@ function Invoke-PortalRefresh {
         }
         $seconds = [math]::Round($clock.Elapsed.TotalSeconds, 1)
         Write-Host "$($r.Line) ($seconds s)" -ForegroundColor $(if ($r.Ok) { 'Green' } else { 'Red' })
+        & $record "$head$($r.Line) ($seconds s)"
         if ($r.After) { Write-Host $r.After }
         $results.Add([pscustomobject]@{ Id = $step.Id; Result = $(if ($r.Ok) { 'ok' } else { 'failed' }); Line = $r.Line })
         if (-not $r.Ok) { throw "Refresh stopped at step $($i + 1), $($step.Id) ($($step.Repo) $what): $($r.Line)" }

@@ -1162,3 +1162,46 @@ Choices made without asking:
 
   `Invoke-Build Smoke` adds `checks.wheelSpeed`. It loads every menu page that draws a Cytoscape graph (view `graph`, or a screen whose node is-a Canvas) and fails unless the control is there at the config's speed and the graph took the matching step.
 - **Version 0.16.4** in `Portal.psd1`, `ontology.yaml` (no Kind changed), `ontology.go` and `api/openapi.yaml` (the `Config` description only); `internal/gen` is regenerated.
+
+## 59. Every Portal start mints a new dev token; Refresh fetches it at use (0.16.5)
+
+The 2026-10-13 Refresh (`artifacts/refresh/2026-10-13T18-45-57Z/`) and the 2026-10-12 one both passed steps 1 to 6, then failed step 7, `GET .../emitters`, with 401: `the bearer token is not one tenant default holds (tenants/default/tokens.yaml)`. The brief's hypothesis was that a `Dev` was missing from the order after Mount, so Refresh held step 3's token. That is not the cause. Refresh never held step 3's token. Each invoke step runs in a child `pwsh`, and the `PORTAL_TOKEN` that step's `Dev` sets dies with that child. The portal Mount's second `Dev` starts is up and serving its token when Mount ends. tokens.yaml holds that token's hash alone, and step 6 fetched it and passed. Step 7 never fetched a token. It called `Invoke-PortalApi`, which sends `PORTAL_TOKEN` from Refresh's own process. That value came from the shell, where an `Invoke-Build Dev` run earlier sets it "for this process". Mount's restarts had replaced it in tokens.yaml, and since 0.5.0 the server refuses an unknown bearer on a read too (entry 38), never treating it as anonymous. Step 6 also restored that dead value into `PORTAL_TOKEN` in its `finally`, just before step 7 ran.
+
+Choices made without asking:
+- **Every API-calling step of Refresh fetches its token immediately before its call, never earlier, and never reads `PORTAL_TOKEN`.** `Invoke-PortalRefresh` has one path for a call: the portal's URL, then `GET .../dev-token`, then the call with that token. `approve` and `catalogue` both use it. `PORTAL_TOKEN` is neither read nor written by Refresh any more. A token held across a step would go dead at the next restart, and fetching at use is the only rule that survives an order change.
+- **No `Dev` added after Mount.** Mount ends on its own `Dev`, so the portal is up with a live token. Another `Dev` would mint a fourth token and restart once more, and step 7 would still have sent the stale one. `order.psd1` and the sequence table are unchanged.
+- **`Get-PortalDevToken` (private) sends no Authorization header.** The route is anonymous, and a stale bearer would be refused there too. A 404 fails the step, naming Up: `answered 404: the portal serves no dev token. It was started with Invoke-Build Up (or tenant <t> is not in mode dev), and Refresh needs the portal Invoke-Build Dev starts`. Before this, `approve` swallowed a failed fetch and fell back to `PORTAL_TOKEN`.
+- **`Invoke-PortalApi -Token`** sends the given token in place of `PORTAL_TOKEN`, so Refresh no longer sets and restores an environment variable around a call. Without `-Token` nothing changes for the wrappers.
+- **The token's first 8 characters, never more**, appear in each API step's line (`dev token 9d98439f...`). A failed call adds `(sent dev token <8>..., fetched from GET /api/tenants/<t>/dev-token just before)` to its message. Each step's line, skipped or run, also goes to `artifacts/refresh/<stamp>/refresh.log`, so the API steps leave a record on disk as the invoke steps' logs do. The 2026-10-13 run left none for steps 6 and 7.
+- **Elapsed seconds every 15 s on an invoke step still running** (`15 s... 30 s... `, on the step's own line, before its result). The API steps are bounded by their own 10 s and 30 s timeouts and get none. `Invoke-PortalRefreshStep -ProgressSeconds -Progress` is how Pester drives it at 1 s.
+- **Pester (six new, 176):**
+  - A fake portal mints a new token at every `RestartsPortal` step, refuses any other token as `tenant.go`'s auth does, and runs with a stale `PORTAL_TOKEN` set. The real `approve` and `catalogue` both pass, and each line names the live token's prefix.
+  - The event order pins every token fetch after the last `RestartsPortal` step and directly before its call.
+  - A restart between a fetch and its call fails catalogue, naming the prefix.
+  - `dev-token` 404 fails `approve`, naming Up, with no stale bearer sent.
+  - `Get-PortalDevToken` returns what 200 serves.
+  - Progress ticks at 1 s and 2 s on a 2.6 s task.
+
+  Manual check 0.5 shows the 401 against a real portal: a token from before a restart, sent on `GET .../emitters`, gets the 2026-10-13 message word for word, and the token fetched after it passes.
+- **Not run: the real `Invoke-Build Refresh`.** It runs the sibling repos' builds, which CLAUDE.md never lets an agent run. The first real run is the user's.
+- **Version 0.16.5** in `Portal.psd1`, `ontology.yaml` (no Kind changed), `ontology.go` and `api/openapi.yaml` (the version only); `internal/gen` is regenerated.
+
+## 60. README's ONTOLOGY.md link moves from line 1 to the first prose line
+
+No version change; nothing in the binary or the page changed.
+
+README.md now opens with a capsule-render banner and a badge row, so its line 1 is `<p align="center">` and `README first line links ONTOLOGY.md` failed. The banner and badges are presentation, not text a reader has to get past, so the rule is relaxed to the first prose line rather than the banner dropped.
+
+- **The rule.** ONTOLOGY.md still links README.md on line 1. README.md links ONTOLOGY.md on its first prose line: the first line that is not blank, an HTML tag (`^\s*<`), an image (`^\s*!\[`) or a heading (`^#`). That line is the `>` Terms line, with `[ONTOLOGY.md](ONTOLOGY.md)`. CLAUDE.md and the readme skill say so.
+- **Nothing but presentation above it.** A second Pester test, `README has only presentation above the Terms line`, fails if any line above the Terms line is prose. A relaxed rule alone would let the link drift down under real text; the test keeps it the first thing a reader reads.
+- **The Terms line sits directly under `# Portal`, above the new intro paragraph.** The intro first went above it, which the new rule refuses; the user chose to move the Terms line up rather than allow one paragraph before it.
+- **Pester 176 to 177**: the renamed test and the new one replace the old one.
+
+## 61. README badge colours
+
+No version change. README.md's badge row uses shields.io `style=for-the-badge`, modelled on TerraformAST's README, which has no Go or Windows badge.
+
+- **PowerShell `5391FE`** (logo `powershell`) **and Pester `0078D4`** are copied from TerraformAST.
+- **Go `00ADD8`**, Go's brand cyan, with logo `go`.
+- **Windows `0078D6`**, Windows' brand blue, with logo `windows`.
+- **Versions** are the repo's floors: Go 1.27+ (`go.mod`), PowerShell 7.4+ (`#Requires`), Pester 5.5+ (`tests/Invoke-Tests.ps1`), Windows x64 (the only build target). No Gallery badge; Portal is not published.

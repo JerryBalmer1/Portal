@@ -3,7 +3,8 @@ function Invoke-PortalApi {
     .SYNOPSIS
     One call to the portal API. -Path is relative to the tenant, /api/tenants/<Get-PortalTenant>. PORTAL_TOKEN, when
     set, is sent as the bearer token; without it the portal reads only, and a write is refused with 401. -Form sends a
-    multipart body (a card push) in place of a JSON -Body. Returns the
+    multipart body (a card push) in place of a JSON -Body. -Token, when given, is sent in place of PORTAL_TOKEN (Refresh
+    sends the dev token it fetched just before the call; docs/design.md 59). Returns the
     JSON body as objects with stamps left as strings; throws on a non-2xx status with the spec Error (code, message,
     problems) as the error's TargetObject.
     #>
@@ -13,11 +14,13 @@ function Invoke-PortalApi {
         [Parameter(Mandatory)] [string] $Path,
         [ValidateSet('GET', 'POST', 'PATCH', 'DELETE')] [string] $Method = 'GET',
         $Body,
-        [System.Net.Http.MultipartFormDataContent] $Form
+        [System.Net.Http.MultipartFormDataContent] $Form,
+        [string] $Token
     )
     $Path = "/api/tenants/$(Get-PortalTenant)$Path"
     $request = @{ Uri = "$Url$Path"; Method = $Method; SkipHttpErrorCheck = $true; TimeoutSec = 30 }
-    if ($env:PORTAL_TOKEN) { $request.Headers = @{ Authorization = "Bearer $env:PORTAL_TOKEN" } }
+    $bearer = if ($PSBoundParameters.ContainsKey('Token')) { $Token } else { $env:PORTAL_TOKEN }
+    if ($bearer) { $request.Headers = @{ Authorization = "Bearer $bearer" } }
     if ($PSBoundParameters.ContainsKey('Body')) {
         $request.ContentType = 'application/json'
         $request.Body = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Depth 64 -Compress }
